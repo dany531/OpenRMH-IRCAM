@@ -571,8 +571,8 @@ void RMH_IRThermalCamera_InitIRCameraConstants(ThermalCameraDevice::IRCameraDevi
 					// Calculate the length to the start of metadata 2
 					CameraStatus->MetaData2Index = CameraStatus->MetaData1Index + CameraStatus->FrameWidth;
 					// Update the zero calibration parameters
-					//CameraStatus->CalValue0Offset = 170.0;
-					//CameraStatus->CalValue0Fpamul = 0.0;
+					CameraStatus->CalValue0Offset = 170.0;
+					CameraStatus->CalValue0Fpamul = 0.0;
 
 				break;
 
