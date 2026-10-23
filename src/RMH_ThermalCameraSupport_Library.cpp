@@ -1454,9 +1454,39 @@ case _SupportedThermalCameras_Pool_3:
             IRCamera->fpa_div;
     }
 
-    // Read and calculate the IR camera shutter temperature
-    IRCamera->temp_shutter_Raw = *(ThermalData + (IRCamera->MetaData2Index + 2));
-    IRCamera->temp_shutter = ((((double)(IRCamera->temp_shutter_Raw) * 0.625) + 2731.5) / 10.0) - 273.15;
+    // Read and calculate the IR camera shutter temperature (T2S+ V2)
+IRCamera->temp_shutter_Raw = *(ThermalData + (IRCamera->MetaData2Index + 2));
+
+{
+    double floatShutTemper;
+    double corrFactor;
+
+    if (IRCamera->temp_shutter_Raw < 2049)
+    {
+        floatShutTemper = (double)IRCamera->temp_shutter_Raw;
+        corrFactor = 0.625;
+    }
+    else
+    {
+        floatShutTemper = 4095.0 - (double)IRCamera->temp_shutter_Raw;
+        corrFactor = -0.625;
+    }
+
+    unsigned short shutterFixRaw =
+        *(ThermalData + (IRCamera->MetaData2Index + 304));
+
+    int shutterFixByte = (shutterFixRaw >> 8) & 0xFF;
+
+    if (shutterFixByte >= 128)
+    {
+        shutterFixByte -= 256;
+    }
+
+    IRCamera->temp_shutter =
+        ((floatShutTemper * corrFactor + 2731.5) / 10.0)
+        - 273.15
+        + ((double)shutterFixByte / 10.0);
+}
 
     // Read and calculate the IR camera core temperature - V2 does not report the core temperature!
     IRCamera->temp_core_Raw = *(ThermalData + (IRCamera->MetaData2Index + 3));
