@@ -567,7 +567,7 @@ void RMH_IRThermalCamera_InitIRCameraConstants(ThermalCameraDevice::IRCameraDevi
 
 					// Set the detector temperature calibration constants
 					CameraStatus->fpa_off = 8617; 
-					CameraStatus->fpa_div = 13.9; // 37.682
+					CameraStatus->fpa_div = 37.682;
 					// Calculate the length to the start of metadata 2
 					CameraStatus->MetaData2Index = CameraStatus->MetaData1Index + CameraStatus->FrameWidth;
 					// Update the zero calibration parameters
