@@ -1766,8 +1766,10 @@ void RMH_IRThermalCamera_SaveConfigParametersToCamera(ThermalCameraDevice::IRCam
 			RMH_IRThermalCamera_WriteCameraConfigParameter(_IRCameraPool1_ConfigParameterAddress_HumidityREG, IRCamera->HumiditySetting, SupportedCameraPool);
 			RMH_IRThermalCamera_WriteCameraConfigParameter(_IRCameraPool1_ConfigParameterAddress_EmissivityREG, IRCamera->EmissivitySetting, SupportedCameraPool);
 			RMH_IRThermalCamera_WriteCameraConfigParameter(_IRCameraPool1_ConfigParameterAddress_DistanceREG, IRCamera->DistanceSetting, SupportedCameraPool);
-		
-		break;
+
+			IRThermalCamera.setZoom(0x80FF);
+
+			break;
 
 		// Supported camera pool 2
 		case _SupportedThermalCameras_Pool_2:
