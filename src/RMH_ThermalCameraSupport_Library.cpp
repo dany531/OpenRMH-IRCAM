@@ -1368,6 +1368,7 @@ bool RMH_IRThermalCamera_ReadFrameRaw(unsigned char* ImageData, unsigned int* Im
 
 }
 
+
 void RMH_IRThermalCamera_ReadCalFrameMetaData(unsigned short* ThermalData, ThermalCameraDevice::IRCameraDeviceFormat* IRCamera, unsigned short SupportedCameraPool) {
 
 	// This routine reads the frame metadata of the IR camera and calculates the internal IR sensor temperatures
@@ -1435,73 +1436,45 @@ void RMH_IRThermalCamera_ReadCalFrameMetaData(unsigned short* ThermalData, Therm
 
 		break;
 
-	// Supported camera pool 3
-case _SupportedThermalCameras_Pool_3:
+		// Supported camera pool 3
+		case _SupportedThermalCameras_Pool_3:
 
-    // Read the raw IR camera detector temperature
-    IRCamera->temp_fpa_Raw = (double)(*(ThermalData + (IRCamera->MetaData1Index + 2)));
+			// Read the raw IR camera detector temperature
+			IRCamera->temp_fpa_Raw = (double)(*(ThermalData + (IRCamera->MetaData1Index + 2)));
 
-    // T2S+ V2 may report an invalid zero detector-temperature value.
-    // Use a provisional fallback for testing when this occurs.
-    if (IRCamera->temp_fpa_Raw == 0.0)
-    {
-        IRCamera->temp_fpa = 18.0;
-    }
-    else
-    {
-        IRCamera->temp_fpa = 20.0 -
-            ((double)(IRCamera->temp_fpa_Raw - IRCamera->fpa_off)) /
-            IRCamera->fpa_div;
-    }
+			// T2S+ V2 may report an invalid zero detector-temperature value.
+			// Use a provisional fallback for testing when this occurs.
+			if (IRCamera->temp_fpa_Raw == 0.0)
+			{
+				IRCamera->temp_fpa = 18.0;
+			}
+			else
+			{
+				IRCamera->temp_fpa = 20.0 -
+					((double)(IRCamera->temp_fpa_Raw - IRCamera->fpa_off)) /
+					IRCamera->fpa_div;
+			}
 
-    // Read and calculate the IR camera shutter temperature (T2S+ V2)
-IRCamera->temp_shutter_Raw = *(ThermalData + (IRCamera->MetaData2Index + 2));
+			// Read the raw IR camera shutter temperature
+			IRCamera->temp_shutter_Raw = *(ThermalData + (IRCamera->MetaData2Index + 2));
 
-{
-    double floatShutTemper;
-    double corrFactor;
+			// TEMPORARY TEST: use a fixed shutter temperature for T2S+ V2.
+			IRCamera->temp_shutter = 18.0;
 
-    if (IRCamera->temp_shutter_Raw < 2049)
-    {
-        floatShutTemper = (double)IRCamera->temp_shutter_Raw;
-        corrFactor = 0.625;
-    }
-    else
-    {
-        floatShutTemper = 4095.0 - (double)IRCamera->temp_shutter_Raw;
-        corrFactor = -0.625;
-    }
+			// Read and calculate the IR camera core temperature - V2 does not report the core temperature!
+			IRCamera->temp_core_Raw = *(ThermalData + (IRCamera->MetaData2Index + 3));
+			IRCamera->temp_core = ((((double)(IRCamera->temp_core_Raw) * 0.625) + 2731.5) / 10.0) - 273.15;
 
-    unsigned short shutterFixRaw =
-        *(ThermalData + (IRCamera->MetaData2Index + 304));
+			// Read the raw temperature and coordinate data of the max, min and center points
+			IRCamera->Tmax_X =         *(ThermalData + (IRCamera->MetaData3Index + 0));
+			IRCamera->Tmax_Y =         *(ThermalData + (IRCamera->MetaData3Index + 1));
+			IRCamera->Tmax_Tmp_Raw =   *(ThermalData + (IRCamera->MetaData3Index + 2));
+			IRCamera->Tmin_X =         *(ThermalData + (IRCamera->MetaData3Index + 3));
+			IRCamera->Tmin_Y =         *(ThermalData + (IRCamera->MetaData3Index + 4));
+			IRCamera->Tmin_Tmp_Raw =   *(ThermalData + (IRCamera->MetaData3Index + 5));
+			IRCamera->Center_Tmp_Raw = *(ThermalData + (IRCamera->MetaData3Index + 6));
 
-    int shutterFixByte = (shutterFixRaw >> 8) & 0xFF;
-
-    if (shutterFixByte >= 128)
-    {
-        shutterFixByte -= 256;
-    }
-
-    IRCamera->temp_shutter =
-        ((floatShutTemper * corrFactor + 2731.5) / 10.0)
-        - 273.15
-        + ((double)shutterFixByte / 10.0);
-}
-
-    // Read and calculate the IR camera core temperature - V2 does not report the core temperature!
-    IRCamera->temp_core_Raw = *(ThermalData + (IRCamera->MetaData2Index + 3));
-    IRCamera->temp_core = ((((double)(IRCamera->temp_core_Raw) * 0.625) + 2731.5) / 10.0) - 273.15;
-
-    // Read the raw temperature and coordinate data of the max, min and center points
-    IRCamera->Tmax_X =         *(ThermalData + (IRCamera->MetaData3Index + 0));
-    IRCamera->Tmax_Y =         *(ThermalData + (IRCamera->MetaData3Index + 1));
-    IRCamera->Tmax_Tmp_Raw =   *(ThermalData + (IRCamera->MetaData3Index + 2));
-    IRCamera->Tmin_X =         *(ThermalData + (IRCamera->MetaData3Index + 3));
-    IRCamera->Tmin_Y =         *(ThermalData + (IRCamera->MetaData3Index + 4));
-    IRCamera->Tmin_Tmp_Raw =   *(ThermalData + (IRCamera->MetaData3Index + 5));
-    IRCamera->Center_Tmp_Raw = *(ThermalData + (IRCamera->MetaData3Index + 6));
-
-    break;
+		break;
 
 		// Supported camera pools 4, 5 and 6
 		case _SupportedThermalCameras_Pool_4: case _SupportedThermalCameras_Pool_5: case _SupportedThermalCameras_Pool_6:
@@ -1532,6 +1505,7 @@ IRCamera->temp_shutter_Raw = *(ThermalData + (IRCamera->MetaData2Index + 2));
 	}
 
 }
+
 
 void RMH_IRThermalCamera_ReadCalibrationParameters(unsigned short* ThermalData, ThermalCameraDevice::IRCameraDeviceFormat* IRCamera, unsigned short SupportedCameraPool) {
 
