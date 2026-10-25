@@ -1442,13 +1442,9 @@ void RMH_IRThermalCamera_ReadCalFrameMetaData(unsigned short* ThermalData, Therm
 		// Read the raw IR camera detector temperature
 		IRCamera->temp_fpa_Raw = (double)(*(ThermalData + (IRCamera->MetaData1Index + 2)));
 
-		// Calculate the detector (FPA) temperature using the original IRCAM logic.
-    	// If the raw detector temperature is zero, use the 18°C fallback.
-		if (IRCamera->temp_fpa_Raw == 0.0)
-   			IRCamera->temp_fpa = 18.0;
-		else
-    		IRCamera->temp_fpa = 20.0 -
-        	(IRCamera->temp_fpa_Raw - fpa_off) / fpa_div;
+		// TEMPORARY TEST: T2S+ V2 detector temperature is unreliable.
+		// Use a fixed 18°C value to test the effect on calculated image temperatures.
+		IRCamera->temp_fpa = 18.0;
 
 			// Read the raw IR camera shutter temperature
 			IRCamera->temp_shutter_Raw = *(ThermalData + (IRCamera->MetaData2Index + 2));
