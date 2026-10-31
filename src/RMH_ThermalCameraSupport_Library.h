@@ -93,6 +93,7 @@ namespace ThermalCameraDevice {
         unsigned short Tmin_Tmp_Raw = 0;      // Frame min temp raw data
         double Tavg_Tmp_Raw = 0;              // Frame sensor average value
         unsigned short Center_Tmp_Raw = 0;    // Frame center temp raw data
+        unsigned short FrameFPARawWord = 0;   // Pool 3: raw detector temp word saved from the frame before the max/min/center data overwrites it
         unsigned short temp_fpa_Raw = 0;      // IR camera detector temp raw data
         unsigned short temp_shutter_Raw = 0;  // IR camera shutter temp raw data
         unsigned short temp_core_Raw = 0;     // IR camera core temp raw data
@@ -107,6 +108,7 @@ namespace ThermalCameraDevice {
         float CalValue3 = 0.0;
         float CalValue4 = 0.0;
         float CalValue5 = 0.0;
+        float CalValue6 = 0.0;                // Pool 3: additive temperature correction (deg C) stored in the camera calibration data
 
         // Internal camera configuration parameter variables
         float TemperatureCorrectionSetting = 0.0;
