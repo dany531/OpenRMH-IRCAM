@@ -1,4 +1,4 @@
-﻿
+
 /*
  *  RMH_ThermalCameraSupport_Library.c
  *
@@ -566,11 +566,11 @@ void RMH_IRThermalCamera_InitIRCameraConstants(ThermalCameraDevice::IRCameraDevi
 				case 256:
 
 					// Set the detector temperature calibration constants
-					CameraStatus->fpa_off = 8617; 
+					CameraStatus->fpa_off = 8617;
 					CameraStatus->fpa_div = 37.682;
 					// Calculate the length to the start of metadata 2
 					CameraStatus->MetaData2Index = CameraStatus->MetaData1Index + CameraStatus->FrameWidth;
-					// Update the zero calibration parameters
+					// Update the zero calibration parameters - the manufacturer's firmware uses a fixed offset of 170 for the 256 sensor (EA thermometry path)
 					CameraStatus->CalValue0Offset = 170.0;
 					CameraStatus->CalValue0Fpamul = 0.0;
 
@@ -1091,6 +1091,12 @@ double RMH_IRThermalCamera_ConvertYUY2To14BitThermalDataArray(ThermalCameraDevic
 	// Should max/min/center data be appended to the end of the thermal frame data array
 	if (AddMaxMinCenterDataToThermalDataArray == true) {
 
+		// Pool 3: word 1 of the first metadata row is the camera's raw detector (FPA) temperature. The max/min/center data
+		// appended below overwrites it (it would become the max pixel Y coordinate), so keep a copy of it first
+		if (IRCamera->ThermalCameraSupportPool == _SupportedThermalCameras_Pool_3) {
+			IRCamera->FrameFPARawWord = *(ThermalDataRaw + (IRCamera->FrameWidth * (IRCamera->FrameHeight - IRCamera->FrameMetadataSize)) + 1);
+		}
+
 		// Append the max/min/center data to the end of the thermal frame data array
 		*(ThermalDataRaw + (IRCamera->FrameWidth * (IRCamera->FrameHeight - IRCamera->FrameMetadataSize)) + 0) = MaximumPixelXCoord;
 		*(ThermalDataRaw + (IRCamera->FrameWidth * (IRCamera->FrameHeight - IRCamera->FrameMetadataSize)) + 1) = MaximumPixelYCoord;
@@ -1368,7 +1374,6 @@ bool RMH_IRThermalCamera_ReadFrameRaw(unsigned char* ImageData, unsigned int* Im
 
 }
 
-
 void RMH_IRThermalCamera_ReadCalFrameMetaData(unsigned short* ThermalData, ThermalCameraDevice::IRCameraDeviceFormat* IRCamera, unsigned short SupportedCameraPool) {
 
 	// This routine reads the frame metadata of the IR camera and calculates the internal IR sensor temperatures
@@ -1439,18 +1444,27 @@ void RMH_IRThermalCamera_ReadCalFrameMetaData(unsigned short* ThermalData, Therm
 		// Supported camera pool 3
 		case _SupportedThermalCameras_Pool_3:
 
-		// Read the raw IR camera detector temperature
-		IRCamera->temp_fpa_Raw = (double)(*(ThermalData + (IRCamera->MetaData1Index + 2)));
+			// Read and calculate the IR camera detector temperature
+			// The raw detector value was saved when the frame was converted - the max/min/center data written to the start of
+			// the metadata by the conversion has overwritten the value in the thermal data array (see ConvertYUY2To14Bit...)
+			IRCamera->temp_fpa_Raw = IRCamera->FrameFPARawWord;
+			IRCamera->temp_fpa = 20.0 - ((double)(IRCamera->temp_fpa_Raw) - IRCamera->fpa_off) / IRCamera->fpa_div;
 
-		// TEMPORARY TEST: T2S+ V2 detector temperature is unreliable.
-		// Use a fixed 18°C value to test the effect on calculated image temperatures.
-		IRCamera->temp_fpa = 18.0;
-
-			// Read the raw IR camera shutter temperature
+			// Read and calculate the IR camera shutter temperature - same conversion as the manufacturer's firmware (raw / 16 deg C)
 			IRCamera->temp_shutter_Raw = *(ThermalData + (IRCamera->MetaData2Index + 2));
+			{
+				double ShutterScaled;
+				// Raw values above 0x8000 are negative temperatures
+				if (IRCamera->temp_shutter_Raw < 0x8001) { ShutterScaled = (double)(IRCamera->temp_shutter_Raw) * 0.625; }
+				else { ShutterScaled = (double)(0xFFF - (int)(IRCamera->temp_shutter_Raw)) * -0.625; }
+				IRCamera->temp_shutter = ((ShutterScaled + 2731.5) / 10.0) - 273.15;
+			}
 
-			// TEMPORARY TEST: use a fixed shutter temperature for T2S+ V2.
-			IRCamera->temp_shutter = 18.0;
+			// The camera stores a signed shutter temperature fine correction (1/10 deg C) in the high byte of word 47 of the third metadata row
+			if (IRCamera->FrameMetadataSize >= 3 && IRCamera->FrameWidth > 47) {
+				signed char ShutterFineCorrection = (signed char)((*(ThermalData + (IRCamera->MetaData3Index + 2 * IRCamera->FrameWidth + 47)) >> 8) & 0xFF);
+				IRCamera->temp_shutter = IRCamera->temp_shutter + (double)ShutterFineCorrection / 10.0;
+			}
 
 			// Read and calculate the IR camera core temperature - V2 does not report the core temperature!
 			IRCamera->temp_core_Raw = *(ThermalData + (IRCamera->MetaData2Index + 3));
@@ -1497,7 +1511,6 @@ void RMH_IRThermalCamera_ReadCalFrameMetaData(unsigned short* ThermalData, Therm
 
 }
 
-
 void RMH_IRThermalCamera_ReadCalibrationParameters(unsigned short* ThermalData, ThermalCameraDevice::IRCameraDeviceFormat* IRCamera, unsigned short SupportedCameraPool) {
 
 	// This routine reads the internal calibration parameters of the IR camera
@@ -1539,12 +1552,18 @@ void RMH_IRThermalCamera_ReadCalibrationParameters(unsigned short* ThermalData, 
 		case _SupportedThermalCameras_Pool_3:
 
 			// Read the internal calibration parameters of the IR camera
+			// The calibration values are 32-bit floats stored in the metadata as two consecutive 16-bit words, LOW word first
+			// (the manufacturer's firmware reads them straight from memory). The first float starts at word 3 of the metadata row
 			IRCamera->CalValue0 = *(ThermalData + (IRCamera->MetaData2Index + 1));
-			IRCamera->CalValue1 = RMH_Conversion_uint16x2ToSinglePrecisionFloat(*(ThermalData + (IRCamera->MetaData2Index + 3 + MetaCal16BitSizeOffset)), *(ThermalData + (IRCamera->MetaData2Index + 4 + MetaCal16BitSizeOffset)));
-			IRCamera->CalValue2 = RMH_Conversion_uint16x2ToSinglePrecisionFloat(*(ThermalData + (IRCamera->MetaData2Index + 5 + MetaCal16BitSizeOffset)), *(ThermalData + (IRCamera->MetaData2Index + 6 + MetaCal16BitSizeOffset)));
-			IRCamera->CalValue3 = RMH_Conversion_uint16x2ToSinglePrecisionFloat(*(ThermalData + (IRCamera->MetaData2Index + 7 + MetaCal16BitSizeOffset)), *(ThermalData + (IRCamera->MetaData2Index + 8 + MetaCal16BitSizeOffset)));
-			IRCamera->CalValue4 = RMH_Conversion_uint16x2ToSinglePrecisionFloat(*(ThermalData + (IRCamera->MetaData2Index + 9 + MetaCal16BitSizeOffset)), *(ThermalData + (IRCamera->MetaData2Index + 10 + MetaCal16BitSizeOffset)));
-			IRCamera->CalValue5 = RMH_Conversion_uint16x2ToSinglePrecisionFloat(*(ThermalData + (IRCamera->MetaData2Index + 11 + MetaCal16BitSizeOffset)), *(ThermalData + (IRCamera->MetaData2Index + 12 + MetaCal16BitSizeOffset)));
+			IRCamera->CalValue1 = RMH_Conversion_uint16x2ToSinglePrecisionFloat(*(ThermalData + (IRCamera->MetaData2Index + 5)),  *(ThermalData + (IRCamera->MetaData2Index + 4)));
+			IRCamera->CalValue2 = RMH_Conversion_uint16x2ToSinglePrecisionFloat(*(ThermalData + (IRCamera->MetaData2Index + 7)),  *(ThermalData + (IRCamera->MetaData2Index + 6)));
+			IRCamera->CalValue3 = RMH_Conversion_uint16x2ToSinglePrecisionFloat(*(ThermalData + (IRCamera->MetaData2Index + 9)),  *(ThermalData + (IRCamera->MetaData2Index + 8)));
+			IRCamera->CalValue4 = RMH_Conversion_uint16x2ToSinglePrecisionFloat(*(ThermalData + (IRCamera->MetaData2Index + 11)), *(ThermalData + (IRCamera->MetaData2Index + 10)));
+			IRCamera->CalValue5 = RMH_Conversion_uint16x2ToSinglePrecisionFloat(*(ThermalData + (IRCamera->MetaData2Index + 13)), *(ThermalData + (IRCamera->MetaData2Index + 12)));
+			// A sixth float follows: an additive temperature correction in deg C, used by the firmware for the default lens
+			IRCamera->CalValue6 = RMH_Conversion_uint16x2ToSinglePrecisionFloat(*(ThermalData + (IRCamera->MetaData2Index + 15)), *(ThermalData + (IRCamera->MetaData2Index + 14)));
+			// Reject a value that is not a plausible temperature correction
+			if (!(IRCamera->CalValue6 > -50.0f && IRCamera->CalValue6 < 50.0f)) { IRCamera->CalValue6 = 0.0f; }
 
 		break;
 
@@ -1731,10 +1750,8 @@ void RMH_IRThermalCamera_SaveConfigParametersToCamera(ThermalCameraDevice::IRCam
 			RMH_IRThermalCamera_WriteCameraConfigParameter(_IRCameraPool1_ConfigParameterAddress_HumidityREG, IRCamera->HumiditySetting, SupportedCameraPool);
 			RMH_IRThermalCamera_WriteCameraConfigParameter(_IRCameraPool1_ConfigParameterAddress_EmissivityREG, IRCamera->EmissivitySetting, SupportedCameraPool);
 			RMH_IRThermalCamera_WriteCameraConfigParameter(_IRCameraPool1_ConfigParameterAddress_DistanceREG, IRCamera->DistanceSetting, SupportedCameraPool);
-
-			IRThermalCamera.setZoom(0x80FF);
-
-			break;
+		
+		break;
 
 		// Supported camera pool 2
 		case _SupportedThermalCameras_Pool_2:
@@ -1885,6 +1902,12 @@ void RMH_IRThermalCamera_GenerateThermoGrapicLookUpTable(ThermalCameraDevice::IR
 				// Calculate the square root parameter  
 				SqrtComplexNegative = (((double)i - LookUpTableOffset) * CalValue_D + CalValue_C) / IRCamera->CalValue1 + CalValue_B;
 					
+				// Pool 3: the manufacturer's firmware marks a negative square root argument as invalid (-273 deg C)
+				if (SupportedCameraPool == _SupportedThermalCameras_Pool_3 && SqrtComplexNegative < 0) {
+					IRCamera->TemperatureLookUpTabel[i] = -273.0;
+					continue;
+				}
+
 				// Check whether the value is negative
 				if (SqrtComplexNegative < 0) {
 					// Convert the square root argument to a positive value
@@ -1900,7 +1923,14 @@ void RMH_IRThermalCamera_GenerateThermoGrapicLookUpTable(ThermalCameraDevice::IR
 				ttot = pow(((wtot - NumeratorPart) / DenominatorPart), 0.25) - 273.15;
 
 				// Calculate the object temperature
-				ObjectTemp = ttot + (IRCamera->DistanceSetting * 0.85 - 1.125) * (ttot - IRCamera->AmbientTemperatureSetting) / 100.0 + IRCamera->TemperatureCorrectionSetting;
+				if (SupportedCameraPool == _SupportedThermalCameras_Pool_3) {
+					// Pool 3: distance term limited to 20 and the camera's own additive correction included, as in the manufacturer's firmware
+					double DistanceTerm = (IRCamera->DistanceSetting < 20.0f) ? (double)IRCamera->DistanceSetting : 20.0;
+					ObjectTemp = ttot + (double)IRCamera->CalValue6 + (DistanceTerm * 0.85 - 1.125) * (ttot - IRCamera->AmbientTemperatureSetting) / 100.0 + IRCamera->TemperatureCorrectionSetting;
+				}
+				else {
+					ObjectTemp = ttot + (IRCamera->DistanceSetting * 0.85 - 1.125) * (ttot - IRCamera->AmbientTemperatureSetting) / 100.0 + IRCamera->TemperatureCorrectionSetting;
+				}
 
 				// Write the data to the temperature look-up table
 				IRCamera->TemperatureLookUpTabel[i] = ObjectTemp;
