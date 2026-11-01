@@ -437,6 +437,12 @@ void RMH_IRThermalCamera_SetIRCameraTemperatureRange(unsigned int TemperatureRan
 }
 
 // CHANGED 18-11-2025 !!!!!!!
+// Pool 3 (InfiRay T2S+ V2 and similar): the shutter temperature used for the temperature calculation, in deg C.
+// The camera's shutter temperature register cannot be used (see RMH_IRThermalCamera_ReadCalFrameMetaData).
+// If all temperatures are too high by some amount, lower this value by about the same amount; if too low, raise it.
+// (The 'Temperature correction' setting does the same without rebuilding, for small adjustments.)
+#define _Pool3_AssumedShutterTemperatureC                 18.0
+
 void RMH_IRThermalCamera_InitIRCameraConstants(ThermalCameraDevice::IRCameraDeviceFormat* CameraStatus, unsigned short SupportedCameraPool) {
 
 	// This routine sets the calibration, metadata and frame data constants of the connected IR camera.
@@ -1450,25 +1456,28 @@ void RMH_IRThermalCamera_ReadCalFrameMetaData(unsigned short* ThermalData, Therm
 			IRCamera->temp_fpa_Raw = IRCamera->FrameFPARawWord;
 			IRCamera->temp_fpa = 20.0 - ((double)(IRCamera->temp_fpa_Raw) - IRCamera->fpa_off) / IRCamera->fpa_div;
 
-			// Read and calculate the IR camera shutter temperature - same conversion as the manufacturer's firmware (raw / 16 deg C)
+			// Read the IR camera shutter temperature register - same conversion as the manufacturer's firmware (raw / 16 deg C)
 			IRCamera->temp_shutter_Raw = *(ThermalData + (IRCamera->MetaData2Index + 2));
+			double ShutterRegisterTemperature;
 			{
 				double ShutterScaled;
 				// Raw values above 0x8000 are negative temperatures
 				if (IRCamera->temp_shutter_Raw < 0x8001) { ShutterScaled = (double)(IRCamera->temp_shutter_Raw) * 0.625; }
 				else { ShutterScaled = (double)(0xFFF - (int)(IRCamera->temp_shutter_Raw)) * -0.625; }
-				IRCamera->temp_shutter = ((ShutterScaled + 2731.5) / 10.0) - 273.15;
+				ShutterRegisterTemperature = ((ShutterScaled + 2731.5) / 10.0) - 273.15;
 			}
 
 			// The camera stores a signed shutter temperature fine correction (1/10 deg C) in the high byte of word 47 of the third metadata row
 			if (IRCamera->FrameMetadataSize >= 3 && IRCamera->FrameWidth > 47) {
 				signed char ShutterFineCorrection = (signed char)((*(ThermalData + (IRCamera->MetaData3Index + 2 * IRCamera->FrameWidth + 47)) >> 8) & 0xFF);
-				IRCamera->temp_shutter = IRCamera->temp_shutter + (double)ShutterFineCorrection / 10.0;
+				ShutterRegisterTemperature = ShutterRegisterTemperature + (double)ShutterFineCorrection / 10.0;
 			}
 
-			// Read and calculate the IR camera core temperature - V2 does not report the core temperature!
-			IRCamera->temp_core_Raw = *(ThermalData + (IRCamera->MetaData2Index + 3));
-			IRCamera->temp_core = ((((double)(IRCamera->temp_core_Raw) * 0.625) + 2731.5) / 10.0) - 273.15;
+			// The shutter temperature register of the V2 cameras is not usable for the temperature calculation: the sensor sits next to the
+			// readout electronics, heats up quickly after power-on and drifts. Other open implementations (IR-Py-Thermal, t2s-thermal-macos) and
+			// this project's own tests show that a fixed room-temperature value gives correct temperatures. The register value is kept in
+			// 'temp_core' for information only (the V2 has no separate core temperature).
+			IRCamera->temp_shutter = _Pool3_AssumedShutterTemperatureC;
 
 			// Read the raw temperature and coordinate data of the max, min and center points
 			IRCamera->Tmax_X =         *(ThermalData + (IRCamera->MetaData3Index + 0));
@@ -1478,6 +1487,10 @@ void RMH_IRThermalCamera_ReadCalFrameMetaData(unsigned short* ThermalData, Therm
 			IRCamera->Tmin_Y =         *(ThermalData + (IRCamera->MetaData3Index + 4));
 			IRCamera->Tmin_Tmp_Raw =   *(ThermalData + (IRCamera->MetaData3Index + 5));
 			IRCamera->Center_Tmp_Raw = *(ThermalData + (IRCamera->MetaData3Index + 6));
+
+			// Shutter temperature register (information only) - shown as the core temperature
+			IRCamera->temp_core_Raw = IRCamera->temp_shutter_Raw;
+			IRCamera->temp_core = ShutterRegisterTemperature;
 
 		break;
 
@@ -1924,9 +1937,9 @@ void RMH_IRThermalCamera_GenerateThermoGrapicLookUpTable(ThermalCameraDevice::IR
 
 				// Calculate the object temperature
 				if (SupportedCameraPool == _SupportedThermalCameras_Pool_3) {
-					// Pool 3: distance term limited to 20 and the camera's own additive correction included, as in the manufacturer's firmware
+					// Pool 3: distance term limited to 20, as in the manufacturer's firmware
 					double DistanceTerm = (IRCamera->DistanceSetting < 20.0f) ? (double)IRCamera->DistanceSetting : 20.0;
-					ObjectTemp = ttot + (double)IRCamera->CalValue6 + (DistanceTerm * 0.85 - 1.125) * (ttot - IRCamera->AmbientTemperatureSetting) / 100.0 + IRCamera->TemperatureCorrectionSetting;
+					ObjectTemp = ttot + (DistanceTerm * 0.85 - 1.125) * (ttot - IRCamera->AmbientTemperatureSetting) / 100.0 + IRCamera->TemperatureCorrectionSetting;
 				}
 				else {
 					ObjectTemp = ttot + (IRCamera->DistanceSetting * 0.85 - 1.125) * (ttot - IRCamera->AmbientTemperatureSetting) / 100.0 + IRCamera->TemperatureCorrectionSetting;
