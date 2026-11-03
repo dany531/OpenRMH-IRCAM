@@ -437,10 +437,12 @@ void RMH_IRThermalCamera_SetIRCameraTemperatureRange(unsigned int TemperatureRan
 }
 
 // CHANGED 18-11-2025 !!!!!!!
-// Pool 3 (InfiRay T2S+ V2 and similar): the shutter temperature used for the temperature calculation, in deg C.
-// The camera's shutter temperature register cannot be used (see RMH_IRThermalCamera_ReadCalFrameMetaData).
-// If all temperatures are too high by some amount, lower this value by about the same amount; if too low, raise it.
-// (The 'Temperature correction' setting does the same without rebuilding, for small adjustments.)
+// Pool 3 (InfiRay T2S+ V2 and similar)
+// Gray level of the shutter reference after the non-uniformity correction. The calibration data stored in the camera assumes
+// the manufacturer's host software places a frame that sees the shutter at this level (corrected pixel = (raw - baseline) + 6000).
+#define _Pool3_NonUniformityCorrectionLevel               6000.0
+// Fallback only: set to 1 to ignore the camera's shutter temperature register and use the fixed value below (deg C) instead.
+#define _Pool3_UseFixedShutterTemperature                 0
 #define _Pool3_AssumedShutterTemperatureC                 18.0
 
 void RMH_IRThermalCamera_InitIRCameraConstants(ThermalCameraDevice::IRCameraDeviceFormat* CameraStatus, unsigned short SupportedCameraPool) {
@@ -1473,11 +1475,14 @@ void RMH_IRThermalCamera_ReadCalFrameMetaData(unsigned short* ThermalData, Therm
 				ShutterRegisterTemperature = ShutterRegisterTemperature + (double)ShutterFineCorrection / 10.0;
 			}
 
-			// The shutter temperature register of the V2 cameras is not usable for the temperature calculation: the sensor sits next to the
-			// readout electronics, heats up quickly after power-on and drifts. Other open implementations (IR-Py-Thermal, t2s-thermal-macos) and
-			// this project's own tests show that a fixed room-temperature value gives correct temperatures. The register value is kept in
-			// 'temp_core' for information only (the V2 has no separate core temperature).
+			// The manufacturer's software uses the shutter temperature register plus the fine correction for the temperature calculation.
+			// Other open implementations found the register drifts after power-on, so a fixed value can be used instead (fallback).
+			// The register value is also kept in 'temp_core' for information (the V2 has no separate core temperature).
+#if _Pool3_UseFixedShutterTemperature
 			IRCamera->temp_shutter = _Pool3_AssumedShutterTemperatureC;
+#else
+			IRCamera->temp_shutter = ShutterRegisterTemperature;
+#endif
 
 			// Read the raw temperature and coordinate data of the max, min and center points
 			IRCamera->Tmax_X =         *(ThermalData + (IRCamera->MetaData3Index + 0));
@@ -2404,6 +2409,15 @@ void RMH_IRThermalCamera_CalibrateThermalCamera() {
 
 			// Calculate the mean value of the CMOS baseline measurement, together with the non-uniformity mapping of the baseline data
 			ImageCMOSBaselineMeanValue = RMH_ImageNonUniformityCorrection_CalNonUniformityMap(&ClosedShutterCMOSBaselineData[0], IRCamera.FrameWidth, IRCamera.FrameHeight, IRCamera.FrameMetadataSize, &ImageCMOSNonUniformityMapData[0]);
+
+			// Pool 3: the manufacturer's host software corrects the image to (raw - baseline) + 6000, not to the mean of the baseline.
+			// Re-reference the non-uniformity map so a pixel that sees the shutter ends up at that level.
+			if (IRCamera.ThermalCameraSupportPool == _SupportedThermalCameras_Pool_3) {
+				double Pool3MapShift = ImageCMOSBaselineMeanValue - _Pool3_NonUniformityCorrectionLevel;
+				for (unsigned int i = 0; i < (IRCamera.FrameWidth * (IRCamera.FrameHeight - IRCamera.FrameMetadataSize)); i++) {
+					ImageCMOSNonUniformityMapData[i] = ImageCMOSNonUniformityMapData[i] + Pool3MapShift;
+				}
+			}
 
 			// --------------------------------------------------------------------------------------------------------- //
 
