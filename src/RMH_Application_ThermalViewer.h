@@ -12,6 +12,15 @@
 #ifndef RMH_Application_ThermalViewer_H 
 #define RMH_Application_ThermalViewer_H
 
+// ---------------- Automatic start-up sequence (selected camera, calibration, periodic calibration) ---------------- //
+// When enabled, the application selects the camera below, connects to it, calibrates it and enables periodic shutter
+// calibration automatically after the main window has opened. Set _AutoStart_Enabled to 0 to disable all of it.
+#define _AutoStart_Enabled                        1
+#define _AutoStart_CameraIndex                    _SupportedThermalCamera_InfiRayT2SpV2   // "InfiRay T2S+ V2"
+#define _AutoStart_ConnectDelayMs                 1500    // Delay after the main window opens before connecting
+#define _AutoStart_CalibrateDelayMs               4000    // Delay after connecting before the first calibration (let the video start)
+#define _AutoStart_PeriodicCalibrationPeriodSec   180     // "Auto Calibration Period [Sec]" for periodic shutter calibration
+
 // Camera configuration panel NumericUpDowns "start-up" max/min limits
 #define _TempCorrectionUpDown_DefaultMaxValue     1000.0
 #define _TempCorrectionUpDown_DefaultMinValue    -1000.0
@@ -95,6 +104,10 @@ void RMH_ThermalViewer_LoadEmissivisyTableValueToThermalCamera(System::Windows::
 // --------------------- Camera Auto Calibration Handling Routines ---------------------- //
 
 void RMH_ThermalViewer_ToggleCameraAutoShutterCalibrationTimer();
+
+// Automatic start-up sequence routines
+bool RMH_ThermalViewer_AutoStartSelectAndConnectCamera();
+bool RMH_ThermalViewer_AutoStartCalibrateAndEnablePeriodicCalibration();
 void RMH_ThermalViewer_ToggleCameraDriftBasedCalibrationTimer();
 void RMH_ThermalViewer_ReadThermalCameraInternalTemps();
 

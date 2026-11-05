@@ -752,6 +752,39 @@ namespace IRCAMThermalViewer {
 		// ------------------ Main GUI Start-Up And Shutdown Callback Routines ------------------ //
 
 		// Main GUI start-up callback routine -> 
+		// Automatic start-up sequence timer and stage
+		private: System::Windows::Forms::Timer^ StartupAutomationTimer;
+		private: int StartupAutomationStage;
+
+		// Automatic start-up sequence timer callback routine ->
+		private: System::Void StartupAutomationTimer_Tick(System::Object^ sender, System::EventArgs^ e) {
+
+			// Stop the timer - each stage of the sequence runs once
+			this->StartupAutomationTimer->Stop();
+
+			// Stage 0: select the camera and connect to it
+			if (this->StartupAutomationStage == 0) {
+
+				// Was the connection successful
+				if (RMH_ThermalViewer_AutoStartSelectAndConnectCamera() == true) {
+
+					// Continue with the calibration stage after a short delay
+					this->StartupAutomationStage = 1;
+					this->StartupAutomationTimer->Interval = _AutoStart_CalibrateDelayMs;
+					this->StartupAutomationTimer->Start();
+
+				}
+
+			}
+			// Stage 1: calibrate the camera and enable periodic shutter calibration
+			else if (this->StartupAutomationStage == 1) {
+
+				RMH_ThermalViewer_AutoStartCalibrateAndEnablePeriodicCalibration();
+
+			}
+
+		}
+
 		private: System::Void MainGUI_Shown(System::Object^ sender, System::EventArgs^ e) {
 
 			// This routine is the start-up function of the application GUI
@@ -759,6 +792,15 @@ namespace IRCAMThermalViewer {
 
 			// Write GUI start message
 			RMH_Winforms_RichTextBox_WriteLine(this->GUIInfoTextArea, "Sellect A Thermal Camera Or Mode, In The Settings Menu, & Press The 'Connect' or 'Open File' Button.", _StatusMessageType_Normal);
+
+			// Start the automatic start-up sequence (select camera, connect, calibrate, enable periodic calibration)
+#if _AutoStart_Enabled
+			this->StartupAutomationStage = 0;
+			this->StartupAutomationTimer = gcnew System::Windows::Forms::Timer();
+			this->StartupAutomationTimer->Interval = _AutoStart_ConnectDelayMs;
+			this->StartupAutomationTimer->Tick += gcnew System::EventHandler(this, &MainGUI::StartupAutomationTimer_Tick);
+			this->StartupAutomationTimer->Start();
+#endif
 
 		}
 
