@@ -115,7 +115,7 @@ namespace IRCAMThermalViewer {
 			HandleFormsOpeningDockingAndUndocking(ManagedLocals::WelcomeScreenForm, this->MainViewTopPanel, &isWelcomeScreenFormOpen, &isWelcomeScreenFormDocked, &isWelcomeScreenFormUndocked, _FormDockingState_DockForm);
 
 			// Update the title bar string of the form
-			RMH_Winforms_ChangeFormTitleBarText(this, ApplicationInformationString);
+			RMH_Winforms_ChangeFormTitleBarText(this, ApplicationInformationString + _CustomBuild_TitleSuffix);
 
 		}
 
@@ -752,9 +752,92 @@ namespace IRCAMThermalViewer {
 		// ------------------ Main GUI Start-Up And Shutdown Callback Routines ------------------ //
 
 		// Main GUI start-up callback routine -> 
-		// Automatic start-up sequence timer and stage
+		// Automatic start-up sequence timer, stage and information window
 		private: System::Windows::Forms::Timer^ StartupAutomationTimer;
 		private: int StartupAutomationStage;
+		private: System::Windows::Forms::Form^ StartupWaitWindow;
+
+		// Creates a start-up information window (headline, text, optional progress bar or OK button) ->
+		private: System::Windows::Forms::Form^ CreateStartupInfoWindow(System::String^ Headline, System::String^ Body, System::Drawing::Color HeadlineColor, bool ShowProgressBar, bool ShowOkButton) {
+
+			System::Windows::Forms::Form^ InfoWindow = gcnew System::Windows::Forms::Form();
+			InfoWindow->Text = "IRCAM for T2S+ V2";
+			InfoWindow->FormBorderStyle = System::Windows::Forms::FormBorderStyle::FixedDialog;
+			InfoWindow->StartPosition = System::Windows::Forms::FormStartPosition::CenterParent;
+			InfoWindow->ControlBox = false;
+			InfoWindow->MinimizeBox = false;
+			InfoWindow->MaximizeBox = false;
+			InfoWindow->ShowInTaskbar = false;
+			InfoWindow->BackColor = System::Drawing::Color::White;
+			InfoWindow->ClientSize = System::Drawing::Size(540, 250);
+
+			// Headline
+			System::Windows::Forms::Label^ HeadlineLabel = gcnew System::Windows::Forms::Label();
+			HeadlineLabel->AutoSize = false;
+			HeadlineLabel->Location = System::Drawing::Point(20, 18);
+			HeadlineLabel->Size = System::Drawing::Size(500, 40);
+			HeadlineLabel->Font = gcnew System::Drawing::Font("Segoe UI", 14.0f, System::Drawing::FontStyle::Bold);
+			HeadlineLabel->ForeColor = HeadlineColor;
+			HeadlineLabel->Text = Headline;
+			InfoWindow->Controls->Add(HeadlineLabel);
+
+			// Body text
+			System::Windows::Forms::Label^ BodyLabel = gcnew System::Windows::Forms::Label();
+			BodyLabel->AutoSize = false;
+			BodyLabel->Location = System::Drawing::Point(20, 66);
+			BodyLabel->Size = System::Drawing::Size(500, 120);
+			BodyLabel->Font = gcnew System::Drawing::Font("Segoe UI", 10.0f);
+			BodyLabel->ForeColor = System::Drawing::Color::Black;
+			BodyLabel->Text = Body;
+			InfoWindow->Controls->Add(BodyLabel);
+
+			// Progress bar
+			if (ShowProgressBar == true) {
+				System::Windows::Forms::ProgressBar^ WaitBar = gcnew System::Windows::Forms::ProgressBar();
+				WaitBar->Style = System::Windows::Forms::ProgressBarStyle::Marquee;
+				WaitBar->MarqueeAnimationSpeed = 30;
+				WaitBar->Location = System::Drawing::Point(20, 205);
+				WaitBar->Size = System::Drawing::Size(500, 20);
+				InfoWindow->Controls->Add(WaitBar);
+			}
+
+			// OK button
+			if (ShowOkButton == true) {
+				System::Windows::Forms::Button^ OkButton = gcnew System::Windows::Forms::Button();
+				OkButton->Text = "OK";
+				OkButton->DialogResult = System::Windows::Forms::DialogResult::OK;
+				OkButton->Location = System::Drawing::Point(210, 200);
+				OkButton->Size = System::Drawing::Size(120, 34);
+				InfoWindow->Controls->Add(OkButton);
+				InfoWindow->AcceptButton = OkButton;
+			}
+
+			return InfoWindow;
+
+		}
+
+		// Closes the start-up "please wait" window ->
+		private: System::Void CloseStartupWaitWindow() {
+
+			if (this->StartupWaitWindow != nullptr) {
+				this->StartupWaitWindow->Close();
+				this->StartupWaitWindow = nullptr;
+			}
+
+		}
+
+		// Shows the "camera not connected" warning window ->
+		private: System::Void ShowStartupCameraNotConnectedWindow() {
+
+#if _AutoStart_ShowPopupWindows
+			System::Windows::Forms::Form^ WarningWindow = this->CreateStartupInfoWindow(
+				"Camera Not Connected",
+				"The InfiRay T2S+ V2 thermal camera was not found.\n\n1. Close this application.\n2. Connect the camera to a USB port.\n3. Wait a few seconds, then open the application again.",
+				System::Drawing::Color::FromArgb(190, 0, 0), false, true);
+			WarningWindow->ShowDialog(this);
+#endif
+
+		}
 
 		// Automatic start-up sequence timer callback routine ->
 		private: System::Void StartupAutomationTimer_Tick(System::Object^ sender, System::EventArgs^ e) {
@@ -774,12 +857,41 @@ namespace IRCAMThermalViewer {
 					this->StartupAutomationTimer->Start();
 
 				}
+				else {
+
+					// The camera is not connected - close the "please wait" window and warn the user
+					this->CloseStartupWaitWindow();
+					this->ShowStartupCameraNotConnectedWindow();
+
+				}
 
 			}
 			// Stage 1: calibrate the camera and enable periodic shutter calibration
 			else if (this->StartupAutomationStage == 1) {
 
-				RMH_ThermalViewer_AutoStartCalibrateAndEnablePeriodicCalibration();
+				bool StartupSequenceDone = RMH_ThermalViewer_AutoStartCalibrateAndEnablePeriodicCalibration();
+
+				// Close the "please wait" window
+				this->CloseStartupWaitWindow();
+
+				if (StartupSequenceDone == true) {
+
+#if _AutoStart_ShowPopupWindows
+					// Everything is done - show the "ready to use" window
+					System::Windows::Forms::Form^ ReadyWindow = this->CreateStartupInfoWindow(
+						"READY TO USE",
+						System::String::Format("The thermal camera is connected and calibrated.\nAutomatic shutter calibration is enabled (every {0} seconds).\n\nYou can start measuring now.", _AutoStart_PeriodicCalibrationPeriodSec),
+						System::Drawing::Color::FromArgb(0, 130, 40), false, true);
+					ReadyWindow->ShowDialog(this);
+#endif
+
+				}
+				else {
+
+					// The camera was lost during the start-up sequence
+					this->ShowStartupCameraNotConnectedWindow();
+
+				}
 
 			}
 
@@ -791,10 +903,20 @@ namespace IRCAMThermalViewer {
 			// which takes the relevant GUI components as input arguments
 
 			// Write GUI start message
+			RMH_Winforms_RichTextBox_WriteLine(this->GUIInfoTextArea, _CustomBuild_StartupMessage, _StatusMessageType_Success);
+
 			RMH_Winforms_RichTextBox_WriteLine(this->GUIInfoTextArea, "Sellect A Thermal Camera Or Mode, In The Settings Menu, & Press The 'Connect' or 'Open File' Button.", _StatusMessageType_Normal);
 
 			// Start the automatic start-up sequence (select camera, connect, calibrate, enable periodic calibration)
 #if _AutoStart_Enabled
+#if _AutoStart_ShowPopupWindows
+			// Show the "custom version - please wait" window while the camera initialises
+			this->StartupWaitWindow = this->CreateStartupInfoWindow(
+				"Custom Version For The InfiRay T2S+ V2",
+				"This is a modified version of OpenRMH-IRCAM for the InfiRay T2S+ V2 (T2S+_A2) thermal camera.\n\nPlease wait while the camera initialises and calibrates.\nDo not unplug the camera. This window closes automatically.",
+				System::Drawing::Color::FromArgb(0, 90, 160), true, false);
+			this->StartupWaitWindow->Show(this);
+#endif
 			this->StartupAutomationStage = 0;
 			this->StartupAutomationTimer = gcnew System::Windows::Forms::Timer();
 			this->StartupAutomationTimer->Interval = _AutoStart_ConnectDelayMs;

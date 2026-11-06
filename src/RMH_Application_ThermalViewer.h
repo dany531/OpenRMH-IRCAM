@@ -12,10 +12,15 @@
 #ifndef RMH_Application_ThermalViewer_H 
 #define RMH_Application_ThermalViewer_H
 
+// ---------------- Custom build identification (title bar and start-up status message) ---------------- //
+#define _CustomBuild_TitleSuffix                  " - CUSTOM BUILD FOR THE INFIRAY T2S+ V2 (T2S+_A2)"
+#define _CustomBuild_StartupMessage               "Custom IRCAM Version - Built Specifically For The InfiRay T2S+ V2 (T2S+_A2) Thermal Camera."
+
 // ---------------- Automatic start-up sequence (selected camera, calibration, periodic calibration) ---------------- //
 // When enabled, the application selects the camera below, connects to it, calibrates it and enables periodic shutter
 // calibration automatically after the main window has opened. Set _AutoStart_Enabled to 0 to disable all of it.
 #define _AutoStart_Enabled                        1
+#define _AutoStart_ShowPopupWindows              1       // Show the start-up information, ready and camera-not-connected windows
 #define _AutoStart_CameraIndex                    _SupportedThermalCamera_InfiRayT2SpV2   // "InfiRay T2S+ V2"
 #define _AutoStart_ConnectDelayMs                 1500    // Delay after the main window opens before connecting
 #define _AutoStart_CalibrateDelayMs               4000    // Delay after connecting before the first calibration (let the video start)
