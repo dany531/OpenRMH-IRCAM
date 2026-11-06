@@ -2000,25 +2000,22 @@ bool RMH_ThermalViewer_AutoStartSelectAndConnectCamera() {
 	// Connect to the selected thermal camera
 	RMH_IRThermalCamera_ConnectToThermalCameraOrAnalysisMode();
 
+	// Connecting clears the status message area - show the custom build message again
+	RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, _CustomBuild_StartupMessage, _StatusMessageType_Success);
+
 	// Return whether the camera is connected
 	return (IRCamera.ConnectedFlag == true);
 
 }
 
-bool RMH_ThermalViewer_AutoStartCalibrateAndEnablePeriodicCalibration() {
+bool RMH_ThermalViewer_AutoStartEnablePeriodicCalibration() {
 
-	// This routine is part of the automatic start-up sequence - it calibrates the connected thermal camera and enables
-	// periodic shutter calibration with the configured period
+	// This routine is part of the automatic start-up sequence - it enables periodic shutter calibration with the configured period
+	// (the camera itself is calibrated before this by pressing the "Calibrate Camera" button of the stream window)
 	// The routine returns true when the sequence was executed
 
 	// Is no thermal camera connected
 	if (IRCamera.ConnectedFlag == false) { return false; }
-
-	// Write GUI status message
-	RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Auto Start: Calibrating The Thermal Camera...", _StatusMessageType_Normal);
-
-	// Calibrate the thermal camera (the same as pressing the "Calibrate" button)
-	RMH_IRThermalCamera_CalibrateThermalCamera();
 
 	// Set the automatic shutter calibration period
 	GlobalVariables::GlobalAutoCalPeriodUpDown->Value = System::Decimal(_AutoStart_PeriodicCalibrationPeriodSec);

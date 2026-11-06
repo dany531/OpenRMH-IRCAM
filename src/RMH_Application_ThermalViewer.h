@@ -23,7 +23,8 @@
 #define _AutoStart_ShowPopupWindows              1       // Show the start-up information, ready and camera-not-connected windows
 #define _AutoStart_CameraIndex                    _SupportedThermalCamera_InfiRayT2SpV2   // "InfiRay T2S+ V2"
 #define _AutoStart_ConnectDelayMs                 1500    // Delay after the main window opens before connecting
-#define _AutoStart_CalibrateDelayMs               4000    // Delay after connecting before the first calibration (let the video start)
+#define _AutoStart_StreamWindowDelayMs            4000    // Delay after connecting before switching to the stream window (let the video start)
+#define _AutoStart_CalibrateDelayMs               1500    // Delay after switching to the stream window before pressing the Calibrate Camera button (hotkey Q)
 #define _AutoStart_PeriodicCalibrationPeriodSec   180     // "Auto Calibration Period [Sec]" for periodic shutter calibration
 
 // Camera configuration panel NumericUpDowns "start-up" max/min limits
@@ -112,7 +113,7 @@ void RMH_ThermalViewer_ToggleCameraAutoShutterCalibrationTimer();
 
 // Automatic start-up sequence routines
 bool RMH_ThermalViewer_AutoStartSelectAndConnectCamera();
-bool RMH_ThermalViewer_AutoStartCalibrateAndEnablePeriodicCalibration();
+bool RMH_ThermalViewer_AutoStartEnablePeriodicCalibration();
 void RMH_ThermalViewer_ToggleCameraDriftBasedCalibrationTimer();
 void RMH_ThermalViewer_ReadThermalCameraInternalTemps();
 

@@ -816,6 +816,24 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		// Centers a start-up window on the main window ->
+		private: System::Void CenterStartupWindowOnMainWindow(System::Windows::Forms::Form^ InfoWindow) {
+
+			// Is the main window minimized - center the window on the screen instead
+			if (this->WindowState == System::Windows::Forms::FormWindowState::Minimized) {
+				InfoWindow->StartPosition = System::Windows::Forms::FormStartPosition::CenterScreen;
+				return;
+			}
+
+			// Position the window in the center of the main window
+			System::Drawing::Rectangle MainWindowBounds = this->Bounds;
+			InfoWindow->StartPosition = System::Windows::Forms::FormStartPosition::Manual;
+			InfoWindow->Location = System::Drawing::Point(
+				MainWindowBounds.Left + (MainWindowBounds.Width - InfoWindow->Width) / 2,
+				MainWindowBounds.Top + (MainWindowBounds.Height - InfoWindow->Height) / 2);
+
+		}
+
 		// Closes the start-up "please wait" window ->
 		private: System::Void CloseStartupWaitWindow() {
 
@@ -848,12 +866,15 @@ namespace IRCAMThermalViewer {
 			// Stage 0: select the camera and connect to it
 			if (this->StartupAutomationStage == 0) {
 
+				// Keep the "please wait" window centered on the main window (the main window may have changed size since it was opened)
+				if (this->StartupWaitWindow != nullptr) { this->CenterStartupWindowOnMainWindow(this->StartupWaitWindow); }
+
 				// Was the connection successful
 				if (RMH_ThermalViewer_AutoStartSelectAndConnectCamera() == true) {
 
-					// Continue with the calibration stage after a short delay
+					// Continue with switching to the stream window after a short delay
 					this->StartupAutomationStage = 1;
-					this->StartupAutomationTimer->Interval = _AutoStart_CalibrateDelayMs;
+					this->StartupAutomationTimer->Interval = _AutoStart_StreamWindowDelayMs;
 					this->StartupAutomationTimer->Start();
 
 				}
@@ -866,10 +887,53 @@ namespace IRCAMThermalViewer {
 				}
 
 			}
-			// Stage 1: calibrate the camera and enable periodic shutter calibration
+			// Stage 1: switch to the stream window
 			else if (this->StartupAutomationStage == 1) {
 
-				bool StartupSequenceDone = RMH_ThermalViewer_AutoStartCalibrateAndEnablePeriodicCalibration();
+				// Is the camera still connected
+				if (IRCamera.ConnectedFlag == true) {
+
+					// Is the stream window not already open and docked in the main view
+					if (!(isLiveViewStreamFormOpen == true && isLiveViewStreamFormDocked == true)) {
+
+						// Switch to the stream window (the same as pressing the "Live View" menu button)
+						this->LiveViewMenuButton_Click(nullptr, nullptr);
+
+					}
+
+					// Continue with the calibration after a short delay
+					this->StartupAutomationStage = 2;
+					this->StartupAutomationTimer->Interval = _AutoStart_CalibrateDelayMs;
+					this->StartupAutomationTimer->Start();
+
+				}
+				else {
+
+					// The camera was lost during the start-up sequence
+					this->CloseStartupWaitWindow();
+					this->ShowStartupCameraNotConnectedWindow();
+
+				}
+
+			}
+			// Stage 2: press the "Calibrate Camera" button (hotkey Q) of the stream window and enable periodic shutter calibration
+			else if (this->StartupAutomationStage == 2) {
+
+				bool StartupSequenceDone = false;
+
+				// Is the camera still connected
+				if (IRCamera.ConnectedFlag == true) {
+
+					// Write GUI status message
+					RMH_Winforms_RichTextBox_WriteLine(this->GUIInfoTextArea, "Auto Start: Calibrating The Thermal Camera...", _StatusMessageType_Normal);
+
+					// Press the "Calibrate Camera" button of the stream window - hotkey "Q"
+					ManagedLocals::LiveViewStreamForm->HandleLiveViewButtonsHotKeyFunctions(gcnew System::Windows::Forms::KeyPressEventArgs(L'Q'));
+
+					// Enable periodic shutter calibration
+					StartupSequenceDone = RMH_ThermalViewer_AutoStartEnablePeriodicCalibration();
+
+				}
 
 				// Close the "please wait" window
 				this->CloseStartupWaitWindow();
@@ -915,6 +979,7 @@ namespace IRCAMThermalViewer {
 				"Custom Version For The InfiRay T2S+ V2",
 				"This is a modified version of OpenRMH-IRCAM for the InfiRay T2S+ V2 (T2S+_A2) thermal camera.\n\nPlease wait while the camera initialises and calibrates.\nDo not unplug the camera. This window closes automatically.",
 				System::Drawing::Color::FromArgb(0, 90, 160), true, false);
+			this->CenterStartupWindowOnMainWindow(this->StartupWaitWindow);
 			this->StartupWaitWindow->Show(this);
 #endif
 			this->StartupAutomationStage = 0;
