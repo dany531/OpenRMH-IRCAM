@@ -205,6 +205,7 @@ namespace OpenGL2DPlot {
 		private: unsigned char PlotTickLinesColorR = 100;
 		private: unsigned char PlotTickLinesColorG = 100;
 		private: unsigned char PlotTickLinesColorB = 100;
+		private: unsigned int FontRebuildAttempts = 0;   // Number of times the text font was rebuilt at draw time
 		private: unsigned char PlotTitleColorR = 255;
 		private: unsigned char PlotTitleColorG = 255;
 		private: unsigned char PlotTitleColorB = 255;
@@ -289,6 +290,9 @@ namespace OpenGL2DPlot {
 
 			// Add the overlaid transparent panel as a "child" of the texture panel
 			TexturePanel->Controls->Add(OverlayPanel);
+
+			// Make sure a right-click on the overlaid transparent panel opens the context menu of the texture panel
+			OverlayPanel->ContextMenuStrip = TexturePanel->ContextMenuStrip;
 
 			// Enable mouse handler events for the transparent panel
 			OverlayPanel->MouseDown += gcnew System::Windows::Forms::MouseEventHandler(this, &RMHOpenGL2DPlot::TexturePanel_MouseDown);
@@ -1117,6 +1121,15 @@ namespace OpenGL2DPlot {
 
 			// Make the associated render context the current render context
 			RMH_OpenGL_MakeRenderContextCurrent();
+
+			// Make sure the background color and the text font are set up in the render context that is used for drawing
+			// (on some systems the one-time initialization does not end up in this render context - black background and no text)
+			glClearColor(0.13725f, 0.13725f, 0.13725f, 1.0f);
+			if (glIsList(BaseFont) == GL_FALSE && FontRebuildAttempts < 3) {
+				FontRebuildAttempts++;
+				RMH_OpenGL_BuildFont();
+			}
+
 			// Clear the texture color and bit buffers
 			RMH_OpenGL_ClearTextureBuffer();
 			// Update the texture field of view
