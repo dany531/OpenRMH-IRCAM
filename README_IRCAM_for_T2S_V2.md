@@ -1,7 +1,7 @@
 # IRCAM for T2S+ V2
 
 A modified version of **OpenRMH-IRCAM** (based on v3.0.0-community.5) for the **InfiRay T2S+ V2 / T2S+_A2** thermal camera.
-Personal reference notes, written 5 November 2026. Not an official release.
+Personal reference notes, last updated 6 November 2026. Not an official release.
 
 Branch: `IRCAM-for-T2S-V2` (fork: https://github.com/dany531/OpenRMH-IRCAM). Original project: https://github.com/Cyclotronic/OpenRMH-IRCAM
 
@@ -28,12 +28,13 @@ The older workaround (forcing `temp_fpa` and `temp_shutter` to 18 °C, "Build #7
 ### Automatic start-up
 After the main window opens, the program does the following without any clicks:
 
-1. Shows a **"Custom Version For The InfiRay T2S+ V2 - please wait"** window while the camera initialises.
+1. Shows a **"Custom Version For The InfiRay T2S+ V2 - please wait"** window, centered on the main window, while the camera initialises.
 2. Selects **InfiRay T2S+ V2** in the camera list and connects (like the Connect button, without the TOPDON information dialog).
-3. About 4 seconds later, **calibrates** the camera (like the Calibrate button).
-4. Sets **Auto Calibration Period [Sec] to 180** and enables **periodic shutter calibration**
+3. About 4 seconds later, **switches to the stream window** (like the Live View menu button).
+4. About 1.5 seconds later, presses the stream window's **Calibrate Camera button (hotkey Q)**, so the camera is calibrated while you can see the stream.
+5. Sets **Auto Calibration Period [Sec] to 180** and enables **periodic shutter calibration**
    (status message: "Automatic Shutter Calibration Is Enabled").
-5. Closes the wait window and shows a **READY TO USE** window. Click OK and start measuring.
+6. Closes the wait window and shows a **READY TO USE** window. Click OK and start measuring.
 
 If the camera is **not found**, the wait window closes and a **"Camera Not Connected"** window explains what to do:
 close the application, connect the camera to a USB port, wait a few seconds, open the application again.
@@ -58,9 +59,9 @@ close the application, connect the camera to a USB port, wait a few seconds, ope
 |---|---|
 | `RMH_ThermalCameraSupport_Library.cpp` | Temperature fixes (detector value saved, 6000 flat-field level, offsets, shutter handling, calibration floats) |
 | `RMH_ThermalCameraSupport_Library.h` | New data members (`FrameFPARawWord`, `CalValue6`) |
-| `RMH_Application_ThermalViewer.cpp` | Automatic start-up routines (select camera, connect, calibrate, enable periodic calibration) |
+| `RMH_Application_ThermalViewer.cpp` | Automatic start-up routines (select camera and connect, enable periodic calibration) |
 | `RMH_Application_ThermalViewer.h` | Start-up settings and declarations |
-| `MainGUI.h` | Start-up timer and the three information windows |
+| `MainGUI.h` | Start-up timer (switch to the stream window, press Q) and the three information windows |
 | `CHANGELOG.md` | Description of the changes |
 
 Note: `RMH_Application_ThermalViewer.cpp` uses an older Windows text encoding. Upload it as a file on GitHub (do not copy-paste it).
@@ -77,7 +78,8 @@ Note: `RMH_Application_ThermalViewer.cpp` uses an older Windows text encoding. U
 | `_AutoStart_ShowPopupWindows` | 1 | 0 = no information windows (the sequence still runs) |
 | `_AutoStart_CameraIndex` | InfiRay T2S+ V2 | Camera selected at start-up |
 | `_AutoStart_ConnectDelayMs` | 1500 | Wait after the main window opens before connecting |
-| `_AutoStart_CalibrateDelayMs` | 4000 | Wait after connecting before the first calibration (raise to ~6000 if the first calibration looks off) |
+| `_AutoStart_StreamWindowDelayMs` | 4000 | Wait after connecting before switching to the stream window (raise to ~6000 if the first calibration looks off) |
+| `_AutoStart_CalibrateDelayMs` | 1500 | Wait after switching to the stream window before pressing the Calibrate Camera button (Q) |
 | `_AutoStart_PeriodicCalibrationPeriodSec` | 180 | Period of the periodic shutter calibration |
 
 **Temperature** (top of `src/RMH_ThermalCameraSupport_Library.cpp`, near line 440):

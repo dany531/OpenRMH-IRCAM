@@ -9,8 +9,8 @@ the number counts builds of this repository.
   status message says this version is built specifically for that camera (`_CustomBuild_TitleSuffix`, `_CustomBuild_StartupMessage`).
 
 - Automatic start-up sequence (set `_AutoStart_Enabled` to 0 in `RMH_Application_ThermalViewer.h` to turn it off): after the main
-  window opens, IRCAM selects the InfiRay T2S+ V2, connects, calibrates the camera, sets the auto calibration period to 180 s and
-  enables periodic shutter calibration. While this runs a "custom version - please wait" window is shown; a "READY TO USE" window
+  window opens, IRCAM selects the InfiRay T2S+ V2, connects, switches to the stream window, presses its Calibrate Camera button
+  (hotkey Q), sets the auto calibration period to 180 s and enables periodic shutter calibration. While this runs a "custom version - please wait" window is shown; a "READY TO USE" window
   is shown when it is finished, and a "Camera Not Connected" warning window is shown if the camera is not found
   (`_AutoStart_ShowPopupWindows`, also in `RMH_Application_ThermalViewer.h`).
 
