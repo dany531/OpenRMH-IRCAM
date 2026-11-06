@@ -3,6 +3,29 @@
 Tags look like `v<upstream version>-community.<n>`: the first part is the version of IRCAM Thermal Viewer the source came from,
 the number counts builds of this repository.
 
+## Unreleased
+
+- Custom build identification: the main window title bar ends with "CUSTOM BUILD FOR THE INFIRAY T2S+ V2 (T2S+_A2)" and a start-up
+  status message says this version is built specifically for that camera (`_CustomBuild_TitleSuffix`, `_CustomBuild_StartupMessage`).
+
+- Automatic start-up sequence (set `_AutoStart_Enabled` to 0 in `RMH_Application_ThermalViewer.h` to turn it off): after the main
+  window opens, IRCAM selects the InfiRay T2S+ V2, connects, calibrates the camera, sets the auto calibration period to 180 s and
+  enables periodic shutter calibration. While this runs a "custom version - please wait" window is shown; a "READY TO USE" window
+  is shown when it is finished, and a "Camera Not Connected" warning window is shown if the camera is not found
+  (`_AutoStart_ShowPopupWindows`, also in `RMH_Application_ThermalViewer.h`).
+
+- Pool 3 (InfiRay T2S+ V2) temperatures: two errors made temperatures read far too high.
+  1. The detector (FPA) raw value was overwritten by the max/min/center data written to the start of the metadata row, so the
+     detector temperature was garbage. The value is now saved before it is overwritten.
+  2. The non-uniformity correction put a pixel that sees the shutter at the mean of the baseline frame. The manufacturer's software
+     (and the camera's calibration data) expect a fixed level of 6000, so the map is now re-referenced to 6000 for Pool 3
+     (`_Pool3_NonUniformityCorrectionLevel`). Press Calibrate after starting the camera.
+  Also aligned with the manufacturer's software: shutter temperature fine correction, 256-sensor gray offset of 170, FPA divisor
+  37.682, calibration floats read low word first, distance term limited to 20. The shutter register is used again; a fixed
+  value can be selected with `_Pool3_UseFixedShutterTemperature` as a fallback.
+  A signal gain setting (`_Pool3_PixelGain`, default 1.00 = none) approximates the manufacturer's per-pixel gain map. To tune it: new gain = old gain x
+  (T_reference - T_shutter) / (T_ircam - T_shutter) for a hot target, using the shutter temperature shown in the statistics window.
+
 ## v3.0.0-community.5 - 2026-09-30
 
 - Two new cameras, contributed by Krzysztof Boksa ([#2](https://github.com/Cyclotronic/OpenRMH-IRCAM/pull/2)). Both
