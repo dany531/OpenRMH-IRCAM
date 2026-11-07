@@ -205,8 +205,6 @@ namespace OpenGL2DPlot {
 		private: unsigned char PlotTickLinesColorR = 100;
 		private: unsigned char PlotTickLinesColorG = 100;
 		private: unsigned char PlotTickLinesColorB = 100;
-		private: unsigned int FontRebuildAttempts = 0;   // Number of times the text font was rebuilt at draw time
-		private: unsigned int DiagFrameCount = 0;        // Number of rendered frames (diagnostic log)
 		private: unsigned char PlotTitleColorR = 255;
 		private: unsigned char PlotTitleColorG = 255;
 		private: unsigned char PlotTitleColorB = 255;
@@ -224,7 +222,7 @@ namespace OpenGL2DPlot {
 			ControlParams->X = 0;
 			ControlParams->Y = 0;
 			// The OpenGL window is created at the size of the panel (it is resized to follow the panel while rendering).
-			// A much larger window (the scale factors) is too much for some older graphics drivers.
+			// A much larger window (the scale factors) is too much for some older graphics drivers (black plot, no text).
 			ControlParams->Width = (GLdouble)TexturePanel->Width;
 			ControlParams->Height = (GLdouble)TexturePanel->Height;
 
@@ -252,7 +250,6 @@ namespace OpenGL2DPlot {
 				RMH_OpenGL_ResizeOpenGLWinformsScene(ControlParams->Width, ControlParams->Height);
 				// Initialize OpenGL
 				RMH_OpenGL_Init();
-				RMH_Diag_Init();
 
 			}
 
@@ -307,197 +304,6 @@ namespace OpenGL2DPlot {
 		}
 
 		// ----------------- Texture Initialization And Handling Routines ----------------- //
-
-		// ---------------- Diagnostic log of the 2D plot (written to IRCAM_plot_diagnostic.txt on the Desktop) ---------------- //
-
-		private: bool RMH_Diag_TryAppend(System::String^ Folder, System::String^ Text) {
-
-			// Appends a line to the diagnostic log file in the given folder, returns true if it worked
-			try {
-				System::String^ LogPath = System::IO::Path::Combine(Folder, "IRCAM_plot_diagnostic.txt");
-				System::IO::File::AppendAllText(LogPath, Text + System::Environment::NewLine);
-				return true;
-			}
-			catch (System::Exception^) {}
-
-			return false;
-
-		}
-
-		private: GLvoid RMH_Diag_Write(System::String^ Text) {
-
-			// Appends a line to the diagnostic log file
-			// The file is written to the Desktop; if that is not possible, to the Documents folder, the program folder or the temp folder
-			if (RMH_Diag_TryAppend(System::Environment::GetFolderPath(System::Environment::SpecialFolder::DesktopDirectory), Text) == true) { return; }
-			if (RMH_Diag_TryAppend(System::Environment::GetFolderPath(System::Environment::SpecialFolder::MyDocuments), Text) == true) { return; }
-			if (RMH_Diag_TryAppend(System::Windows::Forms::Application::StartupPath, Text) == true) { return; }
-			RMH_Diag_TryAppend(System::Environment::GetEnvironmentVariable("TEMP"), Text);
-
-		}
-
-		private: System::String^ RMH_Diag_YesNo(bool Value) {
-
-			if (Value == true) { return gcnew System::String("yes"); }
-			return gcnew System::String("NO");
-
-		}
-
-		private: System::String^ RMH_Diag_GLString(GLenum Name) {
-
-			const GLubyte* GLText = glGetString(Name);
-			if (GLText == NULL) { return gcnew System::String("NULL (no current render context)"); }
-			return gcnew System::String((const char*)GLText);
-
-		}
-
-		private: GLvoid RMH_Diag_Init() {
-
-			// Logs the graphics driver and pixel format information once, when the plot is created
-			System::Text::StringBuilder^ Line = gcnew System::Text::StringBuilder();
-
-			RMH_Diag_Write(gcnew System::String("==== 2D plot diagnostic ===="));
-			RMH_Diag_Write(System::DateTime::Now.ToString());
-			RMH_Diag_Write(gcnew System::String("GL_VERSION:  ") + RMH_Diag_GLString(GL_VERSION));
-			RMH_Diag_Write(gcnew System::String("GL_VENDOR:   ") + RMH_Diag_GLString(GL_VENDOR));
-			RMH_Diag_Write(gcnew System::String("GL_RENDERER: ") + RMH_Diag_GLString(GL_RENDERER));
-
-			PIXELFORMATDESCRIPTOR DiagPfd;
-			int DiagFormat = GetPixelFormat(m_hDC);
-			DescribePixelFormat(m_hDC, DiagFormat, sizeof(PIXELFORMATDESCRIPTOR), &DiagPfd);
-
-			Line->Append("Pixel format ");
-			Line->Append(System::Convert::ToString(DiagFormat));
-			Line->Append(": flags=0x");
-			Line->Append(System::Convert::ToString((int)DiagPfd.dwFlags, 16));
-			Line->Append(" color=");
-			Line->Append(System::Convert::ToString((int)DiagPfd.cColorBits));
-			Line->Append(" alpha=");
-			Line->Append(System::Convert::ToString((int)DiagPfd.cAlphaBits));
-			Line->Append(" depth=");
-			Line->Append(System::Convert::ToString((int)DiagPfd.cDepthBits));
-			Line->Append(" Microsoft software format=");
-			Line->Append(RMH_Diag_YesNo((DiagPfd.dwFlags & PFD_GENERIC_FORMAT) != 0 && (DiagPfd.dwFlags & PFD_GENERIC_ACCELERATED) == 0));
-			RMH_Diag_Write(Line->ToString());
-
-			Line->Length = 0;
-			Line->Append("Render context is current=");
-			Line->Append(RMH_Diag_YesNo(wglGetCurrentContext() == m_hglrc));
-			Line->Append(" font list exists=");
-			Line->Append(RMH_Diag_YesNo(glIsList(BaseFont) == GL_TRUE));
-			Line->Append(" glGetError=");
-			Line->Append(System::Convert::ToString((int)glGetError()));
-			RMH_Diag_Write(Line->ToString());
-
-		}
-
-		private: GLvoid RMH_Diag_Frame() {
-
-			// Logs the plot state for a few of the first rendered frames
-			DiagFrameCount++;
-			if (DiagFrameCount != 2 && DiagFrameCount != 60 && DiagFrameCount != 300) { return; }
-
-			GLint DiagViewport[4] = { 0, 0, 0, 0 };
-			glGetIntegerv(GL_VIEWPORT, DiagViewport);
-			GLfloat DiagClearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-			glGetFloatv(GL_COLOR_CLEAR_VALUE, DiagClearColor);
-			GLenum DiagErrorBeforeRead = glGetError();
-			GLubyte DiagPixel[4] = { 0, 0, 0, 0 };
-			glPixelStorei(GL_PACK_ALIGNMENT, 1);
-			glReadBuffer(GL_BACK);
-			glReadPixels(10, 10, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, DiagPixel);
-			GLenum DiagErrorAfterRead = glGetError();
-
-			System::Text::StringBuilder^ Line = gcnew System::Text::StringBuilder();
-
-			Line->Append("-- frame ");
-			Line->Append(System::Convert::ToString((int)DiagFrameCount));
-			Line->Append(": viewport=");
-			Line->Append(System::Convert::ToString(DiagViewport[0]));
-			Line->Append(",");
-			Line->Append(System::Convert::ToString(DiagViewport[1]));
-			Line->Append(",");
-			Line->Append(System::Convert::ToString(DiagViewport[2]));
-			Line->Append(",");
-			Line->Append(System::Convert::ToString(DiagViewport[3]));
-			Line->Append(" panel=");
-			Line->Append(System::Convert::ToString((double)CurrentTexturePanelWidth));
-			Line->Append(" x ");
-			Line->Append(System::Convert::ToString((double)CurrentTexturePanelHeight));
-			RMH_Diag_Write(Line->ToString());
-
-			Line->Length = 0;
-			Line->Append("   clear color=");
-			Line->Append(System::Convert::ToString((double)DiagClearColor[0]));
-			Line->Append(",");
-			Line->Append(System::Convert::ToString((double)DiagClearColor[1]));
-			Line->Append(",");
-			Line->Append(System::Convert::ToString((double)DiagClearColor[2]));
-			Line->Append("  back buffer pixel(10,10)=");
-			Line->Append(System::Convert::ToString((int)DiagPixel[0]));
-			Line->Append(",");
-			Line->Append(System::Convert::ToString((int)DiagPixel[1]));
-			Line->Append(",");
-			Line->Append(System::Convert::ToString((int)DiagPixel[2]));
-			Line->Append("  glGetError before read=");
-			Line->Append(System::Convert::ToString((int)DiagErrorBeforeRead));
-			Line->Append(" after read=");
-			Line->Append(System::Convert::ToString((int)DiagErrorAfterRead));
-			Line->Append("  GL window=");
-			Line->Append(System::Convert::ToString((int)OpenGLWindowWidth));
-			Line->Append("x");
-			Line->Append(System::Convert::ToString((int)OpenGLWindowHeight));
-			Line->Append("  font list exists=");
-			Line->Append(RMH_Diag_YesNo(glIsList(BaseFont) == GL_TRUE));
-			Line->Append("  font rebuilds=");
-			Line->Append(System::Convert::ToString((int)FontRebuildAttempts));
-			RMH_Diag_Write(Line->ToString());
-
-			Line->Length = 0;
-			Line->Append("   Y axis range=");
-			Line->Append(System::Convert::ToString((double)PlotYAxesMinimumRangeValue));
-			Line->Append(" to ");
-			Line->Append(System::Convert::ToString((double)PlotYAxesMaximumRangeValue));
-			RMH_Diag_Write(Line->ToString());
-
-			// Log the newest values of each enabled data set
-			for (unsigned int ds = 0; ds < _2DPlotMaxNumberOfDataSets; ds++) {
-
-				if (EnabledPlotDataSets[ds] == true) {
-
-					unsigned int BadValues = 0;
-					GLfloat MinValue = 1.0e30f, MaxValue = -1.0e30f;
-					for (unsigned int k = _2DPlotXAxesLength - 100; k < _2DPlotXAxesLength; k++) {
-						GLfloat V = PlotDataSets[ds].PlotDataPoints[k];
-						if (!(V > -1.0e30f && V < 1.0e30f)) { BadValues++; }
-						else { if (V < MinValue) { MinValue = V; } if (V > MaxValue) { MaxValue = V; } }
-					}
-
-					Line->Length = 0;
-					Line->Append("   data set ");
-					Line->Append(System::Convert::ToString((int)ds));
-					Line->Append(": render offset=");
-					Line->Append(System::Convert::ToString((int)PlotDataSets[ds].PlotLineDataIndexRenderOffset));
-					Line->Append("  last 100 values min=");
-					Line->Append(System::Convert::ToString((double)MinValue));
-					Line->Append(" max=");
-					Line->Append(System::Convert::ToString((double)MaxValue));
-					Line->Append("  invalid=");
-					Line->Append(System::Convert::ToString((int)BadValues));
-					RMH_Diag_Write(Line->ToString());
-
-					Line->Length = 0;
-					Line->Append("      newest 12 values: ");
-					for (unsigned int k = _2DPlotXAxesLength - 12; k < _2DPlotXAxesLength; k++) {
-						Line->Append(System::Convert::ToString((double)PlotDataSets[ds].PlotDataPoints[k]));
-						Line->Append(" ");
-					}
-					RMH_Diag_Write(Line->ToString());
-
-				}
-
-			}
-
-		}
 
 		private: GLvoid RMH_OpenGL_MakeRenderContextCurrent() {
 
@@ -1327,15 +1133,6 @@ namespace OpenGL2DPlot {
 
 			// Make the associated render context the current render context
 			RMH_OpenGL_MakeRenderContextCurrent();
-
-			// Make sure the background color and the text font are set up in the render context that is used for drawing
-			glClearColor(0.13725f, 0.13725f, 0.13725f, 1.0f);
-			if (glIsList(BaseFont) == GL_FALSE && FontRebuildAttempts < 3) {
-				FontRebuildAttempts++;
-				RMH_Diag_Write(gcnew System::String("Font list missing at draw time - rebuilding the font, attempt ") + System::Convert::ToString((int)FontRebuildAttempts));
-				RMH_OpenGL_BuildFont();
-			}
-
 			// Clear the texture color and bit buffers
 			RMH_OpenGL_ClearTextureBuffer();
 			// Update the texture field of view
@@ -1422,7 +1219,6 @@ namespace OpenGL2DPlot {
 			// This routine swaps the front/back buffers
 
 			// Swap the buffers
-			RMH_Diag_Frame();
 			SwapBuffers(m_hDC);
 
 		}

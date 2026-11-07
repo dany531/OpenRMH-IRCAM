@@ -1,4 +1,4 @@
-
+﻿
 /*
  *  RMH_ThermalCameraSupport_Library.c
  *
@@ -442,6 +442,10 @@ void RMH_IRThermalCamera_SetIRCameraTemperatureRange(unsigned int TemperatureRan
 // the manufacturer's host software places a frame that sees the shutter at this level (corrected pixel = (raw - baseline) + 6000).
 #define _Pool3_NonUniformityCorrectionLevel               6000.0
 // Fallback only: set to 1 to ignore the camera's shutter temperature register and use the fixed value below (deg C) instead.
+// Pool 3: gain applied to the signal relative to the shutter reference, corrected pixel = (raw - baseline) * gain + 6000.
+// The manufacturer's software multiplies by a per-pixel gain map that is read from the camera; its average is not exactly 1.
+// 1.0 = no gain. If hot objects read too low compared with the manufacturer's software, increase it (see the tuning note in CHANGELOG).
+#define _Pool3_PixelGain                                  1.00
 #define _Pool3_UseFixedShutterTemperature                 0
 #define _Pool3_AssumedShutterTemperatureC                 18.0
 
@@ -1009,10 +1013,21 @@ double RMH_IRThermalCamera_ConvertYUY2To14BitThermalDataArray(ThermalCameraDevic
 			if (PerformNonUniformityCorrection == true) {
 
 				// Perform non-uniformity correction of the image data by subtracting the non-uniformity map data.
-				Pixel16BitValue[0] = (unsigned short)((double)(Pixel16BitValue[0]) - ImageCMOSNonUniformityMapData[i + 0]);
-				Pixel16BitValue[1] = (unsigned short)((double)(Pixel16BitValue[1]) - ImageCMOSNonUniformityMapData[i + 1]);
-				Pixel16BitValue[2] = (unsigned short)((double)(Pixel16BitValue[2]) - ImageCMOSNonUniformityMapData[i + 2]);
-				Pixel16BitValue[3] = (unsigned short)((double)(Pixel16BitValue[3]) - ImageCMOSNonUniformityMapData[i + 3]);
+				if (IRCamera->ThermalCameraSupportPool == _SupportedThermalCameras_Pool_3) {
+					// Pool 3: map is (baseline - 6000); apply the gain to the signal relative to the shutter reference and limit to 14 bit
+					for (int k = 0; k < 4; k++) {
+						double CorrectedValue = ((double)(Pixel16BitValue[k]) - ImageCMOSNonUniformityMapData[i + k]) * _Pool3_PixelGain + _Pool3_NonUniformityCorrectionLevel * (1.0 - _Pool3_PixelGain);
+						if (CorrectedValue < 0.0) { CorrectedValue = 0.0; }
+						if (CorrectedValue > (double)_ImageProcessing_ImageResolution_14Bit) { CorrectedValue = (double)_ImageProcessing_ImageResolution_14Bit; }
+						Pixel16BitValue[k] = (unsigned short)CorrectedValue;
+					}
+				}
+				else {
+					Pixel16BitValue[0] = (unsigned short)((double)(Pixel16BitValue[0]) - ImageCMOSNonUniformityMapData[i + 0]);
+					Pixel16BitValue[1] = (unsigned short)((double)(Pixel16BitValue[1]) - ImageCMOSNonUniformityMapData[i + 1]);
+					Pixel16BitValue[2] = (unsigned short)((double)(Pixel16BitValue[2]) - ImageCMOSNonUniformityMapData[i + 2]);
+					Pixel16BitValue[3] = (unsigned short)((double)(Pixel16BitValue[3]) - ImageCMOSNonUniformityMapData[i + 3]);
+				}
 
 				// Limit the maximum pixel values to 14-bit full scale 
 				if (Pixel16BitValue[0] > _ImageProcessing_ImageResolution_14Bit) { Pixel16BitValue[0] = _ImageProcessing_ImageResolution_14Bit; }
