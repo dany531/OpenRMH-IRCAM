@@ -58,6 +58,7 @@ void RMH_ThermalViewer_Set2DPlotDataSetSource(double** Plot2DDataSetSourcePointe
 void RMH_ThermalViewer_Enable2DPlotDataSet(System::Object^ sender);
 void RMH_ThermalViewer_Load2DPlotLineColorDataToGlobalArrays();
 void RMH_ThermalViewer_Load2DPlotSavedSessionLineColorData();
+void RMH_ThermalViewer_Apply2DPlotDataSetSettings();
 void RMH_ThermalViewer_Change2DPlotDataSetAndSettingsPanelColor(System::Object^ sender);
 void RMH_ThermalViewer_Change2DPlotDataSetLineWidth(System::Object^ sender);
 void RMH_ThermalViewer_Change2DPlotDataSetSource(System::Object^ sender);

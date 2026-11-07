@@ -111,6 +111,9 @@ namespace IRCAMThermalViewer {
 			// Set the 2D plot line color data of the saved session
 			RMH_ThermalViewer_Load2DPlotSavedSessionLineColorData();
 
+			// Apply the start-up state of the 2D plot data set settings (data source and enable CheckBox) to the 2D plot
+			RMH_ThermalViewer_Apply2DPlotDataSetSettings();
+
 			// Handle docking of the welcome form at start-up
 			HandleFormsOpeningDockingAndUndocking(ManagedLocals::WelcomeScreenForm, this->MainViewTopPanel, &isWelcomeScreenFormOpen, &isWelcomeScreenFormDocked, &isWelcomeScreenFormUndocked, _FormDockingState_DockForm);
 

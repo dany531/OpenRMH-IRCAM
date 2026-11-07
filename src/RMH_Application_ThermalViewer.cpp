@@ -500,6 +500,29 @@ void RMH_ThermalViewer_Load2DPlotSavedSessionLineColorData() {
 
 }
 
+void RMH_ThermalViewer_Apply2DPlotDataSetSettings() {
+
+	// This routine applies the start-up state of the 2D plot data set settings (data source and enable CheckBox) to the 2D plot
+	// The settings controls are created with their CheckBoxes checked, but without raising the CheckBox event, so without this the
+	// data sets of the 2D plot stay disabled (the plot does not start) until a setting has been changed manually
+
+	// Loop up to and including the maximum number of 2D plot data sets
+	for (unsigned int i = 0; i < _2DPlotMaxNumberOfDataSets; i++) {
+
+		// Set the data source of the data set from the ComboBox selection
+		if (GlobalVariables::Plot2DDataSetComboBoxs[i]->SelectedIndex >= 0) {
+
+			RMH_ThermalViewer_Change2DPlotDataSetSource(GlobalVariables::Plot2DDataSetComboBoxs[i]);
+
+		}
+
+		// Enable or disable plotting of the data set from the CheckBox state
+		RMH_ThermalViewer_Enable2DPlotDataSet(GlobalVariables::Plot2DDataSetCheckBoxs[i]);
+
+	}
+
+}
+
 void RMH_ThermalViewer_Change2DPlotDataSetAndSettingsPanelColor(System::Object^ sender) {
 
 	// This routine updates and sets the color of a 2D plot data set, as well as the color of the settings panel
