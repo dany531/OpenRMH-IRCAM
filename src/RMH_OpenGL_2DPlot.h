@@ -223,8 +223,10 @@ namespace OpenGL2DPlot {
 			// Set the position of the control class
 			ControlParams->X = 0;
 			ControlParams->Y = 0;
-			ControlParams->Width = (GLdouble)TexturePanel->Width * WidthScaleFactor;
-			ControlParams->Height = (GLdouble)TexturePanel->Height * HeightScaleFactor;
+			// The OpenGL window is created at the size of the panel (it is resized to follow the panel while rendering).
+			// A much larger window (the scale factors) is too much for some older graphics drivers.
+			ControlParams->Width = (GLdouble)TexturePanel->Width;
+			ControlParams->Height = (GLdouble)TexturePanel->Height;
 
 			// Read the pixel width and height of the OpenGL window
 			OpenGLWindowWidth = ControlParams->Width;
@@ -398,10 +400,12 @@ namespace OpenGL2DPlot {
 			glGetIntegerv(GL_VIEWPORT, DiagViewport);
 			GLfloat DiagClearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 			glGetFloatv(GL_COLOR_CLEAR_VALUE, DiagClearColor);
+			GLenum DiagErrorBeforeRead = glGetError();
 			GLubyte DiagPixel[4] = { 0, 0, 0, 0 };
 			glPixelStorei(GL_PACK_ALIGNMENT, 1);
 			glReadBuffer(GL_BACK);
 			glReadPixels(10, 10, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, DiagPixel);
+			GLenum DiagErrorAfterRead = glGetError();
 
 			System::Text::StringBuilder^ Line = gcnew System::Text::StringBuilder();
 
@@ -434,8 +438,14 @@ namespace OpenGL2DPlot {
 			Line->Append(System::Convert::ToString((int)DiagPixel[1]));
 			Line->Append(",");
 			Line->Append(System::Convert::ToString((int)DiagPixel[2]));
-			Line->Append("  glGetError=");
-			Line->Append(System::Convert::ToString((int)glGetError()));
+			Line->Append("  glGetError before read=");
+			Line->Append(System::Convert::ToString((int)DiagErrorBeforeRead));
+			Line->Append(" after read=");
+			Line->Append(System::Convert::ToString((int)DiagErrorAfterRead));
+			Line->Append("  GL window=");
+			Line->Append(System::Convert::ToString((int)OpenGLWindowWidth));
+			Line->Append("x");
+			Line->Append(System::Convert::ToString((int)OpenGLWindowHeight));
 			Line->Append("  font list exists=");
 			Line->Append(RMH_Diag_YesNo(glIsList(BaseFont) == GL_TRUE));
 			Line->Append("  font rebuilds=");
@@ -1299,6 +1309,17 @@ namespace OpenGL2DPlot {
 			// Read the current pixel height and width of the texture panel
 			CurrentTexturePanelWidth = (GLfloat)PlotPanelWidth;
 			CurrentTexturePanelHeight = (GLfloat)PlotPanelHeight;
+
+			// Make the OpenGL window the same size as the GUI panel
+			if ((unsigned int)CurrentTexturePanelWidth != OpenGLWindowWidth || (unsigned int)CurrentTexturePanelHeight != OpenGLWindowHeight) {
+
+				if (CurrentTexturePanelWidth >= 1.0f && CurrentTexturePanelHeight >= 1.0f) {
+					SetWindowPos((HWND)this->Handle.ToPointer(), NULL, 0, 0, (int)CurrentTexturePanelWidth, (int)CurrentTexturePanelHeight, SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
+					OpenGLWindowWidth = (unsigned int)CurrentTexturePanelWidth;
+					OpenGLWindowHeight = (unsigned int)CurrentTexturePanelHeight;
+				}
+
+			}
 
 			// Calculate the pixel offset between the texture area and the associated GUI panel
 			TextureToPanelWidthOffset = OpenGLWindowWidth - CurrentTexturePanelWidth;
