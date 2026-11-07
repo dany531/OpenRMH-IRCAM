@@ -306,16 +306,26 @@ namespace OpenGL2DPlot {
 
 		// ----------------- Texture Initialization And Handling Routines ----------------- //
 
-		// ---------------- Diagnostic log of the 2D plot (written to IRCAM_plot_diagnostic.txt next to the program) ---------------- //
+		// ---------------- Diagnostic log of the 2D plot (written to IRCAM_plot_diagnostic.txt on the Desktop) ---------------- //
 
 		private: GLvoid RMH_Diag_Write(System::String^ Text) {
 
 			// Appends a line to the diagnostic log file
-			try {
-				System::String^ LogPath = System::IO::Path::Combine(System::Windows::Forms::Application::StartupPath, "IRCAM_plot_diagnostic.txt");
-				System::IO::File::AppendAllText(LogPath, Text + System::Environment::NewLine);
+			// The file is written to the Desktop; if that is not possible, to the Documents folder, the program folder or the temp folder
+			array<System::String^>^ LogFolders = gcnew array<System::String^>(4);
+			LogFolders[0] = System::Environment::GetFolderPath(System::Environment::SpecialFolder::DesktopDirectory);
+			LogFolders[1] = System::Environment::GetFolderPath(System::Environment::SpecialFolder::MyDocuments);
+			LogFolders[2] = System::Windows::Forms::Application::StartupPath;
+			LogFolders[3] = System::IO::Path::GetTempPath();
+
+			for (int i = 0; i < LogFolders->Length; i++) {
+				try {
+					System::String^ LogPath = System::IO::Path::Combine(LogFolders[i], "IRCAM_plot_diagnostic.txt");
+					System::IO::File::AppendAllText(LogPath, Text + System::Environment::NewLine);
+					return;
+				}
+				catch (System::Exception^) {}
 			}
-			catch (System::Exception^) {}
 
 		}
 
