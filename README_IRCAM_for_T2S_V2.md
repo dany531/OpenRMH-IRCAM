@@ -61,6 +61,8 @@ close the application, connect the camera to a USB port, wait a few seconds, ope
 | `RMH_ThermalCameraSupport_Library.h` | New data members (`FrameFPARawWord`, `CalValue6`) |
 | `RMH_Application_ThermalViewer.cpp` | Automatic start-up routines (select camera and connect, enable periodic calibration) |
 | `RMH_Application_ThermalViewer.h` | Start-up settings and declarations |
+| `RMH_Application_ThermalViewer.cpp/.h`, `MainGUI.h` (plot) | The 2D plot data sets are enabled at start-up, so the plot starts without first changing a setting |
+| `RMH_OpenGL_2DPlot.h` | 2D plot: OpenGL window created at the panel size instead of 4x larger (fixes black plot, no text and garbled lines on an old Intel HD 2000 PC) |
 | `MainGUI.h` | Start-up timer (switch to the stream window, press Q) and the three information windows |
 | `CHANGELOG.md` | Description of the changes |
 
@@ -122,6 +124,9 @@ Keep these as fallbacks: Build #7 (commit `7b355e8`, branch `fix-t2s-v2-temperat
   difference at higher temperatures is possible.
 - "Camera core" shows the same value as "Camera shutter" (the V2 has no separate core sensor).
 - The distance for this camera type may show 2 m instead of 1 m; the effect is small (about 0.4 °C at 60 °C).
+- **Plots window on old graphics hardware:** on an old PC (Intel HD Graphics 2000, Windows 10) the plot showed a black background, no
+  axis text and garbled lines because the plot's OpenGL window was 4x larger than its panel. This is fixed by making the window the
+  panel's size. It has been tested on that PC and on a Windows 11 laptop.
 - Recordings made with the old code lost the detector value. `tests/tools/ircam_raw.py` still has the old logic for this camera.
 - The start-up windows and sequence have not been tested on every system; if something misbehaves, set
   `_AutoStart_Enabled` to 0 and rebuild.

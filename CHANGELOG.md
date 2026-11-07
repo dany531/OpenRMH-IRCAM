@@ -8,9 +8,13 @@ the number counts builds of this repository.
 - Custom build identification: the main window title bar ends with "CUSTOM BUILD FOR THE INFIRAY T2S+ V2 (T2S+_A2)" and a start-up
   status message says this version is built specifically for that camera (`_CustomBuild_TitleSuffix`, `_CustomBuild_StartupMessage`).
 
-- 2D temperature plot (`RMH_OpenGL_2DPlot.h`, experimental): the background color and text font are now also set up in the
-  render context at draw time, and a right-click on the plot's overlay opens the plot's context menu. This is aimed at systems
-  where the plot showed a black background, no axis text and no working right-click menu.
+- 2D temperature plot (`RMH_OpenGL_2DPlot.h`): the OpenGL window was created at four times the size of the panel, which some older
+  graphics drivers (found on an Intel HD Graphics 2000, driver 9.17.10.4459) could not handle - black plot background, no text, garbled
+  lines. The window is now created at the panel size and follows it when it is resized. A right-click on the plot's overlay opens
+  the plot's context menu.
+- 2D temperature plot start: the data set check boxes of the plot settings start checked without raising their event, so no data set was
+  enabled in the plot and it did not start until a setting was changed. The start-up state (data source and enable check box of each
+  data set) is now applied to the plot when the program starts (`RMH_ThermalViewer_Apply2DPlotDataSetSettings`).
 - Automatic start-up sequence (set `_AutoStart_Enabled` to 0 in `RMH_Application_ThermalViewer.h` to turn it off): after the main
   window opens, IRCAM selects the InfiRay T2S+ V2, connects, switches to the stream window, presses its Calibrate Camera button
   (hotkey Q), sets the auto calibration period to 180 s and enables periodic shutter calibration. While this runs a "custom version - please wait" window is shown; a "READY TO USE" window
