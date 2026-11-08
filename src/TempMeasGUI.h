@@ -65,6 +65,9 @@ namespace IRCAMThermalViewer {
 			// Update the 2D plot legend
 			RMH_ThermalViewer_Update2DPlotLegendLabels();
 
+			// Add the Y-axis range items to the 2D plot context menu
+			this->AddYAxisRangeMenuItems();
+
 			// Update the temp meas GUI ready flag
 			TempMeasGUIReadyFlag = true;
 
@@ -875,6 +878,218 @@ namespace IRCAMThermalViewer {
 
 			// Hide the grid lines of the 2D plot
 			GlobalVariables::OpenGL2DPlot->RMH_OpenGL_Enable2DPlotGridLines(false);
+
+		}
+
+		// ---------------- Y-axis range (set and lock) items of the 2D plot context menu ---------------- //
+
+		private: System::Windows::Forms::ToolStripSeparator^ YAxisRangeSeparator;
+		private: System::Windows::Forms::ToolStripMenuItem^ YAxisRangeStatusMenuItem;
+		private: System::Windows::Forms::ToolStripMenuItem^ YAxisSetRangeMenuItem;
+		private: System::Windows::Forms::ToolStripMenuItem^ YAxisLockCurrentMenuItem;
+		private: System::Windows::Forms::ToolStripMenuItem^ YAxisUnlockMenuItem;
+
+		private: System::Void StyleYAxisRangeMenuItem(System::Windows::Forms::ToolStripMenuItem^ MenuItem, System::String^ MenuText) {
+
+			// Gives a Y-axis range context menu item the same look as the other items of the menu
+			MenuItem->Text = MenuText;
+			MenuItem->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			MenuItem->ForeColor = System::Drawing::Color::White;
+			MenuItem->Font = gcnew System::Drawing::Font("Arial", 9);
+
+		}
+
+		private: System::Void AddYAxisRangeMenuItems() {
+
+			// Creates the Y-axis range items and inserts them in the 2D plot context menu, after the Y-axis number of ticks item
+			this->YAxisRangeSeparator = gcnew System::Windows::Forms::ToolStripSeparator();
+			this->YAxisRangeSeparator->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+
+			this->YAxisRangeStatusMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleYAxisRangeMenuItem(this->YAxisRangeStatusMenuItem, "Y-Axis Range: Auto");
+			this->YAxisRangeStatusMenuItem->Enabled = false;
+
+			this->YAxisSetRangeMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleYAxisRangeMenuItem(this->YAxisSetRangeMenuItem, "Set Y-Axis Range And Lock...");
+			this->YAxisSetRangeMenuItem->Click += gcnew System::EventHandler(this, &TempMeasGUI::YAxisSetRangeMenuItem_Click);
+
+			this->YAxisLockCurrentMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleYAxisRangeMenuItem(this->YAxisLockCurrentMenuItem, "Lock Y-Axis At Current Range");
+			this->YAxisLockCurrentMenuItem->Click += gcnew System::EventHandler(this, &TempMeasGUI::YAxisLockCurrentMenuItem_Click);
+
+			this->YAxisUnlockMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleYAxisRangeMenuItem(this->YAxisUnlockMenuItem, "Unlock Y-Axis (Auto Range)");
+			this->YAxisUnlockMenuItem->Click += gcnew System::EventHandler(this, &TempMeasGUI::YAxisUnlockMenuItem_Click);
+
+			// Find the position after the Y-axis number of ticks item
+			int InsertIndex = this->TempMeasContextMenu->Items->IndexOf(this->yAxisNumberOfTicksToolStripMenuItem) + 1;
+			if (InsertIndex < 1) { InsertIndex = this->TempMeasContextMenu->Items->Count; }
+
+			this->TempMeasContextMenu->Items->Insert(InsertIndex, this->YAxisRangeSeparator);
+			this->TempMeasContextMenu->Items->Insert(InsertIndex + 1, this->YAxisRangeStatusMenuItem);
+			this->TempMeasContextMenu->Items->Insert(InsertIndex + 2, this->YAxisSetRangeMenuItem);
+			this->TempMeasContextMenu->Items->Insert(InsertIndex + 3, this->YAxisLockCurrentMenuItem);
+			this->TempMeasContextMenu->Items->Insert(InsertIndex + 4, this->YAxisUnlockMenuItem);
+
+			// Update the items whenever the context menu is opened
+			this->TempMeasContextMenu->Opening += gcnew System::ComponentModel::CancelEventHandler(this, &TempMeasGUI::YAxisRangeContextMenuOpening);
+
+		}
+
+		private: System::Void YAxisRangeContextMenuOpening(System::Object^ sender, System::ComponentModel::CancelEventArgs^ e) {
+
+			// Updates the Y-axis range items before the context menu is shown
+			bool Locked = GlobalVariables::OpenGL2DPlot->RMH_OpenGL_IsYAxesRangeLocked();
+
+			if (Locked == true) {
+
+				System::String^ LockedMinimumText = System::Convert::ToString(System::Math::Round((double)GlobalVariables::OpenGL2DPlot->RMH_OpenGL_GetYAxesLockedMinimum(), 1));
+				System::String^ LockedMaximumText = System::Convert::ToString(System::Math::Round((double)GlobalVariables::OpenGL2DPlot->RMH_OpenGL_GetYAxesLockedMaximum(), 1));
+				this->YAxisRangeStatusMenuItem->Text = gcnew System::String("Y-Axis Range: Locked ") + LockedMinimumText + gcnew System::String(" To ") + LockedMaximumText;
+
+			}
+			else {
+
+				this->YAxisRangeStatusMenuItem->Text = "Y-Axis Range: Auto";
+
+			}
+
+			this->YAxisLockCurrentMenuItem->Enabled = !Locked;
+			this->YAxisUnlockMenuItem->Enabled = Locked;
+
+		}
+
+		private: System::Void YAxisLockCurrentMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Locks the Y-axis at the range that is currently displayed (rounded outwards to one decimal)
+			double CurrentMinimum = (double)GlobalVariables::OpenGL2DPlot->RMH_OpenGL_GetYAxesRangeMinimum();
+			double CurrentMaximum = (double)GlobalVariables::OpenGL2DPlot->RMH_OpenGL_GetYAxesRangeMaximum();
+
+			// Is there a valid range (no data yet gives the start values of the plot)
+			if (CurrentMaximum > CurrentMinimum && CurrentMaximum < 9000.0 && CurrentMinimum > -9000.0) {
+
+				GlobalVariables::OpenGL2DPlot->RMH_OpenGL_SetYAxesLockedRange(
+					(float)(System::Math::Floor(CurrentMinimum * 10.0) / 10.0),
+					(float)(System::Math::Ceiling(CurrentMaximum * 10.0) / 10.0));
+
+			}
+
+		}
+
+		private: System::Void YAxisUnlockMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Unlocks the Y-axis (automatic range)
+			GlobalVariables::OpenGL2DPlot->RMH_OpenGL_UnlockYAxesRange();
+
+		}
+
+		private: System::Void YAxisSetRangeMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Shows a window for entering a Y-axis minimum and maximum, and locks the Y-axis to that range
+
+			// Start values - the locked range, the displayed range, or 0 to 100
+			double StartMinimum = 0.0;
+			double StartMaximum = 100.0;
+
+			if (GlobalVariables::OpenGL2DPlot->RMH_OpenGL_IsYAxesRangeLocked() == true) {
+
+				StartMinimum = (double)GlobalVariables::OpenGL2DPlot->RMH_OpenGL_GetYAxesLockedMinimum();
+				StartMaximum = (double)GlobalVariables::OpenGL2DPlot->RMH_OpenGL_GetYAxesLockedMaximum();
+
+			}
+			else {
+
+				double CurrentMinimum = (double)GlobalVariables::OpenGL2DPlot->RMH_OpenGL_GetYAxesRangeMinimum();
+				double CurrentMaximum = (double)GlobalVariables::OpenGL2DPlot->RMH_OpenGL_GetYAxesRangeMaximum();
+
+				if (CurrentMaximum > CurrentMinimum && CurrentMaximum < 9000.0 && CurrentMinimum > -9000.0) {
+
+					StartMinimum = System::Math::Floor(CurrentMinimum * 10.0) / 10.0;
+					StartMaximum = System::Math::Ceiling(CurrentMaximum * 10.0) / 10.0;
+
+				}
+
+			}
+
+			// Create the window
+			System::Windows::Forms::Form^ RangeWindow = gcnew System::Windows::Forms::Form();
+			RangeWindow->Text = "Y-Axis Range";
+			RangeWindow->FormBorderStyle = System::Windows::Forms::FormBorderStyle::FixedDialog;
+			RangeWindow->StartPosition = System::Windows::Forms::FormStartPosition::CenterParent;
+			RangeWindow->MinimizeBox = false;
+			RangeWindow->MaximizeBox = false;
+			RangeWindow->ShowInTaskbar = false;
+			RangeWindow->BackColor = System::Drawing::Color::White;
+			RangeWindow->ClientSize = System::Drawing::Size(380, 200);
+
+			System::Windows::Forms::Label^ MinimumLabel = gcnew System::Windows::Forms::Label();
+			MinimumLabel->Text = "Minimum:";
+			MinimumLabel->AutoSize = false;
+			MinimumLabel->Location = System::Drawing::Point(20, 24);
+			MinimumLabel->Size = System::Drawing::Size(110, 24);
+			RangeWindow->Controls->Add(MinimumLabel);
+
+			System::Windows::Forms::NumericUpDown^ MinimumBox = gcnew System::Windows::Forms::NumericUpDown();
+			MinimumBox->DecimalPlaces = 1;
+			MinimumBox->Minimum = System::Decimal(-1000);
+			MinimumBox->Maximum = System::Decimal(10000);
+			MinimumBox->Increment = System::Decimal(1);
+			MinimumBox->Value = System::Decimal(System::Math::Max(-1000.0, System::Math::Min(10000.0, StartMinimum)));
+			MinimumBox->Location = System::Drawing::Point(140, 22);
+			MinimumBox->Size = System::Drawing::Size(200, 24);
+			RangeWindow->Controls->Add(MinimumBox);
+
+			System::Windows::Forms::Label^ MaximumLabel = gcnew System::Windows::Forms::Label();
+			MaximumLabel->Text = "Maximum:";
+			MaximumLabel->AutoSize = false;
+			MaximumLabel->Location = System::Drawing::Point(20, 64);
+			MaximumLabel->Size = System::Drawing::Size(110, 24);
+			RangeWindow->Controls->Add(MaximumLabel);
+
+			System::Windows::Forms::NumericUpDown^ MaximumBox = gcnew System::Windows::Forms::NumericUpDown();
+			MaximumBox->DecimalPlaces = 1;
+			MaximumBox->Minimum = System::Decimal(-1000);
+			MaximumBox->Maximum = System::Decimal(10000);
+			MaximumBox->Increment = System::Decimal(1);
+			MaximumBox->Value = System::Decimal(System::Math::Max(-1000.0, System::Math::Min(10000.0, StartMaximum)));
+			MaximumBox->Location = System::Drawing::Point(140, 62);
+			MaximumBox->Size = System::Drawing::Size(200, 24);
+			RangeWindow->Controls->Add(MaximumBox);
+
+			System::Windows::Forms::Label^ NoteLabel = gcnew System::Windows::Forms::Label();
+			NoteLabel->Text = "The values are in the temperature unit shown on the plot. The range stays locked until you choose Unlock Y-Axis in the plot menu.";
+			NoteLabel->AutoSize = false;
+			NoteLabel->Location = System::Drawing::Point(20, 100);
+			NoteLabel->Size = System::Drawing::Size(340, 50);
+			RangeWindow->Controls->Add(NoteLabel);
+
+			System::Windows::Forms::Button^ RangeOkButton = gcnew System::Windows::Forms::Button();
+			RangeOkButton->Text = "Lock Range";
+			RangeOkButton->DialogResult = System::Windows::Forms::DialogResult::OK;
+			RangeOkButton->Location = System::Drawing::Point(80, 154);
+			RangeOkButton->Size = System::Drawing::Size(110, 30);
+			RangeWindow->Controls->Add(RangeOkButton);
+			RangeWindow->AcceptButton = RangeOkButton;
+
+			System::Windows::Forms::Button^ RangeCancelButton = gcnew System::Windows::Forms::Button();
+			RangeCancelButton->Text = "Cancel";
+			RangeCancelButton->DialogResult = System::Windows::Forms::DialogResult::Cancel;
+			RangeCancelButton->Location = System::Drawing::Point(200, 154);
+			RangeCancelButton->Size = System::Drawing::Size(110, 30);
+			RangeWindow->Controls->Add(RangeCancelButton);
+			RangeWindow->CancelButton = RangeCancelButton;
+
+			if (RangeWindow->ShowDialog(this) == System::Windows::Forms::DialogResult::OK) {
+
+				double NewMinimum = System::Decimal::ToDouble(MinimumBox->Value);
+				double NewMaximum = System::Decimal::ToDouble(MaximumBox->Value);
+
+				// A maximum that is not higher than the minimum is corrected
+				if (NewMaximum <= NewMinimum + 0.05) { NewMaximum = NewMinimum + 1.0; }
+
+				GlobalVariables::OpenGL2DPlot->RMH_OpenGL_SetYAxesLockedRange((float)NewMinimum, (float)NewMaximum);
+
+			}
 
 		}
 

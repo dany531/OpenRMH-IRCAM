@@ -177,6 +177,9 @@ namespace OpenGL2DPlot {
 		private: GLdouble YDataLabelValue = 0.0;
 		private: GLfloat PlotYAxesMaximumRangeValue = _2DPlotYAxesMaximumRangeResetValue;
 		private: GLfloat PlotYAxesMinimumRangeValue = _2DPlotYAxesMinimumRangeResetValue;
+		private: bool YAxesRangeLocked = false;     // Whether the Y-axis range of the plot is locked to a fixed range
+		private: GLfloat YAxesLockedMinimum = 0.0f;  // Locked Y-axis range minimum
+		private: GLfloat YAxesLockedMaximum = 100.0f; // Locked Y-axis range maximum
 		private: GLfloat PlotXAxesMaximumRangeValue = 0.0;
 		private: GLfloat PlotXAxesMinimumRangeValue = 0.0;
 		private: bool Show2DPlotBoxFlag = true;
@@ -434,6 +437,14 @@ namespace OpenGL2DPlot {
 			XYPixelCoords.YAxesPixelResolution = (YAxesMaxRange - YAxesMinRange) / YAxesLinePixelLength;
 			// Calculate the actual X pixel coordinate value
 			XYPixelCoords.YPixelCoordinate = (YAxesMaxRange - YCoordinate) / XYPixelCoords.YAxesPixelResolution;
+
+			// With a locked Y-axis range, data outside the range is limited to the edges of the plot area
+			if (YAxesRangeLocked == true) {
+
+				if (XYPixelCoords.YPixelCoordinate < 0.0f) { XYPixelCoords.YPixelCoordinate = 0.0f; }
+				if (XYPixelCoords.YPixelCoordinate > YAxesLinePixelLength) { XYPixelCoords.YPixelCoordinate = YAxesLinePixelLength; }
+
+			}
 
 			// Compensate for the padding of the 3D plot
 			XYPixelCoords.XPixelCoordinate = (XYPixelCoords.XPixelCoordinate + _2DPlotLeftPixelPadding);
@@ -927,6 +938,16 @@ namespace OpenGL2DPlot {
 			// This routine reads the maximum and minimum values of all active data sets and sets the Y-axis range variables of the plot
 			// Can be called in a separate process...
 
+			// Is the Y-axis range locked - use the locked range
+			if (YAxesRangeLocked == true) {
+
+				PlotYAxesMaximumRangeValue = YAxesLockedMaximum;
+				PlotYAxesMinimumRangeValue = YAxesLockedMinimum;
+
+				return;
+
+			}
+
 			// Reset the Y-axis range variables of the 2D plot to start values
 			PlotYAxesMaximumRangeValue = _2DPlotYAxesMaximumRangeResetValue;
 			PlotYAxesMinimumRangeValue = _2DPlotYAxesMinimumRangeResetValue;
@@ -956,6 +977,44 @@ namespace OpenGL2DPlot {
 				}
 
 			}
+
+		}
+
+		public: bool RMH_OpenGL_IsYAxesRangeLocked() {
+
+			// Returns whether the Y-axis range of the plot is locked
+			return YAxesRangeLocked;
+
+		}
+
+		public: GLfloat RMH_OpenGL_GetYAxesRangeMinimum() { return PlotYAxesMinimumRangeValue; }
+		public: GLfloat RMH_OpenGL_GetYAxesRangeMaximum() { return PlotYAxesMaximumRangeValue; }
+		public: GLfloat RMH_OpenGL_GetYAxesLockedMinimum() { return YAxesLockedMinimum; }
+		public: GLfloat RMH_OpenGL_GetYAxesLockedMaximum() { return YAxesLockedMaximum; }
+
+		public: bool RMH_OpenGL_SetYAxesLockedRange(GLfloat Minimum, GLfloat Maximum) {
+
+			// This routine locks the Y-axis range of the plot to a fixed minimum and maximum value
+			// It returns false (and changes nothing) if the maximum is not higher than the minimum
+
+			if (!(Maximum > Minimum + 0.05f)) { return false; }
+
+			YAxesLockedMinimum = Minimum;
+			YAxesLockedMaximum = Maximum;
+			YAxesRangeLocked = true;
+
+			// Apply the range immediately
+			PlotYAxesMinimumRangeValue = Minimum;
+			PlotYAxesMaximumRangeValue = Maximum;
+
+			return true;
+
+		}
+
+		public: GLvoid RMH_OpenGL_UnlockYAxesRange() {
+
+			// This routine unlocks the Y-axis range of the plot (the range follows the plotted data again)
+			YAxesRangeLocked = false;
 
 		}
 
