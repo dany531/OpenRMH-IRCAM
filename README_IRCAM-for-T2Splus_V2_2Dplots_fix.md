@@ -54,6 +54,18 @@ Two separate problems were fixed:
    without raising their event, so no data set was enabled in the plot. The start-up state (data source and enable check box of
    each data set) is now applied to the plot when the program starts.
 
+### 1.4 Y-axis range of the 2D plot (new)
+
+Right-click inside the Plots window. The menu now has (below "Y-Axis Number Of Ticks"):
+
+- a status line: **Y-Axis Range: Auto** or **Y-Axis Range: Locked (min to max)**,
+- **Set Y-Axis Range And Lock...** - opens a small window where you type a minimum and a maximum (decimal values),
+- **Lock Y-Axis At Current Range** - freezes the range that is shown now (rounded outwards to one decimal),
+- **Unlock Y-Axis (Auto Range)** - the range follows the data again.
+
+With a locked range, data outside it is drawn along the top or bottom edge of the plot. The values are in the temperature unit shown
+on the plot, so if you change the unit, set the range again. The lock is not saved: it resets to Auto when the program is restarted.
+
 ---
 
 ## 2. How to use it
@@ -76,7 +88,8 @@ Two separate problems were fixed:
 | `RMH_Application_ThermalViewer.cpp` | Start-up routines (select camera and connect, enable periodic calibration) and applying the plot data set settings |
 | `RMH_Application_ThermalViewer.h` | Start-up settings and declarations |
 | `MainGUI.h` | Start-up timer (switch to the stream window, press Q), the three information windows, and applying the plot settings |
-| `RMH_OpenGL_2DPlot.h` | OpenGL window created at the panel size and resized with it; right-click menu on the plot |
+| `RMH_OpenGL_2DPlot.h` | OpenGL window created at the panel size and resized with it; right-click menu on the plot; locked Y-axis range |
+| `TempMeasGUI.h` | New Y-axis range items (set, lock, unlock) in the plot's right-click menu |
 | `CHANGELOG.md`, this README | Notes |
 
 Note: `RMH_Application_ThermalViewer.cpp` uses an older Windows text encoding. Upload it as a file on GitHub (do not copy-paste it).
@@ -130,6 +143,7 @@ Fallbacks: Build #7 (commit `7b355e8`, branch `fix-t2s-v2-temperature`) and the 
 | Automatic start-up | Works (tested) |
 | Plot: OpenGL window size fix | Works on the old Windows 10 PC (Intel HD 2000) and on a Windows 11 laptop |
 | Plot: starts without visiting Settings | Not tested yet |
+| Plot: Y-axis range set / lock / unlock | Not tested yet |
 
 ---
 

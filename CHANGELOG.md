@@ -8,6 +8,9 @@ the number counts builds of this repository.
 - Custom build identification: the main window title bar ends with "CUSTOM BUILD FOR THE INFIRAY T2S+ V2 (T2S+_A2)" and a start-up
   status message says this version is built specifically for that camera (`_CustomBuild_TitleSuffix`, `_CustomBuild_StartupMessage`).
 
+- 2D plot Y-axis range: the plot's right-click menu has new items to set a fixed Y-axis minimum and maximum and lock it ("Set Y-Axis
+  Range And Lock...", "Lock Y-Axis At Current Range", "Unlock Y-Axis (Auto Range)"). Data outside a locked range is limited to the
+  edges of the plot area. Changes are in `RMH_OpenGL_2DPlot.h` and `TempMeasGUI.h`.
 - 2D temperature plot (`RMH_OpenGL_2DPlot.h`): the OpenGL window was created at four times the size of the panel, which some older
   graphics drivers (found on an Intel HD Graphics 2000, driver 9.17.10.4459) could not handle - black plot background, no text, garbled
   lines. The window is now created at the panel size and follows it when it is resized. A right-click on the plot's overlay opens
