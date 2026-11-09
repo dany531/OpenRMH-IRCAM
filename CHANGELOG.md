@@ -8,6 +8,12 @@ the number counts builds of this repository.
 - Custom build identification: the main window title bar ends with "CUSTOM BUILD FOR THE INFIRAY T2S+ V2 (T2S+_A2)" and a start-up
   status message says this version is built specifically for that camera (`_CustomBuild_TitleSuffix`, `_CustomBuild_StartupMessage`).
 
+- Data Log window: a new item "Data Log" in the left menu (between "Plots" and "Emissivity"), with its own pop-out button, shows the
+  values collected by the Data Logging feature in a table, in near real time (the CSV file written by Data Logging is read once per
+  second). It follows the data logging session settings (data sets, interval, duration). The window has Start Logging / Stop Logging
+  buttons (the same as the data logging menu), a status line (running or stopped, file, samples, elapsed time of the session,
+  interval), Show Log File, Clear View and an auto-scroll option. At most 20000 rows are kept in the table; the complete data is
+  always in the CSV file. New file `DataLogGUI.h`; changes in `MainGUI.h`, `GlobalObjectsAndVariables.h/.cpp`.
 - 2D plot Y-axis range: the plot's right-click menu has new items to set a fixed Y-axis minimum and maximum and lock it ("Set Y-Axis
   Range And Lock...", "Lock Y-Axis At Current Range", "Unlock Y-Axis (Auto Range)"). Data outside a locked range is limited to the
   edges of the plot area. Changes are in `RMH_OpenGL_2DPlot.h` and `TempMeasGUI.h`.
