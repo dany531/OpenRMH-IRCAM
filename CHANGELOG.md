@@ -13,7 +13,9 @@ the number counts builds of this repository.
   second). It follows the data logging session settings (data sets, interval, duration). The window has Start Logging / Stop Logging
   buttons (the same as the data logging menu), a status line (running or stopped, file, samples, elapsed time of the session,
   interval), Show Log File, Clear View and an auto-scroll option. At most 20000 rows are kept in the table; the complete data is
-  always in the CSV file. New file `DataLogGUI.h`; changes in `MainGUI.h`, `GlobalObjectsAndVariables.h/.cpp`.
+  always in the CSV file. The window also draws the values as a graph (temperature against time) above the table; drag a
+  rectangle in the graph to zoom and use Reset Zoom to go back. At most 50000 points per line are kept in the graph.
+  New file `DataLogGUI.h`; changes in `MainGUI.h`, `GlobalObjectsAndVariables.h/.cpp`.
 - 2D plot Y-axis range: the plot's right-click menu has new items to set a fixed Y-axis minimum and maximum and lock it ("Set Y-Axis
   Range And Lock...", "Lock Y-Axis At Current Range", "Unlock Y-Axis (Auto Range)"). Data outside a locked range is limited to the
   edges of the plot area. Changes are in `RMH_OpenGL_2DPlot.h` and `TempMeasGUI.h`.

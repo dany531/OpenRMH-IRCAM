@@ -76,7 +76,11 @@ The window shows the values collected by the **Data Logging** feature, in a tabl
 - The status line shows running or stopped, the log file, the number of samples, the elapsed time of the session and the interval.
 - **Show Log File** opens the CSV file in the Windows explorer (the file is saved on the Desktop). **Clear View** empties the table
   (the file is not changed). **Auto-scroll** keeps the newest row visible.
-- At most 20000 rows are kept in the table. The complete data is always in the CSV file.
+- Above the table the window draws the values as a **graph: temperature (Y axis) against time (X axis)**, one line per logged data
+  set, with the same line colors as the 2D plot and a legend. The time axis starts at the time the log file was created. Hover a line
+  to see its value and time. **Drag a rectangle** in the graph to zoom in, and press **Reset Zoom** to go back. The divider between
+  the graph and the table can be dragged.
+- At most 20000 rows are kept in the table and 50000 points per line in the graph. The complete data is always in the CSV file.
 - The menu item is enabled together with the other items, after a camera is connected.
 
 ---
