@@ -18,8 +18,10 @@ namespace IRCAMThermalViewer {
 	using namespace System::Data;
 	using namespace System::Drawing;
 
-	// Maximum number of rows kept in the table of this window (the complete data is always in the CSV file)
+	// Maximum number of rows kept in the table, and of points kept per line in the graph, of this window
+	// (the complete data is always in the CSV file)
 	#define _DataLogView_MaxRows 20000
+	#define _DataLogView_MaxPlotPoints 50000
 
 	public ref class DataLogGUI : public System::Windows::Forms::Form {
 
@@ -32,6 +34,8 @@ namespace IRCAMThermalViewer {
 			this->PartialLine = "";
 			this->ViewedSampleRows = 0;
 			this->LastElapsedMilliSec = 0.0;
+			this->ChartStartTime = System::DateTime::Now;
+			this->SplitDistanceSet = false;
 
 			this->BuildLayout();
 
@@ -45,6 +49,11 @@ namespace IRCAMThermalViewer {
 
 		System::Windows::Forms::Label^ StatusLabel;
 		System::Windows::Forms::DataGridView^ LogGrid;
+		System::Windows::Forms::DataVisualization::Charting::Chart^ LogChart;
+		System::Windows::Forms::SplitContainer^ ViewSplit;
+		bool SplitDistanceSet;
+		System::Windows::Forms::Button^ ResetZoomButton;
+		System::DateTime ChartStartTime;
 		System::Windows::Forms::Button^ StartLoggingButton;
 		System::Windows::Forms::Button^ StopLoggingButton;
 		System::Windows::Forms::Button^ OpenFolderButton;
@@ -116,11 +125,16 @@ namespace IRCAMThermalViewer {
 			this->ClearViewButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ClearViewButton_Click);
 			TopPanel->Controls->Add(this->ClearViewButton);
 
+			this->ResetZoomButton = gcnew System::Windows::Forms::Button();
+			this->StyleButton(this->ResetZoomButton, "Reset Zoom", 550, 110);
+			this->ResetZoomButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ResetZoomButton_Click);
+			TopPanel->Controls->Add(this->ResetZoomButton);
+
 			this->AutoScrollCheckBox = gcnew System::Windows::Forms::CheckBox();
-			this->AutoScrollCheckBox->Text = "Auto-scroll to newest";
+			this->AutoScrollCheckBox->Text = "Auto-scroll table to newest";
 			this->AutoScrollCheckBox->Checked = true;
 			this->AutoScrollCheckBox->AutoSize = true;
-			this->AutoScrollCheckBox->Location = System::Drawing::Point(560, 43);
+			this->AutoScrollCheckBox->Location = System::Drawing::Point(675, 43);
 			this->AutoScrollCheckBox->ForeColor = System::Drawing::Color::White;
 			TopPanel->Controls->Add(this->AutoScrollCheckBox);
 
@@ -146,8 +160,22 @@ namespace IRCAMThermalViewer {
 			this->LogGrid->AutoSizeColumnsMode = System::Windows::Forms::DataGridViewAutoSizeColumnsMode::Fill;
 			this->LogGrid->SelectionMode = System::Windows::Forms::DataGridViewSelectionMode::FullRowSelect;
 
-			// The grid is added first, so that the top panel is docked before it
-			this->Controls->Add(this->LogGrid);
+			// Graph of the logged values (temperature against time)
+			this->BuildChart();
+
+			// The graph is shown above the table
+			this->ViewSplit = gcnew System::Windows::Forms::SplitContainer();
+			ViewSplit->Dock = System::Windows::Forms::DockStyle::Fill;
+			ViewSplit->Orientation = System::Windows::Forms::Orientation::Horizontal;
+			ViewSplit->BackColor = System::Drawing::Color::FromArgb(60, 60, 60);
+			ViewSplit->FixedPanel = System::Windows::Forms::FixedPanel::Panel2;
+			ViewSplit->Panel1->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			ViewSplit->Panel2->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			ViewSplit->Panel1->Controls->Add(this->LogChart);
+			ViewSplit->Panel2->Controls->Add(this->LogGrid);
+
+			// The split container is added first, so that the top panel is docked before it
+			this->Controls->Add(ViewSplit);
 			this->Controls->Add(TopPanel);
 
 			// Refresh timer - only runs while the window is visible
@@ -159,6 +187,88 @@ namespace IRCAMThermalViewer {
 			this->FormClosing += gcnew System::Windows::Forms::FormClosingEventHandler(this, &DataLogGUI::DataLogGUI_FormClosing);
 
 			this->UpdateStatusText();
+
+		}
+
+		// ---------------------------------- Graph ---------------------------------- //
+
+		System::Drawing::Color GetSeriesColor(int SeriesIndex) {
+
+			// Line colors of the graph - the same order of colors as the 2D plot
+			switch (SeriesIndex % 10) {
+
+				case 0: return System::Drawing::Color::FromArgb(255, 64, 64);
+				case 1: return System::Drawing::Color::FromArgb(90, 130, 255);
+				case 2: return System::Drawing::Color::FromArgb(60, 210, 60);
+				case 3: return System::Drawing::Color::FromArgb(255, 230, 0);
+				case 4: return System::Drawing::Color::FromArgb(255, 150, 40);
+				case 5: return System::Drawing::Color::FromArgb(255, 60, 255);
+				case 6: return System::Drawing::Color::FromArgb(0, 220, 255);
+				case 7: return System::Drawing::Color::FromArgb(235, 235, 235);
+				case 8: return System::Drawing::Color::FromArgb(150, 150, 150);
+				default: return System::Drawing::Color::FromArgb(150, 255, 100);
+
+			}
+
+		}
+
+		System::Void BuildChart() {
+
+			this->LogChart = gcnew System::Windows::Forms::DataVisualization::Charting::Chart();
+			this->LogChart->Dock = System::Windows::Forms::DockStyle::Fill;
+			this->LogChart->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+
+			System::Windows::Forms::DataVisualization::Charting::ChartArea^ MainArea = gcnew System::Windows::Forms::DataVisualization::Charting::ChartArea("Main");
+			MainArea->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			MainArea->AxisX->LineColor = System::Drawing::Color::FromArgb(150, 150, 150);
+			MainArea->AxisY->LineColor = System::Drawing::Color::FromArgb(150, 150, 150);
+			MainArea->AxisX->MajorGrid->LineColor = System::Drawing::Color::FromArgb(70, 70, 70);
+			MainArea->AxisY->MajorGrid->LineColor = System::Drawing::Color::FromArgb(70, 70, 70);
+			MainArea->AxisX->LabelStyle->ForeColor = System::Drawing::Color::White;
+			MainArea->AxisY->LabelStyle->ForeColor = System::Drawing::Color::White;
+			MainArea->AxisX->LabelStyle->Format = "HH:mm:ss";
+			MainArea->AxisY->LabelStyle->Format = "0.0";
+			MainArea->AxisX->Title = "Time";
+			MainArea->AxisY->Title = "Temperature";
+			MainArea->AxisX->TitleForeColor = System::Drawing::Color::White;
+			MainArea->AxisY->TitleForeColor = System::Drawing::Color::White;
+			MainArea->AxisY->IsStartedFromZero = false;
+
+			// Zoom by dragging a rectangle in the graph (Reset Zoom button to go back)
+			MainArea->CursorX->IsUserSelectionEnabled = true;
+			MainArea->CursorY->IsUserSelectionEnabled = true;
+			MainArea->AxisX->ScaleView->Zoomable = true;
+			MainArea->AxisY->ScaleView->Zoomable = true;
+
+			this->LogChart->ChartAreas->Add(MainArea);
+
+			System::Windows::Forms::DataVisualization::Charting::Legend^ SeriesLegend = gcnew System::Windows::Forms::DataVisualization::Charting::Legend("Legend");
+			SeriesLegend->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			SeriesLegend->ForeColor = System::Drawing::Color::White;
+			SeriesLegend->Docking = System::Windows::Forms::DataVisualization::Charting::Docking::Top;
+			this->LogChart->Legends->Add(SeriesLegend);
+
+		}
+
+		System::Void ClearChartData() {
+
+			// Removes the points from all lines of the graph
+			for (int i = 0; i < this->LogChart->Series->Count; i++) { this->LogChart->Series[i]->Points->Clear(); }
+
+		}
+
+		System::Void ResetZoomButton_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			this->LogChart->ChartAreas[0]->AxisX->ScaleView->ZoomReset(0);
+			this->LogChart->ChartAreas[0]->AxisY->ScaleView->ZoomReset(0);
+
+		}
+
+		bool ParseNumber(System::String^ NumberText, double% NumberValue) {
+
+			// Reads a number from the log file - in the regional format of the computer, or in the invariant format
+			if (System::Double::TryParse(NumberText, System::Globalization::NumberStyles::Float, System::Globalization::CultureInfo::CurrentCulture, NumberValue)) { return true; }
+			return System::Double::TryParse(NumberText, System::Globalization::NumberStyles::Float, System::Globalization::CultureInfo::InvariantCulture, NumberValue);
 
 		}
 
@@ -222,6 +332,7 @@ namespace IRCAMThermalViewer {
 			// Clears the table and starts reading the file from its beginning
 			this->LogGrid->Rows->Clear();
 			this->LogGrid->Columns->Clear();
+			this->LogChart->Series->Clear();
 			this->ViewedFilePosition = 0;
 			this->PartialLine = "";
 			this->ViewedSampleRows = 0;
@@ -233,81 +344,130 @@ namespace IRCAMThermalViewer {
 
 		System::Void ProcessNewText(System::String^ NewText) {
 
-			// Adds the complete lines of the newly read text to the table
+			// Adds the complete lines of the newly read text to the table and to the graph
 			System::String^ AllText = this->PartialLine + NewText;
 			cli::array<System::String^>^ Lines = AllText->Split(gcnew cli::array<wchar_t>{ L'\n' });
 
 			// The last element is an unfinished line (or empty) - keep it for the next read
 			this->PartialLine = Lines[Lines->Length - 1];
 
-			if (Lines->Length < 2) { return; }
+			int CompleteLines = Lines->Length - 1;
+			if (CompleteLines < 1) { return; }
 
 			cli::array<System::String^>^ Delimiters = gcnew cli::array<System::String^>{ GlobalVariables::DataLoggingCSVDelimiterString };
 
 			this->LogGrid->SuspendLayout();
 
-			for (int i = 0; i < Lines->Length - 1; i++) {
+			int FirstIndex = 0;
+
+			// The first line of a log file is the header line - create the columns of the table and the lines of the graph
+			if (this->LogGrid->Columns->Count == 0) {
+
+				cli::array<System::String^>^ HeaderParts = Lines[0]->TrimEnd(gcnew cli::array<wchar_t>{ L'\r' })->Split(Delimiters, System::StringSplitOptions::None);
+
+				for (int c = 0; c < HeaderParts->Length; c++) {
+
+					System::String^ HeaderText = HeaderParts[c]->Trim();
+					if (c == 1) { HeaderText = "Elapsed (h:mm:ss)"; }
+					this->LogGrid->Columns->Add(System::Convert::ToString(c), HeaderText);
+					this->LogGrid->Columns[c]->SortMode = System::Windows::Forms::DataGridViewColumnSortMode::NotSortable;
+
+					// The data columns (after the sample number and the time) are the lines of the graph
+					if (c >= 2) {
+
+						System::Windows::Forms::DataVisualization::Charting::Series^ LineSeries = gcnew System::Windows::Forms::DataVisualization::Charting::Series(gcnew System::String("S") + System::Convert::ToString(c));
+						LineSeries->ChartType = System::Windows::Forms::DataVisualization::Charting::SeriesChartType::FastLine;
+						LineSeries->XValueType = System::Windows::Forms::DataVisualization::Charting::ChartValueType::DateTime;
+						LineSeries->YValueType = System::Windows::Forms::DataVisualization::Charting::ChartValueType::Double;
+						LineSeries->ChartArea = "Main";
+						LineSeries->Legend = "Legend";
+						LineSeries->LegendText = HeaderText;
+						LineSeries->Color = this->GetSeriesColor(c - 2);
+						LineSeries->BorderWidth = 1;
+						LineSeries->ToolTip = "#LEGENDTEXT: #VALY{F2}  (#VALX{HH:mm:ss})";
+						this->LogChart->Series->Add(LineSeries);
+
+					}
+
+				}
+
+				FirstIndex = 1;
+
+			}
+
+			// Rows that would be removed again right away (a long log file that is opened) are skipped
+			int SkipTableUntil = FirstIndex;
+			if (CompleteLines - FirstIndex > _DataLogView_MaxRows) { SkipTableUntil = CompleteLines - _DataLogView_MaxRows; }
+			int SkipPlotUntil = FirstIndex;
+			if (CompleteLines - FirstIndex > _DataLogView_MaxPlotPoints) { SkipPlotUntil = CompleteLines - _DataLogView_MaxPlotPoints; }
+
+			for (int i = FirstIndex; i < CompleteLines; i++) {
 
 				System::String^ Line = Lines[i]->TrimEnd(gcnew cli::array<wchar_t>{ L'\r' });
 				if (Line->Length == 0) { continue; }
 
 				cli::array<System::String^>^ Parts = Line->Split(Delimiters, System::StringSplitOptions::None);
 
-				// The first line is the header line - create the columns
-				if (this->LogGrid->Columns->Count == 0) {
-
-					for (int c = 0; c < Parts->Length; c++) {
-
-						System::String^ HeaderText = Parts[c]->Trim();
-						if (c == 1) { HeaderText = "Elapsed (h:mm:ss)"; }
-						this->LogGrid->Columns->Add(System::Convert::ToString(c), HeaderText);
-						this->LogGrid->Columns[c]->SortMode = System::Windows::Forms::DataGridViewColumnSortMode::NotSortable;
-
-					}
-
-					continue;
-
-				}
-
-				cli::array<System::Object^>^ RowValues = gcnew cli::array<System::Object^>(this->LogGrid->Columns->Count);
-
-				for (int c = 0; c < RowValues->Length; c++) {
-
-					if (c < Parts->Length) { RowValues[c] = Parts[c]->Trim(); }
-					else { RowValues[c] = ""; }
-
-				}
-
-				// Show the time column (milliseconds in the file) as hours:minutes:seconds
-				if (Parts->Length > 1) {
-
-					double MilliSeconds = 0.0;
-
-					if (System::Double::TryParse(Parts[1]->Trim(), System::Globalization::NumberStyles::Float, System::Globalization::CultureInfo::CurrentCulture, MilliSeconds) ||
-						System::Double::TryParse(Parts[1]->Trim(), System::Globalization::NumberStyles::Float, System::Globalization::CultureInfo::InvariantCulture, MilliSeconds)) {
-
-						this->LastElapsedMilliSec = MilliSeconds;
-						if (RowValues->Length > 1) { RowValues[1] = this->FormatDuration(MilliSeconds); }
-
-					}
-
-				}
-
-				this->LogGrid->Rows->Add(RowValues);
 				this->ViewedSampleRows++;
+
+				// The time of the sample (milliseconds in the file)
+				double MilliSeconds = 0.0;
+				bool HasTime = false;
+
+				if (Parts->Length > 1) { HasTime = this->ParseNumber(Parts[1]->Trim(), MilliSeconds); }
+				if (HasTime == true) { this->LastElapsedMilliSec = MilliSeconds; }
+
+				// Add the values to the lines of the graph
+				if (HasTime == true && i >= SkipPlotUntil) {
+
+					double PointTime = this->ChartStartTime.AddMilliseconds(MilliSeconds).ToOADate();
+
+					for (int c = 2; c < Parts->Length && (c - 2) < this->LogChart->Series->Count; c++) {
+
+						double PointValue = 0.0;
+						if (this->ParseNumber(Parts[c]->Trim(), PointValue)) { this->LogChart->Series[c - 2]->Points->AddXY(PointTime, PointValue); }
+
+					}
+
+				}
+
+				// Add the row to the table
+				if (i >= SkipTableUntil) {
+
+					cli::array<System::Object^>^ RowValues = gcnew cli::array<System::Object^>(this->LogGrid->Columns->Count);
+
+					for (int c = 0; c < RowValues->Length; c++) {
+
+						if (c < Parts->Length) { RowValues[c] = Parts[c]->Trim(); }
+						else { RowValues[c] = ""; }
+
+					}
+
+					// Show the time column as hours:minutes:seconds
+					if (HasTime == true && RowValues->Length > 1) { RowValues[1] = this->FormatDuration(MilliSeconds); }
+
+					this->LogGrid->Rows->Add(RowValues);
+
+				}
 
 			}
 
-			// Keep the number of rows in the table limited
-			while (this->LogGrid->Rows->Count > _DataLogView_MaxRows) {
+			// Keep the number of rows in the table and of points in the graph limited
+			while (this->LogGrid->Rows->Count > _DataLogView_MaxRows) { this->LogGrid->Rows->RemoveAt(0); }
 
-				this->LogGrid->Rows->RemoveAt(0);
+			for (int i = 0; i < this->LogChart->Series->Count; i++) {
+
+				while (this->LogChart->Series[i]->Points->Count > _DataLogView_MaxPlotPoints) { this->LogChart->Series[i]->Points->RemoveAt(0); }
 
 			}
 
 			this->LogGrid->ResumeLayout();
 
-			// Scroll to the newest row
+			// Time labels of the graph - with the day when the log is longer than about a day
+			if (this->LastElapsedMilliSec > 20.0 * 3600000.0) { this->LogChart->ChartAreas[0]->AxisX->LabelStyle->Format = "dd HH:mm"; }
+			else { this->LogChart->ChartAreas[0]->AxisX->LabelStyle->Format = "HH:mm:ss"; }
+
+			// Scroll the table to the newest row
 			if (this->AutoScrollCheckBox->Checked == true && this->LogGrid->Rows->Count > 0) {
 
 				this->LogGrid->FirstDisplayedScrollingRowIndex = this->LogGrid->Rows->Count - 1;
@@ -329,6 +489,10 @@ namespace IRCAMThermalViewer {
 
 					this->ResetView();
 					this->ViewedFilePath = FullPath;
+
+					// The start time of the log session - the time the log file was created
+					if (System::IO::File::Exists(FullPath)) { this->ChartStartTime = System::IO::File::GetCreationTime(FullPath); }
+					else { this->ChartStartTime = System::DateTime::Now; }
 
 				}
 
@@ -386,6 +550,21 @@ namespace IRCAMThermalViewer {
 
 			// Only refresh while the window is visible
 			this->RefreshTimer->Enabled = this->Visible;
+
+			// The first time the window is shown - the table gets a height of about 220 pixels, the graph gets the rest
+			if (this->Visible == true && this->SplitDistanceSet == false) {
+
+				this->SplitDistanceSet = true;
+
+				try {
+
+					int GraphHeight = this->ViewSplit->Height - 220 - this->ViewSplit->SplitterWidth;
+					if (GraphHeight > 120) { this->ViewSplit->SplitterDistance = GraphHeight; }
+
+				}
+				catch (System::Exception^) {}
+
+			}
 
 			if (this->Visible == true) { this->RefreshLogView(); }
 
@@ -445,8 +624,9 @@ namespace IRCAMThermalViewer {
 
 		System::Void ClearViewButton_Click(System::Object^ sender, System::EventArgs^ e) {
 
-			// Clears the table - only data that is logged from now on is shown (the file is not changed)
+			// Clears the table and the graph - only data that is logged from now on is shown (the file is not changed)
 			this->LogGrid->Rows->Clear();
+			this->ClearChartData();
 			this->ViewedSampleRows = 0;
 			this->PartialLine = "";
 
