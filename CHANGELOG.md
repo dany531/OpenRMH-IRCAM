@@ -14,7 +14,10 @@ the number counts builds of this repository.
   buttons (the same as the data logging menu), a status line (running or stopped, file, samples, elapsed time of the session,
   interval), Show Log File, Clear View and an auto-scroll option. At most 20000 rows are kept in the table; the complete data is
   always in the CSV file. The window also draws the values as a graph (temperature against time) above the table; drag a
-  rectangle in the graph to zoom and use Reset Zoom to go back. At most 50000 points per line are kept in the graph.
+  rectangle in the graph to zoom and use Reset Zoom to go back. The time axis shows the elapsed time of the log session from
+  0:00:00 (h:mm:ss, also beyond 24 hours), and the axis titles show the units (the temperature unit follows the program setting).
+  At most 100000 points per line are kept in the graph and 20000 rows in the table (old ones are removed in blocks).
+  When the window is opened, a notice shows the current data logging session duration and sample interval and where to change them.
   New file `DataLogGUI.h`; changes in `MainGUI.h`, `GlobalObjectsAndVariables.h/.cpp`.
 - 2D plot Y-axis range: the plot's right-click menu has new items to set a fixed Y-axis minimum and maximum and lock it ("Set Y-Axis
   Range And Lock...", "Lock Y-Axis At Current Range", "Unlock Y-Axis (Auto Range)"). Data outside a locked range is limited to the
