@@ -21,7 +21,9 @@ namespace IRCAMThermalViewer {
 	// Maximum number of rows kept in the table, and of points kept per line in the graph, of this window
 	// (the complete data is always in the CSV file)
 	#define _DataLogView_MaxRows 20000
-	#define _DataLogView_MaxPlotPoints 50000
+	#define _DataLogView_MaxPlotPoints 100000
+	// Old rows and points are removed in blocks of this size (removing them one at a time from a long list is slow)
+	#define _DataLogView_TrimBlockSize 1000
 
 	public ref class DataLogGUI : public System::Windows::Forms::Form {
 
@@ -34,8 +36,10 @@ namespace IRCAMThermalViewer {
 			this->PartialLine = "";
 			this->ViewedSampleRows = 0;
 			this->LastElapsedMilliSec = 0.0;
-			this->ChartStartTime = System::DateTime::Now;
+			this->ChartStartTime = System::DateTime(2000, 1, 1, 0, 0, 0);   // The time axis of the graph starts at 0:00:00 (elapsed time)
 			this->SplitDistanceSet = false;
+			this->NoticeShowing = false;
+			this->HideDurationNotice = false;
 
 			this->BuildLayout();
 
@@ -54,6 +58,8 @@ namespace IRCAMThermalViewer {
 		bool SplitDistanceSet;
 		System::Windows::Forms::Button^ ResetZoomButton;
 		System::DateTime ChartStartTime;
+		bool NoticeShowing;
+		bool HideDurationNotice;
 		System::Windows::Forms::Button^ StartLoggingButton;
 		System::Windows::Forms::Button^ StopLoggingButton;
 		System::Windows::Forms::Button^ OpenFolderButton;
@@ -228,7 +234,7 @@ namespace IRCAMThermalViewer {
 			MainArea->AxisY->LabelStyle->ForeColor = System::Drawing::Color::White;
 			MainArea->AxisX->LabelStyle->Format = "HH:mm:ss";
 			MainArea->AxisY->LabelStyle->Format = "0.0";
-			MainArea->AxisX->Title = "Time";
+			MainArea->AxisX->Title = "Time (h:mm:ss)";
 			MainArea->AxisY->Title = "Temperature";
 			MainArea->AxisX->TitleForeColor = System::Drawing::Color::White;
 			MainArea->AxisY->TitleForeColor = System::Drawing::Color::White;
@@ -247,6 +253,34 @@ namespace IRCAMThermalViewer {
 			SeriesLegend->ForeColor = System::Drawing::Color::White;
 			SeriesLegend->Docking = System::Windows::Forms::DataVisualization::Charting::Docking::Top;
 			this->LogChart->Legends->Add(SeriesLegend);
+
+			// The labels of the time axis show the elapsed time (also when the log is longer than 24 hours)
+			this->LogChart->FormatNumber += gcnew System::EventHandler<System::Windows::Forms::DataVisualization::Charting::FormatNumberEventArgs^>(this, &DataLogGUI::LogChart_FormatNumber);
+
+			this->UpdateAxisTitles();
+
+		}
+
+		System::Void LogChart_FormatNumber(System::Object^ sender, System::Windows::Forms::DataVisualization::Charting::FormatNumberEventArgs^ e) {
+
+			// Only the labels of the (date and time) time axis
+			if (e->ElementType == System::Windows::Forms::DataVisualization::Charting::ChartElementType::AxisLabels &&
+				e->ValueType == System::Windows::Forms::DataVisualization::Charting::ChartValueType::DateTime) {
+
+				double ElapsedMilliSec = (e->Value - this->ChartStartTime.ToOADate()) * 86400000.0;
+				if (ElapsedMilliSec < 0.0) { ElapsedMilliSec = 0.0; }
+
+				e->LocalizedValue = this->FormatDuration(ElapsedMilliSec);
+
+			}
+
+		}
+
+		System::Void UpdateAxisTitles() {
+
+			// The axis titles with the units - the temperature unit follows the temperature unit setting of the program
+			this->LogChart->ChartAreas[0]->AxisY->Title = gcnew System::String("Temperature (") + GlobalVariables::DefaultTempUnitString + gcnew System::String(")");
+			this->LogChart->ChartAreas[0]->AxisX->Title = "Time (h:mm:ss)";
 
 		}
 
@@ -453,11 +487,19 @@ namespace IRCAMThermalViewer {
 			}
 
 			// Keep the number of rows in the table and of points in the graph limited
-			while (this->LogGrid->Rows->Count > _DataLogView_MaxRows) { this->LogGrid->Rows->RemoveAt(0); }
+			if (this->LogGrid->Rows->Count > _DataLogView_MaxRows + _DataLogView_TrimBlockSize) {
+
+				while (this->LogGrid->Rows->Count > _DataLogView_MaxRows) { this->LogGrid->Rows->RemoveAt(0); }
+
+			}
 
 			for (int i = 0; i < this->LogChart->Series->Count; i++) {
 
-				while (this->LogChart->Series[i]->Points->Count > _DataLogView_MaxPlotPoints) { this->LogChart->Series[i]->Points->RemoveAt(0); }
+				if (this->LogChart->Series[i]->Points->Count > _DataLogView_MaxPlotPoints + _DataLogView_TrimBlockSize) {
+
+					while (this->LogChart->Series[i]->Points->Count > _DataLogView_MaxPlotPoints) { this->LogChart->Series[i]->Points->RemoveAt(0); }
+
+				}
 
 			}
 
@@ -489,10 +531,6 @@ namespace IRCAMThermalViewer {
 
 					this->ResetView();
 					this->ViewedFilePath = FullPath;
-
-					// The start time of the log session - the time the log file was created
-					if (System::IO::File::Exists(FullPath)) { this->ChartStartTime = System::IO::File::GetCreationTime(FullPath); }
-					else { this->ChartStartTime = System::DateTime::Now; }
 
 				}
 
@@ -534,7 +572,95 @@ namespace IRCAMThermalViewer {
 
 			}
 
+			this->UpdateAxisTitles();
 			this->UpdateStatusText();
+
+		}
+
+		// ---------------------------------- Notice when the window is opened ---------------------------------- //
+
+		System::Void ShowDurationNotice() {
+
+			// Shows a window with the current data logging session duration and where it can be changed
+			if (this->Visible == false || this->HideDurationNotice == true) { this->NoticeShowing = false; return; }
+
+			try {
+
+				int Hours = (int)System::Decimal::ToDouble(GlobalVariables::GlobalDataLoggingDurationHourUpDown->Value);
+				int Minutes = (int)System::Decimal::ToDouble(GlobalVariables::GlobalDataLoggingDurationMinuteUpDown->Value);
+				int Seconds = (int)System::Decimal::ToDouble(GlobalVariables::GlobalDataLoggingDurationSecondsUpDown->Value);
+				double IntervalSec = System::Decimal::ToDouble(GlobalVariables::GlobalDataLoggingIntervalUpDown->Value);
+				double TotalSec = (double)Hours * 3600.0 + (double)Minutes * 60.0 + (double)Seconds;
+
+				System::Text::StringBuilder^ NoticeText = gcnew System::Text::StringBuilder();
+				NoticeText->Append("The current data logging session is set to ");
+				NoticeText->Append(System::Convert::ToString(Hours));
+				NoticeText->Append(" hours, ");
+				NoticeText->Append(System::Convert::ToString(Minutes));
+				NoticeText->Append(" minutes and ");
+				NoticeText->Append(System::Convert::ToString(Seconds));
+				NoticeText->Append(" seconds, with one sample every ");
+				NoticeText->Append(System::Convert::ToString(IntervalSec));
+				NoticeText->Append(" seconds");
+
+				if (IntervalSec > 0.0) {
+
+					NoticeText->Append(" (about ");
+					NoticeText->Append(System::Convert::ToString((int)(TotalSec / IntervalSec)));
+					NoticeText->Append(" samples)");
+
+				}
+
+				NoticeText->Append(".");
+				NoticeText->Append(System::Environment::NewLine);
+				NoticeText->Append(System::Environment::NewLine);
+				NoticeText->Append("A running session stops by itself when this duration is over.");
+				NoticeText->Append(System::Environment::NewLine);
+				NoticeText->Append(System::Environment::NewLine);
+				NoticeText->Append("To change the duration or the sample interval, open Settings, go to 'Data Logging Session Settings', and change the values. The new values are used the next time you press Start Logging.");
+
+				System::Windows::Forms::Form^ NoticeWindow = gcnew System::Windows::Forms::Form();
+				NoticeWindow->Text = "Data Log";
+				NoticeWindow->FormBorderStyle = System::Windows::Forms::FormBorderStyle::FixedDialog;
+				NoticeWindow->StartPosition = System::Windows::Forms::FormStartPosition::CenterParent;
+				NoticeWindow->MinimizeBox = false;
+				NoticeWindow->MaximizeBox = false;
+				NoticeWindow->ShowInTaskbar = false;
+				NoticeWindow->BackColor = System::Drawing::Color::White;
+				NoticeWindow->ClientSize = System::Drawing::Size(520, 290);
+
+				System::Windows::Forms::Label^ NoticeLabel = gcnew System::Windows::Forms::Label();
+				NoticeLabel->AutoSize = false;
+				NoticeLabel->Location = System::Drawing::Point(20, 18);
+				NoticeLabel->Size = System::Drawing::Size(480, 190);
+				NoticeLabel->Font = gcnew System::Drawing::Font("Segoe UI", 10);
+				NoticeLabel->ForeColor = System::Drawing::Color::Black;
+				NoticeLabel->Text = NoticeText->ToString();
+				NoticeWindow->Controls->Add(NoticeLabel);
+
+				System::Windows::Forms::CheckBox^ NoticeCheckBox = gcnew System::Windows::Forms::CheckBox();
+				NoticeCheckBox->Text = "Do not show this message again (until the program is restarted)";
+				NoticeCheckBox->AutoSize = true;
+				NoticeCheckBox->Location = System::Drawing::Point(20, 220);
+				NoticeCheckBox->ForeColor = System::Drawing::Color::Black;
+				NoticeWindow->Controls->Add(NoticeCheckBox);
+
+				System::Windows::Forms::Button^ NoticeOkButton = gcnew System::Windows::Forms::Button();
+				NoticeOkButton->Text = "OK";
+				NoticeOkButton->DialogResult = System::Windows::Forms::DialogResult::OK;
+				NoticeOkButton->Location = System::Drawing::Point(205, 248);
+				NoticeOkButton->Size = System::Drawing::Size(110, 30);
+				NoticeWindow->Controls->Add(NoticeOkButton);
+				NoticeWindow->AcceptButton = NoticeOkButton;
+
+				NoticeWindow->ShowDialog(this);
+
+				if (NoticeCheckBox->Checked == true) { this->HideDurationNotice = true; }
+
+			}
+			catch (System::Exception^) {}
+
+			this->NoticeShowing = false;
 
 		}
 
@@ -567,6 +693,16 @@ namespace IRCAMThermalViewer {
 			}
 
 			if (this->Visible == true) { this->RefreshLogView(); }
+
+			// Show the notice about the data logging session duration when the window is opened (after the window is shown)
+			if (this->Visible == true && this->HideDurationNotice == false && this->NoticeShowing == false) {
+
+				this->NoticeShowing = true;
+
+				try { this->BeginInvoke(gcnew System::Action(this, &DataLogGUI::ShowDurationNotice)); }
+				catch (System::Exception^) { this->NoticeShowing = false; }
+
+			}
 
 		}
 
