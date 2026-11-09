@@ -19,6 +19,7 @@
 #include "SurfacePlotGUI.h"
 #include "TempMeasGUI.h"
 #include "EmissivityTableGUI.h"
+#include "DataLogGUI.h"
 #include "VideoPlayBackTools.h"
 #include "PopUpDialog.h"
 #include "UserGuideViewerGUI.h"
@@ -67,6 +68,9 @@ namespace IRCAMThermalViewer {
 			// Emissivity table GUI form static objects and variables
 			static IRCAMThermalViewer::EmissivityTableGUI^ EmissivityTableGUIForm;
 
+			// Data log GUI form static object
+			static IRCAMThermalViewer::DataLogGUI^ DataLogGUIForm;
+
 			// Video playback tools GUI form static objects and variables
 			static IRCAMThermalViewer::VideoPlayBackTools^ PlayBackControlsPanelForm;
 
@@ -84,6 +88,8 @@ namespace IRCAMThermalViewer {
 			InitializeComponent();
 			// Format arrays of WinForms components for global use
 			InitializeComponentArrays();
+			// Add the "Data Log" item to the left menu (between "Plots" and "Emissivity")
+			AddDataLogMenuItem();
 			// Set global objects from this form for global use
 			InitializeGlobalFormsObjects();
 
@@ -107,6 +113,7 @@ namespace IRCAMThermalViewer {
 			ManagedLocals::TempMeasurementsGUIForm = gcnew IRCAMThermalViewer::TempMeasGUI();
 			// Initialize the emissivity table GUI form
 			ManagedLocals::EmissivityTableGUIForm = gcnew IRCAMThermalViewer::EmissivityTableGUI();
+			ManagedLocals::DataLogGUIForm = gcnew IRCAMThermalViewer::DataLogGUI();
 
 			// Set the 2D plot line color data of the saved session
 			RMH_ThermalViewer_Load2DPlotSavedSessionLineColorData();
@@ -210,6 +217,15 @@ namespace IRCAMThermalViewer {
 					RMH_Winforms_CloseForm(ManagedLocals::EmissivityTableGUIForm, &isEmissivityTableFormOpen, &isEmissivityTableFormDocked, &isEmissivityTableFormUndocked);
 
 				}
+				if (isDataLogFormOpen == true && isDataLogFormDocked == true && FormObject != ManagedLocals::DataLogGUIForm) {
+
+					// Remove the associated form as a "control" from the given "parent" panel
+					ParentPanel->Controls->Clear();
+
+					// Close the associated form object
+					RMH_Winforms_CloseForm(ManagedLocals::DataLogGUIForm, &isDataLogFormOpen, &isDataLogFormDocked, &isDataLogFormUndocked);
+
+				}
 				if (isWelcomeScreenFormOpen == true && isWelcomeScreenFormDocked == true && FormObject != ManagedLocals::WelcomeScreenForm) {
 
 					// Remove the associated form as a "control" from the given "parent" panel
@@ -301,6 +317,7 @@ namespace IRCAMThermalViewer {
 				isLiveViewStreamFormDocked == false &&
 				isSurfacePlotFormDocked == false &&
 				isTempMeasurementsFormDocked == false &&
+				isDataLogFormDocked == false &&
 				isEmissivityTableFormDocked == false) {
 
 				// Open and dock the welcome screen form in the main panel of the main GUI
@@ -1113,6 +1130,124 @@ namespace IRCAMThermalViewer {
 
 			// Handle undocking of the form GUI
 			HandleFormsOpeningDockingAndUndocking(ManagedLocals::EmissivityTableGUIForm, this->MainViewTopPanel, &isEmissivityTableFormOpen, &isEmissivityTableFormDocked, &isEmissivityTableFormUndocked, _FormDockingState_UndockForm);
+
+		}
+
+		// ---------------------------- Data Log menu item ---------------------------- //
+
+		private: System::Windows::Forms::TableLayoutPanel^ DataLogMenuPanel;
+		private: System::Windows::Forms::Button^ DataLogMenuButton;
+		private: System::Windows::Forms::Button^ DataLogUndockButton;
+
+		private: System::Void AddDataLogMenuItem() {
+
+			// This routine adds a "Data Log" item (menu button and undock button) to the left menu, between "Plots" and "Emissivity"
+			// The look of the item is copied from the "Plots" item
+
+			// Panel for the new item - same layout as the panel of the "Plots" item
+			this->DataLogMenuPanel = gcnew System::Windows::Forms::TableLayoutPanel();
+			this->DataLogMenuPanel->Dock = System::Windows::Forms::DockStyle::Fill;
+			this->DataLogMenuPanel->Margin = System::Windows::Forms::Padding(0);
+			this->DataLogMenuPanel->ColumnCount = 2;
+			this->DataLogMenuPanel->RowCount = 1;
+			this->DataLogMenuPanel->ColumnStyles->Add(gcnew System::Windows::Forms::ColumnStyle(System::Windows::Forms::SizeType::Percent, 100.0f));
+			this->DataLogMenuPanel->ColumnStyles->Add(gcnew System::Windows::Forms::ColumnStyle(System::Windows::Forms::SizeType::Absolute, 60.0f));
+			this->DataLogMenuPanel->RowStyles->Add(gcnew System::Windows::Forms::RowStyle(System::Windows::Forms::SizeType::Percent, 100.0f));
+
+			// Icon of the menu button - a small table, drawn in code
+			System::Drawing::Bitmap^ MenuIcon = gcnew System::Drawing::Bitmap(32, 32);
+			System::Drawing::Graphics^ IconGraphics = System::Drawing::Graphics::FromImage(MenuIcon);
+			IconGraphics->SmoothingMode = System::Drawing::Drawing2D::SmoothingMode::AntiAlias;
+			IconGraphics->Clear(System::Drawing::Color::Transparent);
+			System::Drawing::SolidBrush^ IconHeaderBrush = gcnew System::Drawing::SolidBrush(System::Drawing::Color::FromArgb(0, 150, 220));
+			System::Drawing::Pen^ IconPen = gcnew System::Drawing::Pen(System::Drawing::Color::FromArgb(235, 235, 235), 2.0f);
+			IconGraphics->FillRectangle(IconHeaderBrush, 4, 5, 25, 6);
+			IconGraphics->DrawRectangle(IconPen, 3, 4, 26, 24);
+			IconGraphics->DrawLine(IconPen, 3, 11, 29, 11);
+			IconGraphics->DrawLine(IconPen, 3, 18, 29, 18);
+			IconGraphics->DrawLine(IconPen, 12, 4, 12, 28);
+			IconGraphics->DrawLine(IconPen, 21, 4, 21, 28);
+			delete IconPen;
+			delete IconHeaderBrush;
+			delete IconGraphics;
+
+			// Menu button - copy of the look of the "Plots" menu button
+			this->DataLogMenuButton = gcnew System::Windows::Forms::Button();
+			this->DataLogMenuButton->Dock = System::Windows::Forms::DockStyle::Fill;
+			this->DataLogMenuButton->Margin = System::Windows::Forms::Padding(0);
+			this->DataLogMenuButton->FlatStyle = System::Windows::Forms::FlatStyle::Flat;
+			this->DataLogMenuButton->Font = (System::Drawing::Font^)this->TempMeasMenuButton->Font->Clone();
+			this->DataLogMenuButton->ForeColor = System::Drawing::Color::White;
+			this->DataLogMenuButton->BackColor = System::Drawing::Color::Transparent;
+			this->DataLogMenuButton->FlatAppearance->BorderColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			this->DataLogMenuButton->FlatAppearance->MouseDownBackColor = System::Drawing::Color::FromArgb(70, 70, 70);
+			this->DataLogMenuButton->FlatAppearance->MouseOverBackColor = System::Drawing::Color::FromArgb(50, 50, 50);
+			this->DataLogMenuButton->Image = MenuIcon;
+			this->DataLogMenuButton->ImageAlign = System::Drawing::ContentAlignment::TopCenter;
+			this->DataLogMenuButton->TextAlign = System::Drawing::ContentAlignment::BottomCenter;
+			this->DataLogMenuButton->Text = "Data Log";
+			this->DataLogMenuButton->Name = "DataLogMenuButton";
+			this->DataLogMenuButton->UseVisualStyleBackColor = false;
+			this->DataLogMenuButton->Enabled = false;
+			this->DataLogMenuButton->Click += gcnew System::EventHandler(this, &MainGUI::DataLogMenuButton_Click);
+
+			// Undock button - copy of the look of the "Plots" undock button
+			this->DataLogUndockButton = gcnew System::Windows::Forms::Button();
+			this->DataLogUndockButton->Dock = System::Windows::Forms::DockStyle::Fill;
+			this->DataLogUndockButton->Margin = System::Windows::Forms::Padding(0);
+			this->DataLogUndockButton->FlatStyle = System::Windows::Forms::FlatStyle::Flat;
+			this->DataLogUndockButton->Font = (System::Drawing::Font^)this->TempMeasUndockButton->Font->Clone();
+			this->DataLogUndockButton->ForeColor = System::Drawing::Color::White;
+			this->DataLogUndockButton->BackColor = System::Drawing::Color::Transparent;
+			this->DataLogUndockButton->FlatAppearance->BorderColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			this->DataLogUndockButton->FlatAppearance->MouseDownBackColor = System::Drawing::Color::FromArgb(70, 70, 70);
+			this->DataLogUndockButton->FlatAppearance->MouseOverBackColor = System::Drawing::Color::FromArgb(50, 50, 50);
+			if (this->TempMeasUndockButton->Image != nullptr) {
+				this->DataLogUndockButton->Image = (System::Drawing::Image^)this->TempMeasUndockButton->Image->Clone();
+			}
+			this->DataLogUndockButton->TextAlign = System::Drawing::ContentAlignment::TopLeft;
+			this->DataLogUndockButton->Name = "DataLogUndockButton";
+			this->DataLogUndockButton->UseVisualStyleBackColor = false;
+			this->DataLogUndockButton->Enabled = false;
+			this->DataLogUndockButton->Click += gcnew System::EventHandler(this, &MainGUI::DataLogUndockButton_Click);
+
+			this->DataLogMenuPanel->Controls->Add(this->DataLogMenuButton, 0, 0);
+			this->DataLogMenuPanel->Controls->Add(this->DataLogUndockButton, 1, 0);
+
+			// Insert a row for the new item above the "Emissivity" row of the left menu table
+			this->tableLayoutPanel1->SuspendLayout();
+			this->tableLayoutPanel1->RowCount = this->tableLayoutPanel1->RowCount + 1;
+			System::Windows::Forms::RowStyle^ TemplateRowStyle = this->tableLayoutPanel1->RowStyles[this->tableLayoutPanel1->RowStyles->Count - 1];
+			this->tableLayoutPanel1->RowStyles->Add(gcnew System::Windows::Forms::RowStyle(TemplateRowStyle->SizeType, TemplateRowStyle->Height));
+			this->tableLayoutPanel1->SetRow(this->tableLayoutPanel6, 6);
+			this->tableLayoutPanel1->Controls->Add(this->DataLogMenuPanel, 0, 5);
+			this->tableLayoutPanel1->ResumeLayout(true);
+
+			// Add the new buttons to the array of left menu buttons (they are enabled and disabled together with the others)
+			cli::array<System::Windows::Forms::Button^>^ OldMenuButtons = GlobalVariables::MainGUILeftMenuButtons;
+			cli::array<System::Windows::Forms::Button^>^ NewMenuButtons = gcnew cli::array<System::Windows::Forms::Button^>(OldMenuButtons->Length + 2);
+
+			for (int i = 0; i < OldMenuButtons->Length; i++) { NewMenuButtons[i] = OldMenuButtons[i]; }
+
+			NewMenuButtons[OldMenuButtons->Length] = this->DataLogMenuButton;
+			NewMenuButtons[OldMenuButtons->Length + 1] = this->DataLogUndockButton;
+			GlobalVariables::MainGUILeftMenuButtons = NewMenuButtons;
+
+		}
+
+		// Data log menu button callback ->
+		private: System::Void DataLogMenuButton_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Handle docking of the form GUI in the main view panel of the main GUI
+			HandleFormsOpeningDockingAndUndocking(ManagedLocals::DataLogGUIForm, this->MainViewTopPanel, &isDataLogFormOpen, &isDataLogFormDocked, &isDataLogFormUndocked, _FormDockingState_DockForm);
+
+		}
+
+		// Data log undock button callback ->
+		private: System::Void DataLogUndockButton_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Handle undocking of the form GUI
+			HandleFormsOpeningDockingAndUndocking(ManagedLocals::DataLogGUIForm, this->MainViewTopPanel, &isDataLogFormOpen, &isDataLogFormDocked, &isDataLogFormUndocked, _FormDockingState_UndockForm);
 
 		}
 
