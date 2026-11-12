@@ -5,6 +5,23 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data logging: confirmation windows and temporary session file.
+  - Data Log window: **Stop Logging** and **Clear View** now ask "Are you sure ...?" (Yes / No). "No" closes the window and does
+    nothing (logging keeps running, the view is not cleared). Both windows default to "No".
+  - A data logging session is now written to a temporary file (`%TEMP%\IRCAMThermalViewer_DataLogging`) instead of directly to the
+    default save path. When the session ends, a window asks "Do you want to save this data logging session?". **Yes**: the file is
+    copied to the default save path and the temporary file is deleted (if saving fails, the error is shown and the temporary file is
+    kept). **No**: the temporary file is deleted. This stops unwanted files piling up on the Desktop.
+  - The save question appears however the session ends: Stop Logging button, hotkey N, the plot's right-click menu, a temperature
+    alarm or trigger event, or the end of the session duration. It is shown by the data logging thread's `RunWorkerCompleted` event
+    (`RMH_ThermalViewer_FinishDataLoggingSession`), after the last sample was written.
+  - The data logging thread now waits for the sample interval in 50 ms slices, so a stop request is handled at once (and the save
+    question appears quickly) instead of after up to one full interval. No extra sample is written after a stop.
+  - Start Logging while the previous session is still waiting for its save / discard answer shows a warning instead of starting.
+  - The Data Log window follows the session file to its new place after it was saved.
+  - New global `GlobalVariables::DataLoggingSessionFolderString` (folder that holds the session file now).
+    Changes in `DataLogGUI.h`, `TempMeasGUI.h`, `RMH_Application_ThermalViewer.cpp/.h`, `GlobalObjectsAndVariables.h`.
+
 - Custom build identification: the main window title bar ends with "CUSTOM BUILD FOR THE INFIRAY T2S+ V2 (T2S+_A2)" and a start-up
   status message says this version is built specifically for that camera (`_CustomBuild_TitleSuffix`, `_CustomBuild_StartupMessage`).
 
