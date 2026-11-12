@@ -879,8 +879,9 @@ void RMH_ThermalViewer_StartDataLogging() {
 
 		// -------------------------------- Generate And Format The Data Logging Session CSV File -------------------------------- //
 
-		// Format the data identification string of the file (DataLogSession_HHmmssddMMyyyy)
-		System::String^ FileName = System::DateTime::Now.ToString("HHmmssfffddMMyyyy");
+		// Format the data identification string of the file (DataLogSession_ddMMMyyyy_HH-mm-ss, for example DataLogSession_12Nov2026_09-57-39.txt)
+		// The invariant culture gives the English month abbreviation (Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec) on every PC
+		System::String^ FileName = System::DateTime::Now.ToString("ddMMMyyyy_HH-mm-ss", System::Globalization::CultureInfo::InvariantCulture);
 
 		// Format the file name of the data logging session
 		GlobalVariables::DataLoggingSessionFileNameString = "DataLogSession_" + FileName + ".txt";

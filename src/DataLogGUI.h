@@ -40,6 +40,9 @@ namespace IRCAMThermalViewer {
 			this->SplitDistanceSet = false;
 			this->NoticeShowing = false;
 			this->HideDurationNotice = false;
+			this->CursorLabelEnabled = false;
+			this->ChartMouseIsDown = false;
+			this->ChartMouseDownPoint = System::Drawing::Point(0, 0);
 
 			this->BuildLayout();
 
@@ -58,6 +61,10 @@ namespace IRCAMThermalViewer {
 		bool SplitDistanceSet;
 		System::Windows::Forms::Button^ ResetZoomButton;
 		System::DateTime ChartStartTime;
+		System::Windows::Forms::Label^ CursorLabel;     // Shows the temperature at the mouse cursor (left click on the graph switches it on / off)
+		bool CursorLabelEnabled;
+		bool ChartMouseIsDown;
+		System::Drawing::Point ChartMouseDownPoint;
 		bool NoticeShowing;
 		bool HideDurationNotice;
 		System::Windows::Forms::Button^ StartLoggingButton;
@@ -257,7 +264,103 @@ namespace IRCAMThermalViewer {
 			// The labels of the time axis show the elapsed time (also when the log is longer than 24 hours)
 			this->LogChart->FormatNumber += gcnew System::EventHandler<System::Windows::Forms::DataVisualization::Charting::FormatNumberEventArgs^>(this, &DataLogGUI::LogChart_FormatNumber);
 
+			// Mouse cursor temperature label - a left click (without dragging) in the graph switches it on or off, like in the Plots window
+			this->CursorLabel = gcnew System::Windows::Forms::Label();
+			this->CursorLabel->AutoSize = true;
+			this->CursorLabel->BackColor = System::Drawing::Color::FromArgb(20, 20, 20);
+			this->CursorLabel->ForeColor = System::Drawing::Color::White;
+			this->CursorLabel->BorderStyle = System::Windows::Forms::BorderStyle::FixedSingle;
+			this->CursorLabel->Padding = System::Windows::Forms::Padding(2);
+			this->CursorLabel->Visible = false;
+			this->LogChart->Controls->Add(this->CursorLabel);
+
+			this->LogChart->MouseDown += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseDown);
+			this->LogChart->MouseUp += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseUp);
+			this->LogChart->MouseMove += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseMove);
+
 			this->UpdateAxisTitles();
+
+		}
+
+		// ------------------------- Mouse cursor temperature ------------------------- //
+
+		System::Void UpdateCursorLabel(int MouseX, int MouseY) {
+
+			if (this->CursorLabelEnabled == false) { this->CursorLabel->Visible = false; return; }
+
+			System::String^ LabelString = gcnew System::String("Temperature: N/A ") + GlobalVariables::DefaultTempUnitString;
+
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::HitTestResult^ Hit = this->LogChart->HitTest(MouseX, MouseY);
+				System::Windows::Forms::DataVisualization::Charting::ChartElementType Element = Hit->ChartElementType;
+
+				// Only inside the plot area of the graph (not on the axes, the legend or outside the graph)
+				if (Hit->ChartArea != nullptr && (Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::PlottingArea ||
+					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::DataPoint ||
+					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::Gridlines ||
+					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::StripLines)) {
+
+					double TemperatureValue = this->LogChart->ChartAreas[0]->AxisY->PixelPositionToValue((double)MouseY);
+					double TimeValue = this->LogChart->ChartAreas[0]->AxisX->PixelPositionToValue((double)MouseX);
+					double ElapsedMilliSec = (TimeValue - this->ChartStartTime.ToOADate()) * 86400000.0;
+					if (ElapsedMilliSec < 0.0) { ElapsedMilliSec = 0.0; }
+
+					LabelString = gcnew System::String("Temperature: ") + TemperatureValue.ToString("F2") + gcnew System::String(" ") + GlobalVariables::DefaultTempUnitString +
+						gcnew System::String("   (") + this->FormatDuration(ElapsedMilliSec) + gcnew System::String(")");
+
+				}
+
+			}
+			catch (System::Exception^) {}
+
+			this->CursorLabel->Text = LabelString;
+
+			// The label is placed beside the mouse cursor (on the other side near the edge of the graph)
+			int LabelX = MouseX + 12;
+			int LabelY = MouseY - 10;
+			if (LabelX + this->CursorLabel->Width > this->LogChart->Width) { LabelX = MouseX - 12 - this->CursorLabel->Width; }
+			if (LabelX < 0) { LabelX = 0; }
+			if (LabelY < 0) { LabelY = 0; }
+
+			this->CursorLabel->Location = System::Drawing::Point(LabelX, LabelY);
+			this->CursorLabel->Visible = true;
+			this->CursorLabel->BringToFront();
+
+		}
+
+		System::Void LogChart_MouseDown(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
+
+			if (e->Button == System::Windows::Forms::MouseButtons::Left) {
+
+				this->ChartMouseIsDown = true;
+				this->ChartMouseDownPoint = System::Drawing::Point(e->X, e->Y);
+
+			}
+
+		}
+
+		System::Void LogChart_MouseUp(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
+
+			if (e->Button == System::Windows::Forms::MouseButtons::Left && this->ChartMouseIsDown == true) {
+
+				this->ChartMouseIsDown = false;
+
+				// A click (no drag - a drag is the zoom rectangle) switches the mouse cursor temperature on or off
+				if (System::Math::Abs(e->X - this->ChartMouseDownPoint.X) <= 4 && System::Math::Abs(e->Y - this->ChartMouseDownPoint.Y) <= 4) {
+
+					this->CursorLabelEnabled = !this->CursorLabelEnabled;
+					this->UpdateCursorLabel(e->X, e->Y);
+
+				}
+
+			}
+
+		}
+
+		System::Void LogChart_MouseMove(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
+
+			if (this->CursorLabelEnabled == true) { this->UpdateCursorLabel(e->X, e->Y); }
 
 		}
 
