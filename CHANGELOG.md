@@ -5,6 +5,16 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data logging: warning for sessions with many samples. When Start Logging is pressed (Data Log window button, the plot's right-click
+  menu or hotkey M) and the session is set to more than 100000 samples (duration divided by sample interval), a window explains the
+  situation: the Data Log window shows at most the newest 100000 samples in the graph and the newest 20000 rows in the table, the oldest
+  samples scroll off the left side of the graph and out of the table, and every sample is saved in the log file. **Start** starts
+  logging, **Cancel** does not start, so the interval or duration can be changed first. A start by a temperature alarm or a trigger event
+  shows no window (it would block an automatic action), only a status message. The notice that is shown when the Data Log window is opened
+  has the same note for such a session. The limits (`_DataLogView_MaxRows`, `_DataLogView_MaxPlotPoints`) moved to
+  `RMH_Application_ThermalViewer.h`; `RMH_ThermalViewer_StartDataLogging` has a new parameter `AskUserAboutSampleLimit` (default true).
+  Changes in `RMH_Application_ThermalViewer.cpp/.h` and `DataLogGUI.h`. No limit or default value was changed.
+
 - Data logging file names: a session file is now named `DataLogSession_ddMMMyyyy_HH-mm-ss.txt`, for example
   `DataLogSession_12Nov2026_09-57-39.txt` (12 = day, Nov = month abbreviation in English, 2026 = year, 09 = hour, 57 = minutes,
   39 = seconds). The old name was a run of digits (`HHmmssfffddMMyyyy`). The English month abbreviation is used on every PC
