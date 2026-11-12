@@ -70,7 +70,12 @@ void RMH_ThermalViewer_SetDataLoggingSourcePointer(double** DataLoggingSourcePoi
 void RMH_ThermalViewer_ChangeDataLoggingDataSetSource(unsigned char DataSetIndex, unsigned char DataSourceIndex);
 double* RMH_ThermalViewer_GetDataLoggingSourcePointerFromIndex(unsigned char DataSourceIndex);
 void RMH_ThermalViewer_UpdateDataLoggingDefaultSaveFilePath(System::Windows::Forms::Label^ DefaultPathString);
-void RMH_ThermalViewer_StartDataLogging();
+// Maximum number of rows kept in the table, and of points kept per line in the graph, of the Data Log window
+// (the complete data is always in the log file). A data logging session with more samples than _DataLogView_MaxPlotPoints
+// gives a warning when it is started (AskUserAboutSampleLimit = false: status message only, for alarm / trigger starts)
+#define _DataLogView_MaxRows 20000
+#define _DataLogView_MaxPlotPoints 100000
+void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit = true);
 void RMH_ThermalViewer_StopDataLogging();
 void RMH_ThermalViewer_FinishDataLoggingSession();
 void RMH_ThermalViewer_UpdateDataLoggingCSVDataDelimiter();

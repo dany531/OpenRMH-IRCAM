@@ -810,7 +810,61 @@ void RMH_ThermalViewer_UpdateDataLoggingDefaultSaveFilePath(System::Windows::For
 
 }
 
-void RMH_ThermalViewer_StartDataLogging() {
+static bool RMH_ThermalViewer_ConfirmDataLoggingSampleLimit(double ExpectedSamples, double TotalSec, double IntervalSec) {
+
+	// Shows the warning window for a data logging session with more samples than the Data Log window shows. Returns true when the user presses Start.
+
+	int Hours = (int)(TotalSec / 3600.0);
+	int Minutes = (int)((TotalSec - (double)Hours * 3600.0) / 60.0);
+	int Seconds = (int)(TotalSec - (double)Hours * 3600.0 - (double)Minutes * 60.0);
+
+	System::String^ MessageText =
+		"This data logging session is set to about " + System::Convert::ToString((long long)ExpectedSamples) + " samples (" +
+		System::Convert::ToString(Hours) + " hours, " + System::Convert::ToString(Minutes) + " minutes and " + System::Convert::ToString(Seconds) +
+		" seconds, one sample every " + System::Convert::ToString(IntervalSec) + " seconds).\n\n" +
+		"The Data Log window shows at most the newest " + System::Convert::ToString(_DataLogView_MaxPlotPoints) + " samples in the graph and the newest " +
+		System::Convert::ToString(_DataLogView_MaxRows) + " rows in the table. When a session is longer than that, the oldest samples scroll off the left side " +
+		"of the graph and out of the table.\n\n" +
+		"No data is lost: every sample is saved in the log file.\n\n" +
+		"Press Start to start logging, or Cancel to change the sample interval or the duration first (Settings -> Data Logging Session Settings).";
+
+	System::Windows::Forms::Form^ Dialog = gcnew System::Windows::Forms::Form();
+	Dialog->Text = "Data Logging - Many Samples";
+	Dialog->FormBorderStyle = System::Windows::Forms::FormBorderStyle::FixedDialog;
+	Dialog->StartPosition = System::Windows::Forms::FormStartPosition::CenterScreen;
+	Dialog->MaximizeBox = false;
+	Dialog->MinimizeBox = false;
+	Dialog->ShowInTaskbar = false;
+	Dialog->ClientSize = System::Drawing::Size(500, 270);
+
+	System::Windows::Forms::Label^ MessageLabel = gcnew System::Windows::Forms::Label();
+	MessageLabel->Location = System::Drawing::Point(15, 15);
+	MessageLabel->Size = System::Drawing::Size(470, 200);
+	MessageLabel->Text = MessageText;
+	Dialog->Controls->Add(MessageLabel);
+
+	System::Windows::Forms::Button^ StartButton = gcnew System::Windows::Forms::Button();
+	StartButton->Text = "Start";
+	StartButton->Location = System::Drawing::Point(290, 228);
+	StartButton->Size = System::Drawing::Size(90, 28);
+	StartButton->DialogResult = System::Windows::Forms::DialogResult::OK;
+	Dialog->Controls->Add(StartButton);
+
+	System::Windows::Forms::Button^ CancelButton = gcnew System::Windows::Forms::Button();
+	CancelButton->Text = "Cancel";
+	CancelButton->Location = System::Drawing::Point(395, 228);
+	CancelButton->Size = System::Drawing::Size(90, 28);
+	CancelButton->DialogResult = System::Windows::Forms::DialogResult::Cancel;
+	Dialog->Controls->Add(CancelButton);
+
+	Dialog->AcceptButton = StartButton;
+	Dialog->CancelButton = CancelButton;
+
+	return (Dialog->ShowDialog() == System::Windows::Forms::DialogResult::OK);
+
+}
+
+void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit) {
 
 	// This routine configures the data logging session and starts data logging
 
@@ -832,6 +886,35 @@ void RMH_ThermalViewer_StartDataLogging() {
 
 	// Check the data logging is running flag
 	if (DataLoggingIsRunningFlag == false) {
+
+		// Warn when the session has more samples than the Data Log window shows (the oldest scroll off the screen, all samples are saved in the file)
+		double SessionTotalSec = System::Decimal::ToDouble(GlobalVariables::GlobalDataLoggingDurationHourUpDown->Value) * 3600.0 +
+			System::Decimal::ToDouble(GlobalVariables::GlobalDataLoggingDurationMinuteUpDown->Value) * 60.0 +
+			System::Decimal::ToDouble(GlobalVariables::GlobalDataLoggingDurationSecondsUpDown->Value);
+		double SessionIntervalSec = System::Decimal::ToDouble(GlobalVariables::GlobalDataLoggingIntervalUpDown->Value);
+
+		if (SessionIntervalSec > 0.0 && (SessionTotalSec / SessionIntervalSec) > (double)_DataLogView_MaxPlotPoints) {
+
+			if (AskUserAboutSampleLimit == true) {
+
+				// Cancel: do not start, so the interval or duration can be changed
+				if (RMH_ThermalViewer_ConfirmDataLoggingSampleLimit(SessionTotalSec / SessionIntervalSec, SessionTotalSec, SessionIntervalSec) == false) {
+
+					RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Was Not Started.", _StatusMessageType_Normal);
+					return;
+
+				}
+
+			}
+			else {
+
+				// Automatic start (alarm / trigger event): no window, status message only
+				RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea,
+					"Data Logging Session Has More Samples Than The Data Log Window Shows (Oldest Scroll Off The Screen). All Samples Are Saved In The Log File.", _StatusMessageType_Warning);
+
+			}
+
+		}
 
 		// Reset the data logging duration timer variable
 		DataLoggingDurationTimerMilliSec = 0;
@@ -1646,8 +1729,8 @@ void RMH_ThermalViewer_HandleTempAlarmTriggerActionEvent(unsigned char Temperatu
 
 					case _TempAlarmTriggerAction_StartDataLogging:
 
-						// Start temperature data logging session
-						RMH_ThermalViewer_StartDataLogging();
+						// Start temperature data logging session (automatic start - no warning window)
+						RMH_ThermalViewer_StartDataLogging(false);
 
 					break;
 
@@ -1849,8 +1932,8 @@ void RMH_ThermalViewer_ExecuteTriggerEventIndex(unsigned short TriggerEventFunct
 		// Execute the associated periodic trigger event function
 		case _TriggerEventFunction_StartDataLogging:
 
-			// Start temperature data logging session
-			RMH_ThermalViewer_StartDataLogging();
+			// Start temperature data logging session (automatic start - no warning window)
+			RMH_ThermalViewer_StartDataLogging(false);
 
 		break;
 

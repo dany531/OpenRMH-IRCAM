@@ -18,10 +18,9 @@ namespace IRCAMThermalViewer {
 	using namespace System::Data;
 	using namespace System::Drawing;
 
-	// Maximum number of rows kept in the table, and of points kept per line in the graph, of this window
+	// Maximum number of rows kept in the table (_DataLogView_MaxRows) and of points kept per line in the graph
+	// (_DataLogView_MaxPlotPoints) of this window are defined in RMH_Application_ThermalViewer.h
 	// (the complete data is always in the CSV file)
-	#define _DataLogView_MaxRows 20000
-	#define _DataLogView_MaxPlotPoints 100000
 	// Old rows and points are removed in blocks of this size (removing them one at a time from a long list is slow)
 	#define _DataLogView_TrimBlockSize 1000
 
@@ -716,6 +715,20 @@ namespace IRCAMThermalViewer {
 				}
 
 				NoticeText->Append(".");
+
+				// A session with more samples than the graph keeps - the oldest samples scroll off the screen (they stay in the file)
+				if (IntervalSec > 0.0 && TotalSec / IntervalSec > (double)_DataLogView_MaxPlotPoints) {
+
+					NoticeText->Append(System::Environment::NewLine);
+					NoticeText->Append(System::Environment::NewLine);
+					NoticeText->Append("Note: this is more than the newest ");
+					NoticeText->Append(System::Convert::ToString(_DataLogView_MaxPlotPoints));
+					NoticeText->Append(" samples that the graph shows (the table shows the newest ");
+					NoticeText->Append(System::Convert::ToString(_DataLogView_MaxRows));
+					NoticeText->Append("). The oldest samples scroll off the left side of the graph, but every sample is saved in the log file.");
+
+				}
+
 				NoticeText->Append(System::Environment::NewLine);
 				NoticeText->Append(System::Environment::NewLine);
 				NoticeText->Append("A running session stops by itself when this duration is over.");
