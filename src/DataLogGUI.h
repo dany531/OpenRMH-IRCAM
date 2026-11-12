@@ -252,6 +252,15 @@ namespace IRCAMThermalViewer {
 			MainArea->AxisX->ScaleView->Zoomable = true;
 			MainArea->AxisY->ScaleView->Zoomable = true;
 
+			// The zoom rectangle is not snapped to whole units, and the zoomed view may be small, on both axes. The time axis is a date / time axis:
+			// without this the selection snaps to a large time unit (so the time range hardly zooms) and only the temperature axis zooms freely.
+			MainArea->CursorX->IntervalType = System::Windows::Forms::DataVisualization::Charting::DateTimeIntervalType::Milliseconds;
+			MainArea->CursorX->Interval = 1;
+			MainArea->CursorY->Interval = 0.001;
+			MainArea->AxisX->ScaleView->MinSizeType = System::Windows::Forms::DataVisualization::Charting::DateTimeIntervalType::Milliseconds;
+			MainArea->AxisX->ScaleView->MinSize = 1;
+			MainArea->AxisY->ScaleView->MinSize = 0.001;
+
 			this->LogChart->ChartAreas->Add(MainArea);
 
 			System::Windows::Forms::DataVisualization::Charting::Legend^ SeriesLegend = gcnew System::Windows::Forms::DataVisualization::Charting::Legend("Legend");
