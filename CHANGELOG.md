@@ -5,6 +5,15 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data logging file names: a session file is now named `DataLogSession_ddMMMyyyy_HH-mm-ss.txt`, for example
+  `DataLogSession_12Nov2026_09-57-39.txt` (12 = day, Nov = month abbreviation in English, 2026 = year, 09 = hour, 57 = minutes,
+  39 = seconds). The old name was a run of digits (`HHmmssfffddMMyyyy`). The English month abbreviation is used on every PC
+  (invariant culture). Change in `RMH_Application_ThermalViewer.cpp` (`RMH_ThermalViewer_StartDataLogging`).
+- Data Log window graph: a left click in the graph switches a mouse cursor label on or off, like in the Plots window. While on, the
+  label follows the mouse and shows the temperature at the cursor position (in the program's temperature unit) and the elapsed time,
+  for example "Temperature: 25.43 C   (0:01:23)", or "Temperature: N/A" when the cursor is outside the plot area. Dragging a rectangle
+  (zoom) is not treated as a click. Change in `DataLogGUI.h`.
+
 - Data logging: confirmation windows and temporary session file.
   - Data Log window: **Stop Logging** and **Clear View** now ask "Are you sure ...?" (Yes / No). "No" closes the window and does
     nothing (logging keeps running, the view is not cleared). Both windows default to "No".
