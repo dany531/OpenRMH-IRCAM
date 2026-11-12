@@ -5,6 +5,12 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data Log window graph zoom: dragging a rectangle with the left mouse button now zooms both the time (X) and the temperature (Y) axis
+  to the area of the rectangle. Before, only the temperature axis zoomed: the time axis is a date / time axis, and the selection
+  snapped to a large time unit. The selection cursors of both axes are now set to a fine step (X: 1 ms, Y: 0.001) and the smallest
+  zoomed view is also small (X: 1 ms, Y: 0.001), so the rectangle is used as drawn. Reset Zoom is unchanged. A click without
+  dragging still switches the cursor temperature label on or off. Change in `DataLogGUI.h` (`BuildChart`).
+
 - Data logging: warning for sessions with many samples. When Start Logging is pressed (Data Log window button, the plot's right-click
   menu or hotkey M) and the session is set to more than 100000 samples (duration divided by sample interval), a window explains the
   situation: the Data Log window shows at most the newest 100000 samples in the graph and the newest 20000 rows in the table, the oldest
