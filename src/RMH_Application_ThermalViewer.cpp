@@ -886,7 +886,10 @@ void RMH_ThermalViewer_StartDataLogging() {
 		GlobalVariables::DataLoggingSessionFileNameString = "DataLogSession_" + FileName + ".txt";
 
 		// The session is first written to a temporary file - the user decides when the session stops whether it is saved
-		System::String^ TempFolder = System::IO::Path::Combine(System::IO::Path::GetTempPath(), "IRCAMThermalViewer_DataLogging");
+		// (The TEMP environment variable is used because "GetTempPath" is renamed to "GetTempPathW" by the Windows headers)
+		System::String^ TempBase = System::Environment::GetEnvironmentVariable("TEMP");
+		if (TempBase == nullptr || TempBase->Length == 0) { TempBase = System::Environment::GetFolderPath(System::Environment::SpecialFolder::LocalApplicationData); }
+		System::String^ TempFolder = System::IO::Path::Combine(TempBase, "IRCAMThermalViewer_DataLogging");
 		System::IO::Directory::CreateDirectory(TempFolder);
 		GlobalVariables::DataLoggingSessionFolderString = TempFolder;
 
@@ -974,7 +977,7 @@ void RMH_ThermalViewer_FinishDataLoggingSession() {
 			// From now on the session file is the saved file
 			GlobalVariables::DataLoggingSessionFolderString = GlobalVariables::LoggingCSVDefaultPath;
 
-			RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Session Was Saved: " + SavedPath, _StatusMessageType_Success);
+			RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Session Was Saved: " + RMH_Conversion_SystemStringToStdString(SavedPath), _StatusMessageType_Success);
 
 		}
 		catch (System::Exception^ Ex) {
