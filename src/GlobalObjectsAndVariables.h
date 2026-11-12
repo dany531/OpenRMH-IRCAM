@@ -332,6 +332,7 @@ ref struct GlobalVariables {
 	static System::String^ RecordingDefaultPath = System::Environment::GetFolderPath(System::Environment::SpecialFolder::Desktop);
 	static System::String^ LoggingCSVDefaultPath = System::Environment::GetFolderPath(System::Environment::SpecialFolder::Desktop);
 	static System::String^ DataLoggingSessionFileNameString = nullptr;
+	static System::String^ DataLoggingSessionFolderString = nullptr;   // Folder that currently holds the session file (temp folder while logging, default save path once saved)
 	static System::String^ DefaultCapturingAppPackageFamilyNameString = nullptr;
 
 	// Global objects from the MainGUI form

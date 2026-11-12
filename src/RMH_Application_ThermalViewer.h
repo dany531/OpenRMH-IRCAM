@@ -72,6 +72,7 @@ double* RMH_ThermalViewer_GetDataLoggingSourcePointerFromIndex(unsigned char Dat
 void RMH_ThermalViewer_UpdateDataLoggingDefaultSaveFilePath(System::Windows::Forms::Label^ DefaultPathString);
 void RMH_ThermalViewer_StartDataLogging();
 void RMH_ThermalViewer_StopDataLogging();
+void RMH_ThermalViewer_FinishDataLoggingSession();
 void RMH_ThermalViewer_UpdateDataLoggingCSVDataDelimiter();
 void RMH_ThermalViewer_DataLoggingThreadProcess();
 

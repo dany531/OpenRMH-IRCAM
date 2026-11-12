@@ -779,6 +779,7 @@ namespace IRCAMThermalViewer {
 			this->DataLoggingThread->WorkerReportsProgress = true;
 			this->DataLoggingThread->WorkerSupportsCancellation = true;
 			this->DataLoggingThread->DoWork += gcnew System::ComponentModel::DoWorkEventHandler(this, &TempMeasGUI::DataLoggingThread_DoWork);
+			this->DataLoggingThread->RunWorkerCompleted += gcnew System::ComponentModel::RunWorkerCompletedEventHandler(this, &TempMeasGUI::DataLoggingThread_RunWorkerCompleted);
 			// 
 			// TempMeasGUI
 			// 
@@ -1124,6 +1125,14 @@ namespace IRCAMThermalViewer {
 
 			// Execute the data logging thread process
 			RMH_ThermalViewer_DataLoggingThreadProcess();
+
+		}
+
+		// Data Logging Thread Completed Event Callback Routine (runs on the GUI thread, after the last sample was written) ->
+		private: System::Void DataLoggingThread_RunWorkerCompleted(System::Object^ sender, System::ComponentModel::RunWorkerCompletedEventArgs^ e) {
+
+			// Ask whether the data logging session is saved or deleted
+			RMH_ThermalViewer_FinishDataLoggingSession();
 
 		}
 

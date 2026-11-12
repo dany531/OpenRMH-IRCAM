@@ -822,6 +822,14 @@ void RMH_ThermalViewer_StartDataLogging() {
 	unsigned short DataLoggingDurationSedundsValue = 0;
 	std::vector<std::string> CSVFileHeaderStrings = { "Sample", "Time(ms)", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A" };
 
+	// The previous session is still finishing (waiting for the save / discard answer)
+	if (GlobalVariables::GlobalDataLoggingThread->IsBusy == true && DataLoggingIsRunningFlag == false) {
+
+		RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "The Previous Data Logging Session Is Still Finishing - Try Again In A Moment.", _StatusMessageType_Warning);
+		return;
+
+	}
+
 	// Check the data logging is running flag
 	if (DataLoggingIsRunningFlag == false) {
 
@@ -877,8 +885,13 @@ void RMH_ThermalViewer_StartDataLogging() {
 		// Format the file name of the data logging session
 		GlobalVariables::DataLoggingSessionFileNameString = "DataLogSession_" + FileName + ".txt";
 
+		// The session is first written to a temporary file - the user decides when the session stops whether it is saved
+		System::String^ TempFolder = System::IO::Path::Combine(System::IO::Path::GetTempPath(), "IRCAMThermalViewer_DataLogging");
+		System::IO::Directory::CreateDirectory(TempFolder);
+		GlobalVariables::DataLoggingSessionFolderString = TempFolder;
+
 		// Generate the data logging CSV file with the associated file header
-		RMH_Winforms_WriteHeaderStringsToCSVFile(RMH_Conversion_SystemStringToStdString(GlobalVariables::LoggingCSVDefaultPath), 
+		RMH_Winforms_WriteHeaderStringsToCSVFile(RMH_Conversion_SystemStringToStdString(GlobalVariables::DataLoggingSessionFolderString), 
 			RMH_Conversion_SystemStringToStdString(GlobalVariables::DataLoggingSessionFileNameString), CSVFileHeaderStrings, DataLoggingNumberOfActiveSets + 2, GlobalVariables::DataLoggingCSVDelimiterString);
 
 		// -------------------------------------------------------------------------------------------------------------------- //
@@ -926,6 +939,66 @@ void RMH_ThermalViewer_StopDataLogging() {
 	
 }
 
+void RMH_ThermalViewer_FinishDataLoggingSession() {
+
+	// This routine is called (on the GUI thread) when the data logging thread has finished - manual stop, alarm / trigger stop or end of the session duration.
+	// It asks whether the session is saved. Yes: the temporary file is moved to the default save path. No: the temporary file is deleted.
+
+	System::String^ FileName = GlobalVariables::DataLoggingSessionFileNameString;
+	System::String^ TempFolder = GlobalVariables::DataLoggingSessionFolderString;
+
+	// Nothing to do when there is no session file, or when it has already been saved / deleted
+	if (FileName == nullptr || FileName->Length == 0 || TempFolder == nullptr) { return; }
+
+	System::String^ TempPath = System::IO::Path::Combine(TempFolder, FileName);
+	if (System::IO::File::Exists(TempPath) == false) { return; }
+
+	// Already moved to the save path
+	if (TempFolder->Equals(GlobalVariables::LoggingCSVDefaultPath)) { return; }
+
+	System::Windows::Forms::DialogResult Answer = System::Windows::Forms::MessageBox::Show(
+		"The data logging session has stopped.\n\nDo you want to save this data logging session?\n\nYes: the file is saved in\n" + GlobalVariables::LoggingCSVDefaultPath + "\n\nNo: the session data is deleted.",
+		"Save Data Logging Session", System::Windows::Forms::MessageBoxButtons::YesNo, System::Windows::Forms::MessageBoxIcon::Question, System::Windows::Forms::MessageBoxDefaultButton::Button1);
+
+	if (Answer == System::Windows::Forms::DialogResult::Yes) {
+
+		try {
+
+			System::IO::Directory::CreateDirectory(GlobalVariables::LoggingCSVDefaultPath);
+			System::String^ SavedPath = System::IO::Path::Combine(GlobalVariables::LoggingCSVDefaultPath, FileName);
+
+			// Copy and delete (works across drives)
+			System::IO::File::Copy(TempPath, SavedPath, true);
+			System::IO::File::Delete(TempPath);
+
+			// From now on the session file is the saved file
+			GlobalVariables::DataLoggingSessionFolderString = GlobalVariables::LoggingCSVDefaultPath;
+
+			RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Session Was Saved: " + SavedPath, _StatusMessageType_Success);
+
+		}
+		catch (System::Exception^ Ex) {
+
+			// The temporary file is kept so no data is lost
+			System::Windows::Forms::MessageBox::Show("The data logging session could not be saved:\n" + Ex->Message + "\n\nThe data is kept in the temporary file:\n" + TempPath,
+				"Save Data Logging Session", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Error);
+
+			RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Session Could Not Be Saved!", _StatusMessageType_Warning);
+
+		}
+
+	}
+	else {
+
+		try { System::IO::File::Delete(TempPath); }
+		catch (System::Exception^) {}
+
+		RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Session Was Not Saved (Temporary File Deleted).", _StatusMessageType_Normal);
+
+	}
+
+}
+
 void RMH_ThermalViewer_UpdateDataLoggingCSVDataDelimiter() {
 
 	// This routine updates which data delimiter is used when saving a data logging CSV file
@@ -963,8 +1036,19 @@ void RMH_ThermalViewer_DataLoggingThreadProcess() {
 	// Execute the thread process loop if data logging is active 
 	while (DataLoggingIsRunningFlag == true) {
 
-		// The execution interval of the thread is the data logging interval
-		System::Threading::Thread::Sleep(DataLoggingIntervalMilliSec);
+		// The execution interval of the thread is the data logging interval (slept in short slices so a stop request is handled quickly)
+		unsigned long SleptMilliSec = 0;
+		while (SleptMilliSec < DataLoggingIntervalMilliSec && DataLoggingIsRunningFlag == true) {
+
+			unsigned long Slice = DataLoggingIntervalMilliSec - SleptMilliSec;
+			if (Slice > 50) { Slice = 50; }
+			System::Threading::Thread::Sleep(Slice);
+			SleptMilliSec = SleptMilliSec + Slice;
+
+		}
+
+		// The session was stopped while waiting - no more samples are written
+		if (DataLoggingIsRunningFlag == false) { break; }
 
 		// Update the data logging duration counter variable
 		DataLoggingDurationTimerMilliSec = DataLoggingDurationTimerMilliSec + DataLoggingIntervalMilliSec;
@@ -998,7 +1082,7 @@ void RMH_ThermalViewer_DataLoggingThreadProcess() {
 		}
 
 		// Write the data to the generated CSV file
-		RMH_Winforms_WriteDataArrayToCSVFile(RMH_Conversion_SystemStringToStdString(GlobalVariables::LoggingCSVDefaultPath),
+		RMH_Winforms_WriteDataArrayToCSVFile(RMH_Conversion_SystemStringToStdString(GlobalVariables::DataLoggingSessionFolderString),
 			RMH_Conversion_SystemStringToStdString(GlobalVariables::DataLoggingSessionFileNameString),
 			RMH_Conversion_SystemStringToStdString(NumberOfSampels.ToString()),
 			RMH_Conversion_SystemStringToStdString(DataLoggingDurationTimerMilliSec.ToString()),

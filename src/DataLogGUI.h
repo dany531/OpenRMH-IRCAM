@@ -524,7 +524,8 @@ namespace IRCAMThermalViewer {
 
 			if (FileName != nullptr && FileName->Length > 0) {
 
-				System::String^ FullPath = System::IO::Path::Combine(GlobalVariables::LoggingCSVDefaultPath, FileName);
+				System::String^ FolderPath = (GlobalVariables::DataLoggingSessionFolderString != nullptr) ? GlobalVariables::DataLoggingSessionFolderString : GlobalVariables::LoggingCSVDefaultPath;
+				System::String^ FullPath = System::IO::Path::Combine(FolderPath, FileName);
 
 				// A new data logging session has its own file - start a new view
 				if (this->ViewedFilePath == nullptr || !this->ViewedFilePath->Equals(FullPath)) {
@@ -731,7 +732,19 @@ namespace IRCAMThermalViewer {
 
 		System::Void StopLoggingButton_Click(System::Object^ sender, System::EventArgs^ e) {
 
-			if (DataLoggingIsRunningFlag == true) { RMH_ThermalViewer_StopDataLogging(); }
+			if (DataLoggingIsRunningFlag == true) {
+
+				System::Windows::Forms::DialogResult Answer = System::Windows::Forms::MessageBox::Show(this,
+					"Are you sure you want to stop logging?", "Stop Logging",
+					System::Windows::Forms::MessageBoxButtons::YesNo, System::Windows::Forms::MessageBoxIcon::Question, System::Windows::Forms::MessageBoxDefaultButton::Button2);
+
+				// "No": close the window and keep logging
+				if (Answer != System::Windows::Forms::DialogResult::Yes) { return; }
+
+				// The save / discard question follows when the logging thread has finished
+				RMH_ThermalViewer_StopDataLogging();
+
+			}
 
 			this->RefreshLogView();
 
@@ -759,6 +772,13 @@ namespace IRCAMThermalViewer {
 		}
 
 		System::Void ClearViewButton_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			System::Windows::Forms::DialogResult Answer = System::Windows::Forms::MessageBox::Show(this,
+				"Are you sure you want to clear the view?", "Clear View",
+				System::Windows::Forms::MessageBoxButtons::YesNo, System::Windows::Forms::MessageBoxIcon::Question, System::Windows::Forms::MessageBoxDefaultButton::Button2);
+
+			// "No": close the window and keep the view
+			if (Answer != System::Windows::Forms::DialogResult::Yes) { return; }
 
 			// Clears the table and the graph - only data that is logged from now on is shown (the file is not changed)
 			this->LogGrid->Rows->Clear();
