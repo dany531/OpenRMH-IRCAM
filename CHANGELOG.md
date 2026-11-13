@@ -5,6 +5,20 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data Log window graph: X-axis (time) range items in the right-click menu, the same as for the Y axis. Four new items, in their own block
+  above the Y-axis block:
+  - **X-Axis Range: Auto** (status line; **X-Axis Range: Locked h:mm:ss To h:mm:ss** when locked),
+  - **Set X-Axis Range And Lock...** - a window for a start and an end time (elapsed time of the log session, h:mm:ss; m:ss or seconds also
+    work, decimals allowed, for example 0:05:30 or 1:00:00.5). An invalid text shows a warning and the window opens again; an end that is not
+    later than the start is corrected (start + 1 s),
+  - **Lock X-Axis At Current Range** - locks the time range that is shown now (the zoomed range, or the whole range), rounded outwards to 0.1 s.
+    Enabled while the axis is not locked,
+  - **Unlock X-Axis (Auto Range)** - the time axis follows the data again. Enabled while locked.
+  While the X axis is locked, the graph shows only that time range (new data outside it is still collected, but not shown). Drag-zooming
+  and the X-axis number of ticks work inside the locked range. The lock is not saved (it resets when the program is restarted).
+  Change in `DataLogGUI.h` (`XSetRangeMenuItem_Click`, `XLockCurrentMenuItem_Click`, `XUnlockMenuItem_Click`, `GetXViewRange`,
+  `FormatRangeTime`, `ParseRangeTime`, `ApplyAxisSettings`).
+
 - Data Log window: **Export Graph** button, next to Start Logging / Stop Logging / Show Log File / Clear View / Reset Zoom. It saves the graph
   as an image: a save window (PNG, JPEG or BMP; the format follows the file extension, PNG by default) opens with the session file name + `_graph`
   as the file name. The image shows the graph as it is shown now (zoom, ticks, locked Y range) at the size of the graph on the screen, without
