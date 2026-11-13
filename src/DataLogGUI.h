@@ -65,6 +65,7 @@ namespace IRCAMThermalViewer {
 		System::Windows::Forms::SplitContainer^ ViewSplit;
 		bool SplitDistanceSet;
 		System::Windows::Forms::Button^ ResetZoomButton;
+		System::Windows::Forms::Button^ ExportGraphButton;
 		System::DateTime ChartStartTime;
 		System::Windows::Forms::Label^ CursorLabel;     // Shows the temperature at the mouse cursor (switched on / off in the right click menu of the graph)
 		bool CursorLabelEnabled;
@@ -141,35 +142,40 @@ namespace IRCAMThermalViewer {
 			TopPanel->Controls->Add(this->StatusLabel);
 
 			this->StartLoggingButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->StartLoggingButton, "Start Logging", 10, 130);
+			this->StyleButton(this->StartLoggingButton, "Start Logging", 10, 120);
 			this->StartLoggingButton->Click += gcnew System::EventHandler(this, &DataLogGUI::StartLoggingButton_Click);
 			TopPanel->Controls->Add(this->StartLoggingButton);
 
 			this->StopLoggingButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->StopLoggingButton, "Stop Logging", 150, 130);
+			this->StyleButton(this->StopLoggingButton, "Stop Logging", 135, 120);
 			this->StopLoggingButton->Click += gcnew System::EventHandler(this, &DataLogGUI::StopLoggingButton_Click);
 			TopPanel->Controls->Add(this->StopLoggingButton);
 
 			this->OpenFolderButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->OpenFolderButton, "Show Log File", 290, 130);
+			this->StyleButton(this->OpenFolderButton, "Show Log File", 260, 120);
 			this->OpenFolderButton->Click += gcnew System::EventHandler(this, &DataLogGUI::OpenFolderButton_Click);
 			TopPanel->Controls->Add(this->OpenFolderButton);
 
 			this->ClearViewButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->ClearViewButton, "Clear View", 430, 110);
+			this->StyleButton(this->ClearViewButton, "Clear View", 385, 100);
 			this->ClearViewButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ClearViewButton_Click);
 			TopPanel->Controls->Add(this->ClearViewButton);
 
 			this->ResetZoomButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->ResetZoomButton, "Reset Zoom", 550, 110);
+			this->StyleButton(this->ResetZoomButton, "Reset Zoom", 490, 100);
 			this->ResetZoomButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ResetZoomButton_Click);
 			TopPanel->Controls->Add(this->ResetZoomButton);
+
+			this->ExportGraphButton = gcnew System::Windows::Forms::Button();
+			this->StyleButton(this->ExportGraphButton, "Export Graph", 595, 120);
+			this->ExportGraphButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ExportGraphButton_Click);
+			TopPanel->Controls->Add(this->ExportGraphButton);
 
 			this->AutoScrollCheckBox = gcnew System::Windows::Forms::CheckBox();
 			this->AutoScrollCheckBox->Text = "Auto-scroll table to newest";
 			this->AutoScrollCheckBox->Checked = true;
 			this->AutoScrollCheckBox->AutoSize = true;
-			this->AutoScrollCheckBox->Location = System::Drawing::Point(675, 43);
+			this->AutoScrollCheckBox->Location = System::Drawing::Point(725, 43);
 			this->AutoScrollCheckBox->ForeColor = System::Drawing::Color::White;
 			TopPanel->Controls->Add(this->AutoScrollCheckBox);
 
@@ -882,6 +888,144 @@ namespace IRCAMThermalViewer {
 
 			// Removes the points from all lines of the graph
 			for (int i = 0; i < this->LogChart->Series->Count; i++) { this->LogChart->Series[i]->Points->Clear(); }
+
+		}
+
+		System::Void ExportGraphButton_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Saves the graph as an image (PNG, JPEG or BMP) - the graph as it is shown now (zoom, ticks, Y range), without the hidden lines,
+			// with the names of the lines that are shown (in the color of the lines) in a strip above the graph
+			if (this->LogChart->Series->Count == 0) {
+
+				System::Windows::Forms::MessageBox::Show(this, "There is no graph to export yet. Start a data logging session first.", "Export Graph",
+					System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Information);
+				return;
+
+			}
+
+			// Default file name: the name of the session file + _graph, or the date and time
+			System::String^ DefaultName;
+			System::String^ SessionFileName = GlobalVariables::DataLoggingSessionFileNameString;
+
+			if (SessionFileName != nullptr && SessionFileName->Length > 0) { DefaultName = System::IO::Path::GetFileNameWithoutExtension(SessionFileName) + gcnew System::String("_graph"); }
+			else {
+
+				System::DateTime NowTime = System::DateTime::Now;
+				DefaultName = gcnew System::String("DataLogGraph_") + NowTime.ToString("ddMMMyyyy_HH-mm-ss", System::Globalization::CultureInfo::InvariantCulture);
+
+			}
+
+			System::Windows::Forms::SaveFileDialog^ SaveDialog = gcnew System::Windows::Forms::SaveFileDialog();
+			SaveDialog->Title = "Export Graph";
+			SaveDialog->Filter = "PNG image (*.png)|*.png|JPEG image (*.jpg)|*.jpg|Bitmap image (*.bmp)|*.bmp";
+			SaveDialog->FilterIndex = 1;
+			SaveDialog->AddExtension = true;
+			SaveDialog->OverwritePrompt = true;
+			SaveDialog->FileName = DefaultName;
+
+			if (GlobalVariables::LoggingCSVDefaultPath != nullptr && System::IO::Directory::Exists(GlobalVariables::LoggingCSVDefaultPath)) { SaveDialog->InitialDirectory = GlobalVariables::LoggingCSVDefaultPath; }
+
+			if (SaveDialog->ShowDialog(this) != System::Windows::Forms::DialogResult::OK) { return; }
+
+			// The image format follows the extension of the file name (PNG when it is something else)
+			System::String^ Extension = System::IO::Path::GetExtension(SaveDialog->FileName)->ToLowerInvariant();
+			System::Drawing::Imaging::ImageFormat^ SaveFormat = System::Drawing::Imaging::ImageFormat::Png;
+			if (Extension == ".jpg" || Extension == ".jpeg") { SaveFormat = System::Drawing::Imaging::ImageFormat::Jpeg; }
+			else if (Extension == ".bmp") { SaveFormat = System::Drawing::Imaging::ImageFormat::Bmp; }
+
+			System::IO::MemoryStream^ ChartStream = nullptr;
+			System::Drawing::Bitmap^ ChartImage = nullptr;
+			System::Drawing::Bitmap^ OutputImage = nullptr;
+
+			try {
+
+				ChartStream = gcnew System::IO::MemoryStream();
+				this->LogChart->SaveImage(ChartStream, System::Windows::Forms::DataVisualization::Charting::ChartImageFormat::Png);
+				ChartImage = gcnew System::Drawing::Bitmap(ChartStream);
+
+				// The lines that are shown
+				System::Collections::Generic::List<System::String^>^ LineNames = gcnew System::Collections::Generic::List<System::String^>();
+				System::Collections::Generic::List<System::Drawing::Color>^ LineColors = gcnew System::Collections::Generic::List<System::Drawing::Color>();
+
+				for (int i = 0; i < this->LogChart->Series->Count; i++) {
+
+					if (this->LogChart->Series[i]->Enabled == true) {
+
+						LineNames->Add(this->LogChart->Series[i]->LegendText);
+						LineColors->Add(this->LogChart->Series[i]->Color);
+
+					}
+
+				}
+
+				System::Drawing::Font^ NameFont = gcnew System::Drawing::Font("Arial", 10);
+				const int SquareSize = 10;
+				const int RowHeight = 22;
+				const float EdgeMargin = 10.0f;
+				const float EntryGap = 18.0f;
+
+				// First pass: how many rows of names fit in the width of the image
+				System::Drawing::Graphics^ MeasureGraphics = System::Drawing::Graphics::FromImage(ChartImage);
+				int Rows = 0;
+				float PositionX = EdgeMargin;
+
+				for (int i = 0; i < LineNames->Count; i++) {
+
+					float EntryWidth = (float)SquareSize + 6.0f + MeasureGraphics->MeasureString(LineNames[i], NameFont).Width + EntryGap;
+					if (Rows == 0 || (PositionX + EntryWidth > (float)ChartImage->Width - EdgeMargin && PositionX > EdgeMargin)) { Rows++; PositionX = EdgeMargin; }
+					PositionX = PositionX + EntryWidth;
+
+				}
+
+				delete MeasureGraphics;
+
+				int StripHeight = 0;
+				if (Rows > 0) { StripHeight = Rows * RowHeight + 8; }
+
+				OutputImage = gcnew System::Drawing::Bitmap(ChartImage->Width, ChartImage->Height + StripHeight);
+				System::Drawing::Graphics^ OutputGraphics = System::Drawing::Graphics::FromImage(OutputImage);
+				OutputGraphics->Clear(System::Drawing::Color::FromArgb(35, 35, 35));
+				OutputGraphics->TextRenderingHint = System::Drawing::Text::TextRenderingHint::AntiAliasGridFit;
+
+				// Second pass: draw the names above the graph
+				int RowIndex = -1;
+				PositionX = EdgeMargin;
+
+				for (int i = 0; i < LineNames->Count; i++) {
+
+					float EntryWidth = (float)SquareSize + 6.0f + OutputGraphics->MeasureString(LineNames[i], NameFont).Width + EntryGap;
+					if (RowIndex < 0 || (PositionX + EntryWidth > (float)ChartImage->Width - EdgeMargin && PositionX > EdgeMargin)) { RowIndex++; PositionX = EdgeMargin; }
+
+					float PositionY = 4.0f + (float)(RowIndex * RowHeight);
+					System::Drawing::SolidBrush^ LineBrush = gcnew System::Drawing::SolidBrush(LineColors[i]);
+					OutputGraphics->FillRectangle(LineBrush, PositionX, PositionY + 5.0f, (float)SquareSize, (float)SquareSize);
+					OutputGraphics->DrawString(LineNames[i], NameFont, LineBrush, PositionX + (float)SquareSize + 6.0f, PositionY);
+					delete LineBrush;
+
+					PositionX = PositionX + EntryWidth;
+
+				}
+
+				OutputGraphics->DrawImage(ChartImage, 0, StripHeight, ChartImage->Width, ChartImage->Height);
+				delete OutputGraphics;
+				delete NameFont;
+
+				OutputImage->Save(SaveDialog->FileName, SaveFormat);
+
+			}
+			catch (System::Exception^ ExportError) {
+
+				System::Windows::Forms::MessageBox::Show(this, gcnew System::String("The graph could not be saved: ") + ExportError->Message, "Export Graph",
+					System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Error);
+
+			}
+			finally {
+
+				if (OutputImage != nullptr) { delete OutputImage; }
+				if (ChartImage != nullptr) { delete ChartImage; }
+				if (ChartStream != nullptr) { delete ChartStream; }
+
+			}
 
 		}
 
