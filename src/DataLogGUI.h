@@ -77,6 +77,7 @@ namespace IRCAMThermalViewer {
 		// Right click menu of the graph, and its settings
 		System::Windows::Forms::ContextMenuStrip^ ChartContextMenu;
 		System::Windows::Forms::ToolStripMenuItem^ CursorTempMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ GraphTitleMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ XTicksMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ YTicksMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ YRangeStatusMenuItem;
@@ -315,6 +316,17 @@ namespace IRCAMThermalViewer {
 
 			this->LogChart->ChartAreas->Add(MainArea);
 
+			// Title of the graph (top center, above the graph) - empty and hidden until a title is set in the right-click menu. It is part of an exported image.
+			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = gcnew System::Windows::Forms::DataVisualization::Charting::Title();
+			GraphTitle->Name = "GraphTitle";
+			GraphTitle->Text = "";
+			GraphTitle->Docking = System::Windows::Forms::DataVisualization::Charting::Docking::Top;
+			GraphTitle->Alignment = System::Drawing::ContentAlignment::TopCenter;
+			GraphTitle->Font = gcnew System::Drawing::Font("Arial", 12, System::Drawing::FontStyle::Bold);
+			GraphTitle->ForeColor = System::Drawing::Color::White;
+			GraphTitle->Visible = false;
+			this->LogChart->Titles->Add(GraphTitle);
+
 			// The graph has no legend of its own: the check boxes above the graph name the lines and show / hide them
 
 			// The labels of the time axis show the elapsed time (also when the log is longer than 24 hours)
@@ -457,6 +469,10 @@ namespace IRCAMThermalViewer {
 			this->CursorTempMenuItem->CheckOnClick = true;
 			this->CursorTempMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::CursorTempMenuItem_Click);
 
+			this->GraphTitleMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->GraphTitleMenuItem, "Set Graph Title...");
+			this->GraphTitleMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::GraphTitleMenuItem_Click);
+
 			this->XTicksMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
 			this->StyleMenuItem(this->XTicksMenuItem, "X-Axis Number Of Ticks");
 			this->AddTickItems(this->XTicksMenuItem, gcnew cli::array<int>{ 5, 10, 20, 25, 50 });
@@ -501,6 +517,7 @@ namespace IRCAMThermalViewer {
 			System::Windows::Forms::ToolStripSeparator^ Separator2 = gcnew System::Windows::Forms::ToolStripSeparator();
 
 			this->ChartContextMenu->Items->Add(this->CursorTempMenuItem);
+			this->ChartContextMenu->Items->Add(this->GraphTitleMenuItem);
 			this->ChartContextMenu->Items->Add(Separator1);
 			this->ChartContextMenu->Items->Add(this->XTicksMenuItem);
 			this->ChartContextMenu->Items->Add(this->YTicksMenuItem);
@@ -564,6 +581,80 @@ namespace IRCAMThermalViewer {
 
 			this->YLockCurrentMenuItem->Enabled = !this->YRangeLocked;
 			this->YUnlockMenuItem->Enabled = this->YRangeLocked;
+
+		}
+
+		System::Void GraphTitleMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			this->ShowGraphTitleWindow();
+
+		}
+
+		bool ShowGraphTitleWindow() {
+
+			// Shows a window for entering the title of the graph (it starts with the title that is set now). An empty text removes the title.
+			// Returns true when the window was closed with Set Title, false when it was cancelled.
+			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
+			if (GraphTitle == nullptr) { return false; }
+
+			System::Windows::Forms::Form^ TitleWindow = gcnew System::Windows::Forms::Form();
+			TitleWindow->Text = "Graph Title";
+			TitleWindow->FormBorderStyle = System::Windows::Forms::FormBorderStyle::FixedDialog;
+			TitleWindow->StartPosition = System::Windows::Forms::FormStartPosition::CenterParent;
+			TitleWindow->MinimizeBox = false;
+			TitleWindow->MaximizeBox = false;
+			TitleWindow->ShowInTaskbar = false;
+			TitleWindow->BackColor = System::Drawing::Color::White;
+			TitleWindow->ForeColor = System::Drawing::Color::Black;
+			TitleWindow->ClientSize = System::Drawing::Size(460, 150);
+
+			System::Windows::Forms::Label^ TitleLabel = gcnew System::Windows::Forms::Label();
+			TitleLabel->Text = "Title (shown at the top center of the graph and in an exported image):";
+			TitleLabel->AutoSize = false;
+			TitleLabel->Location = System::Drawing::Point(20, 16);
+			TitleLabel->Size = System::Drawing::Size(420, 22);
+			TitleWindow->Controls->Add(TitleLabel);
+
+			System::Windows::Forms::TextBox^ TitleBox = gcnew System::Windows::Forms::TextBox();
+			TitleBox->MaxLength = 200;
+			TitleBox->Text = GraphTitle->Text;
+			TitleBox->Location = System::Drawing::Point(20, 42);
+			TitleBox->Size = System::Drawing::Size(420, 24);
+			TitleWindow->Controls->Add(TitleBox);
+
+			System::Windows::Forms::Label^ NoteLabel = gcnew System::Windows::Forms::Label();
+			NoteLabel->Text = "Leave the text empty to remove the title.";
+			NoteLabel->AutoSize = false;
+			NoteLabel->Location = System::Drawing::Point(20, 74);
+			NoteLabel->Size = System::Drawing::Size(420, 22);
+			TitleWindow->Controls->Add(NoteLabel);
+
+			System::Windows::Forms::Button^ TitleOkButton = gcnew System::Windows::Forms::Button();
+			TitleOkButton->Text = "Set Title";
+			TitleOkButton->DialogResult = System::Windows::Forms::DialogResult::OK;
+			TitleOkButton->Location = System::Drawing::Point(115, 106);
+			TitleOkButton->Size = System::Drawing::Size(110, 30);
+			TitleWindow->Controls->Add(TitleOkButton);
+			TitleWindow->AcceptButton = TitleOkButton;
+
+			System::Windows::Forms::Button^ TitleCancelButton = gcnew System::Windows::Forms::Button();
+			TitleCancelButton->Text = "Cancel";
+			TitleCancelButton->DialogResult = System::Windows::Forms::DialogResult::Cancel;
+			TitleCancelButton->Location = System::Drawing::Point(235, 106);
+			TitleCancelButton->Size = System::Drawing::Size(110, 30);
+			TitleWindow->Controls->Add(TitleCancelButton);
+			TitleWindow->CancelButton = TitleCancelButton;
+
+			if (TitleWindow->ShowDialog(this) == System::Windows::Forms::DialogResult::OK) {
+
+				System::String^ NewTitle = TitleBox->Text->Trim();
+				GraphTitle->Text = NewTitle;
+				GraphTitle->Visible = (NewTitle->Length > 0);
+				return true;
+
+			}
+
+			return false;
 
 		}
 
@@ -1195,6 +1286,9 @@ namespace IRCAMThermalViewer {
 				return;
 
 			}
+
+			// First the window for the title of the graph (it shows the title that is set now - keep it or change it). Cancel cancels the export.
+			if (this->ShowGraphTitleWindow() == false) { return; }
 
 			// Default file name: the name of the session file + _graph, or the date and time
 			System::String^ DefaultName;
