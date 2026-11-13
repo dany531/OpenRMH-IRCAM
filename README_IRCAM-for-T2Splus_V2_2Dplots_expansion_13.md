@@ -5,7 +5,7 @@ A modified version of **OpenRMH-IRCAM** (based on v3.0.0-community.5) for the **
 
 - Fork: https://github.com/dany531/OpenRMH-IRCAM
 - Original project: https://github.com/Cyclotronic/OpenRMH-IRCAM
-- This branch contains **all** changes made so far: correct temperatures, automatic start-up, the 2D plot fixes and extras, the Data Log window, the confirmation / save questions of data logging, readable log file names, the mouse cursor temperature in the Data Log graph, a warning for sessions with many samples, zooming in both axes, the right-click menu of the Data Log graph a check box per graph line an Export Graph button and X-axis range lock in the Data Log graph menu a graph title that is asked for again when exporting.
+- This branch contains **all** changes made so far: correct temperatures, automatic start-up, the 2D plot fixes and extras, the Data Log window, the confirmation / save questions of data logging, readable log file names, the mouse cursor temperature in the Data Log graph, a warning for sessions with many samples, zooming in both axes, the right-click menu of the Data Log graph a check box per graph line an Export Graph button and X-axis range lock in the Data Log graph menu a graph title that is asked for again when exporting (shown in the exported image, optionally on the screen).
 
 ---
 
@@ -152,6 +152,7 @@ Right-click in the Data Log graph. The menu has the same items as the right-clic
 
 - **Temperature At The Cursor** - tick to show the temperature and time at the mouse cursor (see 1.8).
 - **Set Graph Title...** - type a title for the graph (see 1.15).
+- **Show Title On Graph** - tick to also show the title on the graph on the screen (off by default; it takes height from the graph, see 1.15).
 - **X-Axis Number Of Ticks** - Auto, 5, 10, 20, 25 or 50 ticks on the time axis.
 - **Y-Axis Number Of Ticks** - Auto, 5, 10, 15, 20, 25 or 30 ticks on the temperature axis.
 - **X-Axis Range: Auto** (status line; shows **Locked h:mm:ss To h:mm:ss** when locked), **Set X-Axis Range And Lock...**, **Lock X-Axis At Current Range** and **Unlock X-Axis (Auto Range)** - the same four items as for the Y axis, for the time axis (see 1.14).
@@ -202,10 +203,16 @@ you fix the exact window of the graph before using **Export Graph** (1.13).
 
 ### 1.15 Graph title (new)
 
-Right-click in the Data Log graph and choose **Set Graph Title...**. Type a title (up to 200 characters) and press **Set Title**. The title
-appears in bold at the **top center above the graph** and is part of the image saved with **Export Graph** (1.13), so you can see later
-what the graph was about. Choose the item again to change the title; an empty text removes it. The same window also opens when you press **Export Graph** (1.13), with the current title filled in. The title stays when you use Clear View or start a new
-session, but it is not saved: it is empty again when the program is restarted.
+Right-click in the Data Log graph and choose **Set Graph Title...**. Type a title (up to 200 characters) and press **Set Title**. The title is
+added in bold at the **top center, above the graph, in an image saved with Export Graph** (1.13), so you can see later what the graph was about. A long
+title wraps over more lines. Choose the item again to change the title; an empty text removes it. The same window also opens when you press
+**Export Graph**, with the current title filled in.
+
+A title drawn inside the graph on the screen takes height from the graph (the plot area and the time axis get shorter). Because of this the title is
+**not shown on the graph on the screen by default**. Tick **Show Title On Graph** in the right-click menu to see it there as well; untick it to get the
+full height back. In the exported image the graph always keeps its full height: the title is drawn in the strip above it, with the line names below
+the title. The title and the "Show Title On Graph" setting stay when you use Clear View or start a new session, but they are not saved: the title is
+empty and the setting is off again when the program is restarted.
 
 ---
 
@@ -296,7 +303,7 @@ Fallbacks: Build #7 (commit `7b355e8`, branch `fix-t2s-v2-temperature`) and the 
 | Data Log graph: Set Y-Axis Range And Lock, Lock Y-Axis At Current Range, Unlock Y-Axis | Not tested yet |
 | Data Log graph: check box per line shows / hides the line; all ticked at the start | Not tested yet |
 | Data Log graph: Set X-Axis Range And Lock (valid and invalid times), Lock X-Axis At Current Range, Unlock X-Axis; zoom and ticks inside a locked range | Not tested yet |
-| Data Log graph: Set Graph Title shows a bold title at the top center; empty text removes it; the title is in the exported image | Not tested yet |
+| Data Log graph: Set Graph Title; title is in the exported image (bold, top center, above the line names) with the graph at full height; Show Title On Graph shows / hides it on the screen (off by default) | Not tested yet |
 | Data Log graph: Export Graph first shows the title window with the current title; Set Title continues, Cancel cancels the export | Not tested yet |
 | Data Log graph: Export Graph saves PNG / JPEG / BMP with the shown lines named above the graph | Not tested yet |
 | Data Log graph: left-drag rectangle zooms both X and Y; Reset Zoom works | Not tested yet |

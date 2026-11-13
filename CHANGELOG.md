@@ -5,14 +5,25 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data Log window graph: the graph title no longer takes height from the graph on the screen. The title was drawn inside the chart (docked at
+  the top), which made the plot area, and with it the time axis, shorter. Now:
+  - The title is **not shown on the graph on the screen by default**. A new check item **Show Title On Graph** in the right-click menu (below
+    "Set Graph Title...") shows it there again (the plot area is then a little shorter again). It is off when the program starts.
+  - In an image saved with **Export Graph** the title is drawn **bold, at the top center, in the strip above the graph** (wrapping when it is wider
+    than the image), above the line names. The graph in the image keeps its full height, with or without the title on screen (the chart's own
+    title is hidden for a moment while the image is made, so it is never drawn twice).
+  - The Graph Title window text says this. Changes in `DataLogGUI.h` (`ShowTitleOnScreen`, `ShowTitleMenuItem_Click`, `ShowGraphTitleWindow`,
+    `ExportGraphButton_Click`).
+
 - Data Log window: **Export Graph** now first opens the same "Graph Title" window as **Set Graph Title...** (it is one shared routine,
   `ShowGraphTitleWindow`). The window shows the title that is set now, so it can be kept as it is, edited or replaced (an empty text removes
   the title). **Set Title** applies the title and continues with the save window; **Cancel** cancels the export. The title that is entered stays
   set for the graph, like with the menu item. Change in `DataLogGUI.h` (`ExportGraphButton_Click`, `GraphTitleMenuItem_Click`).
 
 - Data Log window graph: graph title. A new right-click menu item **Set Graph Title...** (below "Temperature At The Cursor") opens a window
-  to type a title (up to 200 characters). The title is shown in bold at the top center of the graph, above the plot area, and is part of an image saved
-  with **Export Graph**, so the image shows what the graph is about. An empty text removes the title. The title is kept when the view is cleared or
+  to type a title (up to 200 characters). The title is part of an image saved
+  with **Export Graph** (bold, top center), so the image shows what the graph is about. (Changed again, see "the graph title no longer takes height" above:
+  it is only shown on the screen when "Show Title On Graph" is ticked.) An empty text removes the title. The title is kept when the view is cleared or
   a new session starts, but it is not saved: it is empty again when the program is restarted. Change in `DataLogGUI.h` (`BuildChart`,
   `GraphTitleMenuItem_Click`).
 
