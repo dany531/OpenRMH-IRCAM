@@ -76,6 +76,8 @@ namespace IRCAMThermalViewer {
 		System::Windows::Forms::ToolStripMenuItem^ YTicksMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ YRangeStatusMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ YSetRangeMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ YLockCurrentMenuItem;
+		System::Windows::Forms::FlowLayoutPanel^ LineChecksPanel;   // One check box per graph line (shows / hides the line)
 		System::Windows::Forms::ToolStripMenuItem^ YUnlockMenuItem;
 		int XTickCount;              // Number of ticks of the time axis (0 = automatic)
 		int YTickCount;              // Number of ticks of the temperature axis (0 = automatic)
@@ -205,6 +207,17 @@ namespace IRCAMThermalViewer {
 			ViewSplit->Panel1->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
 			ViewSplit->Panel2->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
 			ViewSplit->Panel1->Controls->Add(this->LogChart);
+
+			// Check boxes above the graph - one per graph line, in the color of the line (replaces the legend of the graph)
+			this->LineChecksPanel = gcnew System::Windows::Forms::FlowLayoutPanel();
+			this->LineChecksPanel->Dock = System::Windows::Forms::DockStyle::Top;
+			this->LineChecksPanel->AutoSize = true;
+			this->LineChecksPanel->AutoSizeMode = System::Windows::Forms::AutoSizeMode::GrowAndShrink;
+			this->LineChecksPanel->WrapContents = true;
+			this->LineChecksPanel->FlowDirection = System::Windows::Forms::FlowDirection::LeftToRight;
+			this->LineChecksPanel->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			this->LineChecksPanel->Padding = System::Windows::Forms::Padding(6, 2, 6, 2);
+			ViewSplit->Panel1->Controls->Add(this->LineChecksPanel);
 			ViewSplit->Panel2->Controls->Add(this->LogGrid);
 
 			// The split container is added first, so that the top panel is docked before it
@@ -284,11 +297,7 @@ namespace IRCAMThermalViewer {
 
 			this->LogChart->ChartAreas->Add(MainArea);
 
-			System::Windows::Forms::DataVisualization::Charting::Legend^ SeriesLegend = gcnew System::Windows::Forms::DataVisualization::Charting::Legend("Legend");
-			SeriesLegend->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
-			SeriesLegend->ForeColor = System::Drawing::Color::White;
-			SeriesLegend->Docking = System::Windows::Forms::DataVisualization::Charting::Docking::Top;
-			this->LogChart->Legends->Add(SeriesLegend);
+			// The graph has no legend of its own: the check boxes above the graph name the lines and show / hide them
 
 			// The labels of the time axis show the elapsed time (also when the log is longer than 24 hours)
 			this->LogChart->FormatNumber += gcnew System::EventHandler<System::Windows::Forms::DataVisualization::Charting::FormatNumberEventArgs^>(this, &DataLogGUI::LogChart_FormatNumber);
@@ -446,6 +455,10 @@ namespace IRCAMThermalViewer {
 			this->StyleMenuItem(this->YSetRangeMenuItem, "Set Y-Axis Range And Lock...");
 			this->YSetRangeMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::YSetRangeMenuItem_Click);
 
+			this->YLockCurrentMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->YLockCurrentMenuItem, "Lock Y-Axis At Current Range");
+			this->YLockCurrentMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::YLockCurrentMenuItem_Click);
+
 			this->YUnlockMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
 			this->StyleMenuItem(this->YUnlockMenuItem, "Unlock Y-Axis (Auto Range)");
 			this->YUnlockMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::YUnlockMenuItem_Click);
@@ -460,6 +473,7 @@ namespace IRCAMThermalViewer {
 			this->ChartContextMenu->Items->Add(Separator2);
 			this->ChartContextMenu->Items->Add(this->YRangeStatusMenuItem);
 			this->ChartContextMenu->Items->Add(this->YSetRangeMenuItem);
+			this->ChartContextMenu->Items->Add(this->YLockCurrentMenuItem);
 			this->ChartContextMenu->Items->Add(this->YUnlockMenuItem);
 
 			this->ChartContextMenu->Opening += gcnew System::ComponentModel::CancelEventHandler(this, &DataLogGUI::ChartContextMenu_Opening);
@@ -498,6 +512,7 @@ namespace IRCAMThermalViewer {
 			}
 			else { this->YRangeStatusMenuItem->Text = "Y-Axis Range: Auto"; }
 
+			this->YLockCurrentMenuItem->Enabled = !this->YRangeLocked;
 			this->YUnlockMenuItem->Enabled = this->YRangeLocked;
 
 		}
@@ -518,6 +533,57 @@ namespace IRCAMThermalViewer {
 			if (TickItem->OwnerItem == this->XTicksMenuItem) { this->XTickCount = NewTickCount; }
 			else { this->YTickCount = NewTickCount; }
 
+			this->ApplyAxisSettings();
+
+		}
+
+		bool GetYViewRange(double% ViewMinimum, double% ViewMaximum) {
+
+			// The temperature range that is shown now (the zoomed range, or the range of the whole axis). False when there is no valid range yet.
+			try {
+
+				this->LogChart->ChartAreas[0]->RecalculateAxesScale();
+				System::Windows::Forms::DataVisualization::Charting::Axis^ AxisY = this->LogChart->ChartAreas[0]->AxisY;
+
+				if (AxisY->ScaleView->IsZoomed == true) { ViewMinimum = AxisY->ScaleView->ViewMinimum; ViewMaximum = AxisY->ScaleView->ViewMaximum; }
+				else { ViewMinimum = AxisY->Minimum; ViewMaximum = AxisY->Maximum; }
+
+				return (!System::Double::IsNaN(ViewMinimum) && !System::Double::IsNaN(ViewMaximum) && ViewMaximum > ViewMinimum);
+
+			}
+			catch (System::Exception^) { return false; }
+
+		}
+
+		System::Void YLockCurrentMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Locks the temperature axis at the range that is shown now (rounded outwards to one decimal)
+			double CurrentMinimum = 0.0;
+			double CurrentMaximum = 0.0;
+
+			if (this->GetYViewRange(CurrentMinimum, CurrentMaximum)) {
+
+				this->YLockedMinimum = System::Math::Floor(CurrentMinimum * 10.0) / 10.0;
+				this->YLockedMaximum = System::Math::Ceiling(CurrentMaximum * 10.0) / 10.0;
+				this->YRangeLocked = true;
+
+				// The locked range is the range that is shown, so the zoom of this axis is not needed any more
+				this->LogChart->ChartAreas[0]->AxisY->ScaleView->ZoomReset(0);
+				this->ApplyAxisSettings();
+
+			}
+
+		}
+
+		System::Void LineCheck_CheckedChanged(System::Object^ sender, System::EventArgs^ e) {
+
+			// Shows or hides the graph line of the check box (the data of a hidden line keeps being collected)
+			System::Windows::Forms::CheckBox^ LineCheck = (System::Windows::Forms::CheckBox^)sender;
+			int SeriesIndex = System::Convert::ToInt32(LineCheck->Tag);
+
+			if (SeriesIndex >= 0 && SeriesIndex < this->LogChart->Series->Count) { this->LogChart->Series[SeriesIndex]->Enabled = LineCheck->Checked; }
+
+			// The ticks and the automatic range follow the lines that are shown
 			this->ApplyAxisSettings();
 
 		}
@@ -544,21 +610,15 @@ namespace IRCAMThermalViewer {
 			}
 			else {
 
-				try {
+				double CurrentMinimum = 0.0;
+				double CurrentMaximum = 0.0;
 
-					this->LogChart->ChartAreas[0]->RecalculateAxesScale();
-					double CurrentMinimum = this->LogChart->ChartAreas[0]->AxisY->ScaleView->ViewMinimum;
-					double CurrentMaximum = this->LogChart->ChartAreas[0]->AxisY->ScaleView->ViewMaximum;
+				if (this->GetYViewRange(CurrentMinimum, CurrentMaximum)) {
 
-					if (!System::Double::IsNaN(CurrentMinimum) && !System::Double::IsNaN(CurrentMaximum) && CurrentMaximum > CurrentMinimum) {
-
-						StartMinimum = System::Math::Floor(CurrentMinimum * 10.0) / 10.0;
-						StartMaximum = System::Math::Ceiling(CurrentMaximum * 10.0) / 10.0;
-
-					}
+					StartMinimum = System::Math::Floor(CurrentMinimum * 10.0) / 10.0;
+					StartMaximum = System::Math::Ceiling(CurrentMaximum * 10.0) / 10.0;
 
 				}
-				catch (System::Exception^) {}
 
 			}
 
@@ -658,7 +718,7 @@ namespace IRCAMThermalViewer {
 			for (int i = 0; i < this->LogChart->Series->Count; i++) {
 
 				System::Windows::Forms::DataVisualization::Charting::Series^ LineSeries = this->LogChart->Series[i];
-				if (LineSeries->Points->Count == 0) { continue; }
+				if (LineSeries->Enabled == false || LineSeries->Points->Count == 0) { continue; }
 
 				double SeriesMinimum = LineSeries->Points->FindMinByValue("Y1")->YValues[0];
 				double SeriesMaximum = LineSeries->Points->FindMaxByValue("Y1")->YValues[0];
@@ -902,6 +962,7 @@ namespace IRCAMThermalViewer {
 			this->LogGrid->Rows->Clear();
 			this->LogGrid->Columns->Clear();
 			this->LogChart->Series->Clear();
+			this->LineChecksPanel->Controls->Clear();
 			this->ViewedFilePosition = 0;
 			this->PartialLine = "";
 			this->ViewedSampleRows = 0;
@@ -949,12 +1010,22 @@ namespace IRCAMThermalViewer {
 						LineSeries->XValueType = System::Windows::Forms::DataVisualization::Charting::ChartValueType::DateTime;
 						LineSeries->YValueType = System::Windows::Forms::DataVisualization::Charting::ChartValueType::Double;
 						LineSeries->ChartArea = "Main";
-						LineSeries->Legend = "Legend";
 						LineSeries->LegendText = HeaderText;
 						LineSeries->Color = this->GetSeriesColor(c - 2);
 						LineSeries->BorderWidth = 1;
 						LineSeries->ToolTip = "#LEGENDTEXT: #VALY{F2}  (#VALX{HH:mm:ss})";
 						this->LogChart->Series->Add(LineSeries);
+
+						// Check box of the line (all lines are shown at first)
+						System::Windows::Forms::CheckBox^ LineCheck = gcnew System::Windows::Forms::CheckBox();
+						LineCheck->Text = HeaderText;
+						LineCheck->AutoSize = true;
+						LineCheck->Checked = true;
+						LineCheck->ForeColor = this->GetSeriesColor(c - 2);
+						LineCheck->Tag = System::Convert::ToString(c - 2);
+						LineCheck->Margin = System::Windows::Forms::Padding(4, 2, 10, 2);
+						LineCheck->CheckedChanged += gcnew System::EventHandler(this, &DataLogGUI::LineCheck_CheckedChanged);
+						this->LineChecksPanel->Controls->Add(LineCheck);
 
 					}
 
