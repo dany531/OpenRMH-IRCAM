@@ -5,7 +5,7 @@ A modified version of **OpenRMH-IRCAM** (based on v3.0.0-community.5) for the **
 
 - Fork: https://github.com/dany531/OpenRMH-IRCAM
 - Original project: https://github.com/Cyclotronic/OpenRMH-IRCAM
-- This branch contains **all** changes made so far: correct temperatures, automatic start-up, the 2D plot fixes and extras, the Data Log window, the confirmation / save questions of data logging, readable log file names, the mouse cursor temperature in the Data Log graph, a warning for sessions with many samples, zooming in both axes, the right-click menu of the Data Log graph and a check box per graph line.
+- This branch contains **all** changes made so far: correct temperatures, automatic start-up, the 2D plot fixes and extras, the Data Log window, the confirmation / save questions of data logging, readable log file names, the mouse cursor temperature in the Data Log graph, a warning for sessions with many samples, zooming in both axes, the right-click menu of the Data Log graph a check box per graph line and an Export Graph button.
 
 ---
 
@@ -170,6 +170,17 @@ graph line**, with the line's name in the line's color. Un-tick a box to hide th
 A hidden line is only hidden from the graph: its data keeps being collected and stays in the table and in the log file. The automatic
 Y range and the Y tick / range settings only use the lines that are shown.
 
+### 1.13 Export Graph as an image (new)
+
+The **Export Graph** button, next to Start Logging, Stop Logging, Show Log File, Clear View and Reset Zoom, saves the Data Log graph as an image.
+A save window opens (file types **PNG**, **JPEG** and **BMP**; the format follows the extension you type, PNG by default) with the session file
+name plus `_graph` as the suggested name (or `DataLogGraph_` and the date and time when there is no session file name).
+
+- The image is the graph **as it is shown now**: zoom, number of ticks and locked Y range are included; lines you hid with the check boxes (1.12) are not.
+- It has the size of the graph on the screen. A strip above the graph names the lines that are shown, each name in the color of its line.
+- The mouse cursor temperature label (1.8) is not part of the image.
+- If there is no graph yet, or saving fails, a message window says so.
+
 ---
 
 ## 2. How to use it
@@ -192,7 +203,7 @@ Y range and the Y tick / range settings only use the lines that are shown.
 | `RMH_Application_ThermalViewer.cpp` | Start-up routines (select camera and connect, enable periodic calibration), applying the plot data set settings, temporary data log file, save / discard question (`RMH_ThermalViewer_FinishDataLoggingSession`), 50 ms stop check of the logging thread, readable log file name, warning window for sessions with many samples |
 | `RMH_Application_ThermalViewer.h` | Start-up settings and declarations (incl. `RMH_ThermalViewer_FinishDataLoggingSession`); Data Log window limits (`_DataLogView_MaxRows`, `_DataLogView_MaxPlotPoints`); `AskUserAboutSampleLimit` parameter of `RMH_ThermalViewer_StartDataLogging` |
 | `MainGUI.h` | Start-up timer (switch to the stream window, press Q), the three information windows, applying the plot settings, and the Data Log menu item |
-| `DataLogGUI.h` (new) | The Data Log window (table and graph that follow the data logging file); Yes / No questions for Stop Logging and Clear View; follows the session file to the saved location; mouse cursor temperature label in the graph (right-click menu); note about many samples in the opening notice; zoom rectangle on both axes; right-click menu of the graph (cursor temperature, number of ticks, Y-axis range set / lock at current / unlock); check box per graph line |
+| `DataLogGUI.h` (new) | The Data Log window (table and graph that follow the data logging file); Yes / No questions for Stop Logging and Clear View; follows the session file to the saved location; mouse cursor temperature label in the graph (right-click menu); note about many samples in the opening notice; zoom rectangle on both axes; right-click menu of the graph (cursor temperature, number of ticks, Y-axis range set / lock at current / unlock); check box per graph line; Export Graph button (graph saved as image) |
 | `GlobalObjectsAndVariables.h/.cpp` | Flags for the Data Log window; `DataLoggingSessionFolderString` (folder of the current session file) |
 | `RMH_OpenGL_2DPlot.h` | OpenGL window created at the panel size and resized with it; right-click menu on the plot; locked Y-axis range |
 | `TempMeasGUI.h` | New Y-axis range items (set, lock, unlock) in the plot's right-click menu; data logging thread `RunWorkerCompleted` event (asks save / discard) |
@@ -258,6 +269,7 @@ Fallbacks: Build #7 (commit `7b355e8`, branch `fix-t2s-v2-temperature`) and the 
 | Data Log graph: X / Y number of ticks (Auto, fixed numbers), also while zoomed | Not tested yet |
 | Data Log graph: Set Y-Axis Range And Lock, Lock Y-Axis At Current Range, Unlock Y-Axis | Not tested yet |
 | Data Log graph: check box per line shows / hides the line; all ticked at the start | Not tested yet |
+| Data Log graph: Export Graph saves PNG / JPEG / BMP with the shown lines named above the graph | Not tested yet |
 | Data Log graph: left-drag rectangle zooms both X and Y; Reset Zoom works | Not tested yet |
 | Warning window for more than 100000 samples: Start starts, Cancel does not start; no window for alarm / trigger starts | Not tested yet |
 

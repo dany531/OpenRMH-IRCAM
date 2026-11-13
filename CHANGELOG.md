@@ -5,6 +5,14 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data Log window: **Export Graph** button, next to Start Logging / Stop Logging / Show Log File / Clear View / Reset Zoom. It saves the graph
+  as an image: a save window (PNG, JPEG or BMP; the format follows the file extension, PNG by default) opens with the session file name + `_graph`
+  as the file name. The image shows the graph as it is shown now (zoom, ticks, locked Y range) at the size of the graph on the screen, without
+  the hidden lines, and has a strip above the graph with the names of the lines that are shown, in the color of the lines (the graph has
+  no legend of its own since the line check boxes were added). The mouse cursor temperature label is not part of the image. A message is shown
+  when there is no graph yet or when saving fails. The buttons of the top row were made a little narrower to make room (the window
+  layout is otherwise unchanged). Change in `DataLogGUI.h` (`ExportGraphButton_Click`, `BuildLayout`).
+
 - Data Log window graph: check box per graph line. Each line of the graph now has a check box above the graph (below the Start Logging /
   Stop Logging / Show Log File / Clear View / Reset Zoom buttons), with the name of the line in the color of the line. Un-tick a box to
   hide that line from the graph, tick it to show it again. All lines are shown (ticked) when a log is opened or a new session starts.
