@@ -40,8 +40,14 @@ namespace IRCAMThermalViewer {
 			this->NoticeShowing = false;
 			this->HideDurationNotice = false;
 			this->CursorLabelEnabled = false;
-			this->ChartMouseIsDown = false;
-			this->ChartMouseDownPoint = System::Drawing::Point(0, 0);
+			this->XTickCount = 0;
+			this->YTickCount = 0;
+			this->YRangeLocked = false;
+			this->YLockedMinimum = 0.0;
+			this->YLockedMaximum = 100.0;
+			this->YRangeSetByProgram = false;
+			this->XIntervalSetByProgram = false;
+			this->YIntervalSetByProgram = false;
 
 			this->BuildLayout();
 
@@ -60,10 +66,25 @@ namespace IRCAMThermalViewer {
 		bool SplitDistanceSet;
 		System::Windows::Forms::Button^ ResetZoomButton;
 		System::DateTime ChartStartTime;
-		System::Windows::Forms::Label^ CursorLabel;     // Shows the temperature at the mouse cursor (left click on the graph switches it on / off)
+		System::Windows::Forms::Label^ CursorLabel;     // Shows the temperature at the mouse cursor (switched on / off in the right click menu of the graph)
 		bool CursorLabelEnabled;
-		bool ChartMouseIsDown;
-		System::Drawing::Point ChartMouseDownPoint;
+
+		// Right click menu of the graph, and its settings
+		System::Windows::Forms::ContextMenuStrip^ ChartContextMenu;
+		System::Windows::Forms::ToolStripMenuItem^ CursorTempMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ XTicksMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ YTicksMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ YRangeStatusMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ YSetRangeMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ YUnlockMenuItem;
+		int XTickCount;              // Number of ticks of the time axis (0 = automatic)
+		int YTickCount;              // Number of ticks of the temperature axis (0 = automatic)
+		bool YRangeLocked;           // The temperature axis is locked to a fixed range
+		double YLockedMinimum;
+		double YLockedMaximum;
+		bool YRangeSetByProgram;     // The range of the temperature axis was set by this code (so it is given back to automatic when not needed)
+		bool XIntervalSetByProgram;
+		bool YIntervalSetByProgram;
 		bool NoticeShowing;
 		bool HideDurationNotice;
 		System::Windows::Forms::Button^ StartLoggingButton;
@@ -272,7 +293,7 @@ namespace IRCAMThermalViewer {
 			// The labels of the time axis show the elapsed time (also when the log is longer than 24 hours)
 			this->LogChart->FormatNumber += gcnew System::EventHandler<System::Windows::Forms::DataVisualization::Charting::FormatNumberEventArgs^>(this, &DataLogGUI::LogChart_FormatNumber);
 
-			// Mouse cursor temperature label - a left click (without dragging) in the graph switches it on or off, like in the Plots window
+			// Mouse cursor temperature label - switched on or off in the right click menu of the graph
 			this->CursorLabel = gcnew System::Windows::Forms::Label();
 			this->CursorLabel->AutoSize = true;
 			this->CursorLabel->BackColor = System::Drawing::Color::FromArgb(20, 20, 20);
@@ -282,9 +303,14 @@ namespace IRCAMThermalViewer {
 			this->CursorLabel->Visible = false;
 			this->LogChart->Controls->Add(this->CursorLabel);
 
-			this->LogChart->MouseDown += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseDown);
-			this->LogChart->MouseUp += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseUp);
 			this->LogChart->MouseMove += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseMove);
+			this->LogChart->MouseLeave += gcnew System::EventHandler(this, &DataLogGUI::LogChart_MouseLeave);
+
+			// Update the tick intervals when the graph is zoomed
+			this->LogChart->AxisViewChanged += gcnew System::EventHandler<System::Windows::Forms::DataVisualization::Charting::ViewEventArgs^>(this, &DataLogGUI::LogChart_AxisViewChanged);
+
+			// Right click menu of the graph
+			this->BuildChartContextMenu();
 
 			this->UpdateAxisTitles();
 
@@ -337,38 +363,435 @@ namespace IRCAMThermalViewer {
 
 		}
 
-		System::Void LogChart_MouseDown(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
+		System::Void LogChart_MouseMove(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
 
-			if (e->Button == System::Windows::Forms::MouseButtons::Left) {
+			if (this->CursorLabelEnabled == true) { this->UpdateCursorLabel(e->X, e->Y); }
 
-				this->ChartMouseIsDown = true;
-				this->ChartMouseDownPoint = System::Drawing::Point(e->X, e->Y);
+		}
+
+		System::Void LogChart_MouseLeave(System::Object^ sender, System::EventArgs^ e) {
+
+			// The label is hidden when the mouse leaves the graph (it shows again when the mouse comes back)
+			this->CursorLabel->Visible = false;
+
+		}
+
+		System::Void LogChart_AxisViewChanged(System::Object^ sender, System::Windows::Forms::DataVisualization::Charting::ViewEventArgs^ e) {
+
+			// The graph was zoomed or the zoom was reset - the ticks follow the visible range
+			this->ApplyAxisSettings();
+
+		}
+
+		// ------------------------- Right click menu of the graph ------------------------- //
+
+		System::Void StyleMenuItem(System::Windows::Forms::ToolStripMenuItem^ MenuItem, System::String^ MenuText) {
+
+			// Gives an item of the right click menu the same look as the context menus of the other windows
+			MenuItem->Text = MenuText;
+			MenuItem->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			MenuItem->ForeColor = System::Drawing::Color::White;
+			MenuItem->Font = gcnew System::Drawing::Font("Arial", 9);
+
+		}
+
+		System::Void AddTickItems(System::Windows::Forms::ToolStripMenuItem^ ParentItem, cli::array<int>^ TickCounts) {
+
+			// Auto first, then the fixed numbers of ticks (the Tag of an item is its number of ticks, 0 is automatic)
+			System::Windows::Forms::ToolStripMenuItem^ AutoItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(AutoItem, "Auto");
+			AutoItem->Tag = "0";
+			AutoItem->Click += gcnew System::EventHandler(this, &DataLogGUI::TickMenuItem_Click);
+			ParentItem->DropDownItems->Add(AutoItem);
+
+			for (int i = 0; i < TickCounts->Length; i++) {
+
+				System::Windows::Forms::ToolStripMenuItem^ TickItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+				this->StyleMenuItem(TickItem, System::Convert::ToString(TickCounts[i]) + gcnew System::String(" Ticks"));
+				TickItem->Tag = System::Convert::ToString(TickCounts[i]);
+				TickItem->Click += gcnew System::EventHandler(this, &DataLogGUI::TickMenuItem_Click);
+				ParentItem->DropDownItems->Add(TickItem);
 
 			}
 
 		}
 
-		System::Void LogChart_MouseUp(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
+		System::Void BuildChartContextMenu() {
 
-			if (e->Button == System::Windows::Forms::MouseButtons::Left && this->ChartMouseIsDown == true) {
+			// The same menu structure as the right click menu of the Plots window, with the mouse cursor temperature added at the top
+			this->ChartContextMenu = gcnew System::Windows::Forms::ContextMenuStrip();
+			this->ChartContextMenu->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			this->ChartContextMenu->ForeColor = System::Drawing::Color::White;
+			this->ChartContextMenu->ShowImageMargin = false;
+			this->ChartContextMenu->ShowCheckMargin = true;
 
-				this->ChartMouseIsDown = false;
+			this->CursorTempMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->CursorTempMenuItem, "Temperature At The Cursor");
+			this->CursorTempMenuItem->CheckOnClick = true;
+			this->CursorTempMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::CursorTempMenuItem_Click);
 
-				// A click (no drag - a drag is the zoom rectangle) switches the mouse cursor temperature on or off
-				if (System::Math::Abs(e->X - this->ChartMouseDownPoint.X) <= 4 && System::Math::Abs(e->Y - this->ChartMouseDownPoint.Y) <= 4) {
+			this->XTicksMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->XTicksMenuItem, "X-Axis Number Of Ticks");
+			this->AddTickItems(this->XTicksMenuItem, gcnew cli::array<int>{ 5, 10, 20, 25, 50 });
 
-					this->CursorLabelEnabled = !this->CursorLabelEnabled;
-					this->UpdateCursorLabel(e->X, e->Y);
+			this->YTicksMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->YTicksMenuItem, "Y-Axis Number Of Ticks");
+			this->AddTickItems(this->YTicksMenuItem, gcnew cli::array<int>{ 5, 10, 15, 20, 25, 30 });
+
+			this->YRangeStatusMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->YRangeStatusMenuItem, "Y-Axis Range: Auto");
+			this->YRangeStatusMenuItem->Enabled = false;
+
+			this->YSetRangeMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->YSetRangeMenuItem, "Set Y-Axis Range And Lock...");
+			this->YSetRangeMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::YSetRangeMenuItem_Click);
+
+			this->YUnlockMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->YUnlockMenuItem, "Unlock Y-Axis (Auto Range)");
+			this->YUnlockMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::YUnlockMenuItem_Click);
+
+			System::Windows::Forms::ToolStripSeparator^ Separator1 = gcnew System::Windows::Forms::ToolStripSeparator();
+			System::Windows::Forms::ToolStripSeparator^ Separator2 = gcnew System::Windows::Forms::ToolStripSeparator();
+
+			this->ChartContextMenu->Items->Add(this->CursorTempMenuItem);
+			this->ChartContextMenu->Items->Add(Separator1);
+			this->ChartContextMenu->Items->Add(this->XTicksMenuItem);
+			this->ChartContextMenu->Items->Add(this->YTicksMenuItem);
+			this->ChartContextMenu->Items->Add(Separator2);
+			this->ChartContextMenu->Items->Add(this->YRangeStatusMenuItem);
+			this->ChartContextMenu->Items->Add(this->YSetRangeMenuItem);
+			this->ChartContextMenu->Items->Add(this->YUnlockMenuItem);
+
+			this->ChartContextMenu->Opening += gcnew System::ComponentModel::CancelEventHandler(this, &DataLogGUI::ChartContextMenu_Opening);
+
+			this->LogChart->ContextMenuStrip = this->ChartContextMenu;
+			this->CursorLabel->ContextMenuStrip = this->ChartContextMenu;
+
+		}
+
+		System::Void CheckTickItems(System::Windows::Forms::ToolStripMenuItem^ ParentItem, int TickCount) {
+
+			// Marks the item of the number of ticks that is in use
+			for (int i = 0; i < ParentItem->DropDownItems->Count; i++) {
+
+				System::Windows::Forms::ToolStripMenuItem^ TickItem = dynamic_cast<System::Windows::Forms::ToolStripMenuItem^>(ParentItem->DropDownItems[i]);
+				if (TickItem != nullptr) { TickItem->Checked = (System::Convert::ToInt32(TickItem->Tag) == TickCount); }
+
+			}
+
+		}
+
+		System::Void ChartContextMenu_Opening(System::Object^ sender, System::ComponentModel::CancelEventArgs^ e) {
+
+			// Updates the items before the menu is shown
+			this->CursorTempMenuItem->Checked = this->CursorLabelEnabled;
+			this->CheckTickItems(this->XTicksMenuItem, this->XTickCount);
+			this->CheckTickItems(this->YTicksMenuItem, this->YTickCount);
+
+			if (this->YRangeLocked == true) {
+
+				double LockedMinimumValue = System::Math::Round(this->YLockedMinimum, 1);
+				double LockedMaximumValue = System::Math::Round(this->YLockedMaximum, 1);
+				this->YRangeStatusMenuItem->Text = gcnew System::String("Y-Axis Range: Locked ") + LockedMinimumValue.ToString("F1") +
+					gcnew System::String(" To ") + LockedMaximumValue.ToString("F1");
+
+			}
+			else { this->YRangeStatusMenuItem->Text = "Y-Axis Range: Auto"; }
+
+			this->YUnlockMenuItem->Enabled = this->YRangeLocked;
+
+		}
+
+		System::Void CursorTempMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Switches the temperature (and time) at the mouse cursor on or off
+			this->CursorLabelEnabled = this->CursorTempMenuItem->Checked;
+			if (this->CursorLabelEnabled == false) { this->CursorLabel->Visible = false; }
+
+		}
+
+		System::Void TickMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			System::Windows::Forms::ToolStripMenuItem^ TickItem = (System::Windows::Forms::ToolStripMenuItem^)sender;
+			int NewTickCount = System::Convert::ToInt32(TickItem->Tag);
+
+			if (TickItem->OwnerItem == this->XTicksMenuItem) { this->XTickCount = NewTickCount; }
+			else { this->YTickCount = NewTickCount; }
+
+			this->ApplyAxisSettings();
+
+		}
+
+		System::Void YUnlockMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// The temperature axis follows the data again
+			this->YRangeLocked = false;
+			this->ApplyAxisSettings();
+
+		}
+
+		System::Void YSetRangeMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Shows a window for entering a temperature axis minimum and maximum, and locks the axis to that range
+			double StartMinimum = 0.0;
+			double StartMaximum = 100.0;
+
+			if (this->YRangeLocked == true) {
+
+				StartMinimum = this->YLockedMinimum;
+				StartMaximum = this->YLockedMaximum;
+
+			}
+			else {
+
+				try {
+
+					this->LogChart->ChartAreas[0]->RecalculateAxesScale();
+					double CurrentMinimum = this->LogChart->ChartAreas[0]->AxisY->ScaleView->ViewMinimum;
+					double CurrentMaximum = this->LogChart->ChartAreas[0]->AxisY->ScaleView->ViewMaximum;
+
+					if (!System::Double::IsNaN(CurrentMinimum) && !System::Double::IsNaN(CurrentMaximum) && CurrentMaximum > CurrentMinimum) {
+
+						StartMinimum = System::Math::Floor(CurrentMinimum * 10.0) / 10.0;
+						StartMaximum = System::Math::Ceiling(CurrentMaximum * 10.0) / 10.0;
+
+					}
+
+				}
+				catch (System::Exception^) {}
+
+			}
+
+			System::Windows::Forms::Form^ RangeWindow = gcnew System::Windows::Forms::Form();
+			RangeWindow->Text = "Y-Axis Range";
+			RangeWindow->FormBorderStyle = System::Windows::Forms::FormBorderStyle::FixedDialog;
+			RangeWindow->StartPosition = System::Windows::Forms::FormStartPosition::CenterParent;
+			RangeWindow->MinimizeBox = false;
+			RangeWindow->MaximizeBox = false;
+			RangeWindow->ShowInTaskbar = false;
+			RangeWindow->BackColor = System::Drawing::Color::White;
+			RangeWindow->ForeColor = System::Drawing::Color::Black;
+			RangeWindow->ClientSize = System::Drawing::Size(380, 200);
+
+			System::Windows::Forms::Label^ MinimumLabel = gcnew System::Windows::Forms::Label();
+			MinimumLabel->Text = "Minimum:";
+			MinimumLabel->AutoSize = false;
+			MinimumLabel->Location = System::Drawing::Point(20, 24);
+			MinimumLabel->Size = System::Drawing::Size(110, 24);
+			RangeWindow->Controls->Add(MinimumLabel);
+
+			System::Windows::Forms::NumericUpDown^ MinimumBox = gcnew System::Windows::Forms::NumericUpDown();
+			MinimumBox->DecimalPlaces = 1;
+			MinimumBox->Minimum = System::Decimal(-1000);
+			MinimumBox->Maximum = System::Decimal(10000);
+			MinimumBox->Increment = System::Decimal(1);
+			MinimumBox->Value = System::Decimal(System::Math::Max(-1000.0, System::Math::Min(10000.0, StartMinimum)));
+			MinimumBox->Location = System::Drawing::Point(140, 22);
+			MinimumBox->Size = System::Drawing::Size(200, 24);
+			RangeWindow->Controls->Add(MinimumBox);
+
+			System::Windows::Forms::Label^ MaximumLabel = gcnew System::Windows::Forms::Label();
+			MaximumLabel->Text = "Maximum:";
+			MaximumLabel->AutoSize = false;
+			MaximumLabel->Location = System::Drawing::Point(20, 64);
+			MaximumLabel->Size = System::Drawing::Size(110, 24);
+			RangeWindow->Controls->Add(MaximumLabel);
+
+			System::Windows::Forms::NumericUpDown^ MaximumBox = gcnew System::Windows::Forms::NumericUpDown();
+			MaximumBox->DecimalPlaces = 1;
+			MaximumBox->Minimum = System::Decimal(-1000);
+			MaximumBox->Maximum = System::Decimal(10000);
+			MaximumBox->Increment = System::Decimal(1);
+			MaximumBox->Value = System::Decimal(System::Math::Max(-1000.0, System::Math::Min(10000.0, StartMaximum)));
+			MaximumBox->Location = System::Drawing::Point(140, 62);
+			MaximumBox->Size = System::Drawing::Size(200, 24);
+			RangeWindow->Controls->Add(MaximumBox);
+
+			System::Windows::Forms::Label^ NoteLabel = gcnew System::Windows::Forms::Label();
+			NoteLabel->Text = "The values are in the temperature unit shown on the graph. The range stays locked until you choose Unlock Y-Axis in the graph menu.";
+			NoteLabel->AutoSize = false;
+			NoteLabel->Location = System::Drawing::Point(20, 100);
+			NoteLabel->Size = System::Drawing::Size(340, 50);
+			RangeWindow->Controls->Add(NoteLabel);
+
+			System::Windows::Forms::Button^ RangeOkButton = gcnew System::Windows::Forms::Button();
+			RangeOkButton->Text = "Lock Range";
+			RangeOkButton->DialogResult = System::Windows::Forms::DialogResult::OK;
+			RangeOkButton->Location = System::Drawing::Point(80, 154);
+			RangeOkButton->Size = System::Drawing::Size(110, 30);
+			RangeWindow->Controls->Add(RangeOkButton);
+			RangeWindow->AcceptButton = RangeOkButton;
+
+			System::Windows::Forms::Button^ RangeCancelButton = gcnew System::Windows::Forms::Button();
+			RangeCancelButton->Text = "Cancel";
+			RangeCancelButton->DialogResult = System::Windows::Forms::DialogResult::Cancel;
+			RangeCancelButton->Location = System::Drawing::Point(200, 154);
+			RangeCancelButton->Size = System::Drawing::Size(110, 30);
+			RangeWindow->Controls->Add(RangeCancelButton);
+			RangeWindow->CancelButton = RangeCancelButton;
+
+			if (RangeWindow->ShowDialog(this) == System::Windows::Forms::DialogResult::OK) {
+
+				double NewMinimum = System::Decimal::ToDouble(MinimumBox->Value);
+				double NewMaximum = System::Decimal::ToDouble(MaximumBox->Value);
+
+				// A maximum that is not higher than the minimum is corrected
+				if (NewMaximum <= NewMinimum + 0.05) { NewMaximum = NewMinimum + 1.0; }
+
+				this->YLockedMinimum = NewMinimum;
+				this->YLockedMaximum = NewMaximum;
+				this->YRangeLocked = true;
+
+				// A locked range is a fresh view - the zoom is reset so the whole locked range is visible
+				this->LogChart->ChartAreas[0]->AxisY->ScaleView->ZoomReset(0);
+				this->ApplyAxisSettings();
+
+			}
+
+		}
+
+		bool GetDataRange(double% DataMinimum, double% DataMaximum) {
+
+			// The lowest and highest temperature of all lines of the graph (false when there is no data)
+			bool Found = false;
+
+			for (int i = 0; i < this->LogChart->Series->Count; i++) {
+
+				System::Windows::Forms::DataVisualization::Charting::Series^ LineSeries = this->LogChart->Series[i];
+				if (LineSeries->Points->Count == 0) { continue; }
+
+				double SeriesMinimum = LineSeries->Points->FindMinByValue("Y1")->YValues[0];
+				double SeriesMaximum = LineSeries->Points->FindMaxByValue("Y1")->YValues[0];
+
+				if (Found == false || SeriesMinimum < DataMinimum) { DataMinimum = SeriesMinimum; }
+				if (Found == false || SeriesMaximum > DataMaximum) { DataMaximum = SeriesMaximum; }
+				Found = true;
+
+			}
+
+			return Found;
+
+		}
+
+		System::Void ApplyAxisSettings() {
+
+			// Applies the number of ticks and the locked temperature range to the axes of the graph. With everything on automatic nothing is changed
+			// (and the automatic scaling of the graph is given back after a setting is switched to automatic).
+			if (this->XTickCount == 0 && this->YTickCount == 0 && this->YRangeLocked == false &&
+				this->YRangeSetByProgram == false && this->XIntervalSetByProgram == false && this->YIntervalSetByProgram == false) { return; }
+
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::ChartArea^ Area = this->LogChart->ChartAreas[0];
+				System::Windows::Forms::DataVisualization::Charting::Axis^ AxisX = Area->AxisX;
+				System::Windows::Forms::DataVisualization::Charting::Axis^ AxisY = Area->AxisY;
+
+				// ---- Temperature axis range ----
+				bool HasRange = false;
+				double RangeMinimum = 0.0;
+				double RangeMaximum = 1.0;
+
+				if (this->YRangeLocked == true) {
+
+					RangeMinimum = this->YLockedMinimum;
+					RangeMaximum = this->YLockedMaximum;
+					HasRange = true;
+
+				}
+				else if (this->YTickCount > 0 && AxisY->ScaleView->IsZoomed == false) {
+
+					// The ticks are spread evenly over the range of the data (with a small margin, rounded to one decimal)
+					double DataMinimum = 0.0;
+					double DataMaximum = 0.0;
+
+					if (this->GetDataRange(DataMinimum, DataMaximum)) {
+
+						double Margin = System::Math::Max((DataMaximum - DataMinimum) * 0.05, 0.1);
+						RangeMinimum = System::Math::Floor((DataMinimum - Margin) * 10.0) / 10.0;
+						RangeMaximum = System::Math::Ceiling((DataMaximum + Margin) * 10.0) / 10.0;
+						HasRange = true;
+
+					}
+
+				}
+
+				if (HasRange == true) {
+
+					if (AxisY->Minimum != RangeMinimum || AxisY->Maximum != RangeMaximum) {
+
+						AxisY->Minimum = RangeMinimum;
+						AxisY->Maximum = RangeMaximum;
+
+					}
+
+					this->YRangeSetByProgram = true;
+
+				}
+				else if (this->YRangeSetByProgram == true && this->YTickCount == 0) {
+
+					// Back to automatic
+					AxisY->Minimum = System::Double::NaN;
+					AxisY->Maximum = System::Double::NaN;
+					this->YRangeSetByProgram = false;
+
+				}
+
+				// ---- Temperature axis ticks ----
+				if (this->YTickCount > 0) {
+
+					double ViewMinimum = 0.0;
+					double ViewMaximum = 0.0;
+
+					if (AxisY->ScaleView->IsZoomed == true) { ViewMinimum = AxisY->ScaleView->ViewMinimum; ViewMaximum = AxisY->ScaleView->ViewMaximum; }
+					else if (HasRange == true) { ViewMinimum = RangeMinimum; ViewMaximum = RangeMaximum; }
+
+					if (ViewMaximum > ViewMinimum) {
+
+						AxisY->Interval = (ViewMaximum - ViewMinimum) / (double)this->YTickCount;
+						this->YIntervalSetByProgram = true;
+
+					}
+
+				}
+				else if (this->YIntervalSetByProgram == true) {
+
+					AxisY->Interval = 0;
+					this->YIntervalSetByProgram = false;
+
+				}
+
+				// ---- Time axis ticks ----
+				if (this->XTickCount > 0) {
+
+					Area->RecalculateAxesScale();
+
+					double ViewMinimum = AxisX->Minimum;
+					double ViewMaximum = AxisX->Maximum;
+
+					if (AxisX->ScaleView->IsZoomed == true) { ViewMinimum = AxisX->ScaleView->ViewMinimum; ViewMaximum = AxisX->ScaleView->ViewMaximum; }
+
+					// The time axis is in days (date / time values) - the ticks are set in seconds
+					double RangeSeconds = (ViewMaximum - ViewMinimum) * 86400.0;
+
+					if (!System::Double::IsNaN(RangeSeconds) && RangeSeconds > 0.0) {
+
+						AxisX->IntervalType = System::Windows::Forms::DataVisualization::Charting::DateTimeIntervalType::Seconds;
+						AxisX->Interval = System::Math::Max(RangeSeconds / (double)this->XTickCount, 0.001);
+						this->XIntervalSetByProgram = true;
+
+					}
+
+				}
+				else if (this->XIntervalSetByProgram == true) {
+
+					AxisX->Interval = 0;
+					AxisX->IntervalType = System::Windows::Forms::DataVisualization::Charting::DateTimeIntervalType::Auto;
+					this->XIntervalSetByProgram = false;
 
 				}
 
 			}
-
-		}
-
-		System::Void LogChart_MouseMove(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
-
-			if (this->CursorLabelEnabled == true) { this->UpdateCursorLabel(e->X, e->Y); }
+			catch (System::Exception^) {}
 
 		}
 
@@ -406,6 +829,7 @@ namespace IRCAMThermalViewer {
 
 			this->LogChart->ChartAreas[0]->AxisX->ScaleView->ZoomReset(0);
 			this->LogChart->ChartAreas[0]->AxisY->ScaleView->ZoomReset(0);
+			this->ApplyAxisSettings();
 
 		}
 
@@ -685,6 +1109,7 @@ namespace IRCAMThermalViewer {
 			}
 
 			this->UpdateAxisTitles();
+			this->ApplyAxisSettings();
 			this->UpdateStatusText();
 
 		}
