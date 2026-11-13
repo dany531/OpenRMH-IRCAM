@@ -46,6 +46,10 @@ namespace IRCAMThermalViewer {
 			this->YLockedMinimum = 0.0;
 			this->YLockedMaximum = 100.0;
 			this->YRangeSetByProgram = false;
+			this->XRangeLocked = false;
+			this->XLockedMinimum = 0.0;
+			this->XLockedMaximum = 60.0;
+			this->XRangeSetByProgram = false;
 			this->XIntervalSetByProgram = false;
 			this->YIntervalSetByProgram = false;
 
@@ -85,6 +89,14 @@ namespace IRCAMThermalViewer {
 		bool YRangeLocked;           // The temperature axis is locked to a fixed range
 		double YLockedMinimum;
 		double YLockedMaximum;
+		System::Windows::Forms::ToolStripMenuItem^ XRangeStatusMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ XSetRangeMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ XLockCurrentMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ XUnlockMenuItem;
+		bool XRangeLocked;           // The time axis is locked to a fixed range
+		double XLockedMinimum;       // Locked time range in seconds of elapsed time
+		double XLockedMaximum;
+		bool XRangeSetByProgram;     // The range of the time axis was set by this code (so it is given back to automatic when not needed)
 		bool YRangeSetByProgram;     // The range of the temperature axis was set by this code (so it is given back to automatic when not needed)
 		bool XIntervalSetByProgram;
 		bool YIntervalSetByProgram;
@@ -453,6 +465,22 @@ namespace IRCAMThermalViewer {
 			this->StyleMenuItem(this->YTicksMenuItem, "Y-Axis Number Of Ticks");
 			this->AddTickItems(this->YTicksMenuItem, gcnew cli::array<int>{ 5, 10, 15, 20, 25, 30 });
 
+			this->XRangeStatusMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->XRangeStatusMenuItem, "X-Axis Range: Auto");
+			this->XRangeStatusMenuItem->Enabled = false;
+
+			this->XSetRangeMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->XSetRangeMenuItem, "Set X-Axis Range And Lock...");
+			this->XSetRangeMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::XSetRangeMenuItem_Click);
+
+			this->XLockCurrentMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->XLockCurrentMenuItem, "Lock X-Axis At Current Range");
+			this->XLockCurrentMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::XLockCurrentMenuItem_Click);
+
+			this->XUnlockMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->XUnlockMenuItem, "Unlock X-Axis (Auto Range)");
+			this->XUnlockMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::XUnlockMenuItem_Click);
+
 			this->YRangeStatusMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
 			this->StyleMenuItem(this->YRangeStatusMenuItem, "Y-Axis Range: Auto");
 			this->YRangeStatusMenuItem->Enabled = false;
@@ -477,6 +505,11 @@ namespace IRCAMThermalViewer {
 			this->ChartContextMenu->Items->Add(this->XTicksMenuItem);
 			this->ChartContextMenu->Items->Add(this->YTicksMenuItem);
 			this->ChartContextMenu->Items->Add(Separator2);
+			this->ChartContextMenu->Items->Add(this->XRangeStatusMenuItem);
+			this->ChartContextMenu->Items->Add(this->XSetRangeMenuItem);
+			this->ChartContextMenu->Items->Add(this->XLockCurrentMenuItem);
+			this->ChartContextMenu->Items->Add(this->XUnlockMenuItem);
+			this->ChartContextMenu->Items->Add(gcnew System::Windows::Forms::ToolStripSeparator());
 			this->ChartContextMenu->Items->Add(this->YRangeStatusMenuItem);
 			this->ChartContextMenu->Items->Add(this->YSetRangeMenuItem);
 			this->ChartContextMenu->Items->Add(this->YLockCurrentMenuItem);
@@ -518,6 +551,17 @@ namespace IRCAMThermalViewer {
 			}
 			else { this->YRangeStatusMenuItem->Text = "Y-Axis Range: Auto"; }
 
+			if (this->XRangeLocked == true) {
+
+				this->XRangeStatusMenuItem->Text = gcnew System::String("X-Axis Range: Locked ") + this->FormatRangeTime(this->XLockedMinimum) +
+					gcnew System::String(" To ") + this->FormatRangeTime(this->XLockedMaximum);
+
+			}
+			else { this->XRangeStatusMenuItem->Text = "X-Axis Range: Auto"; }
+
+			this->XLockCurrentMenuItem->Enabled = !this->XRangeLocked;
+			this->XUnlockMenuItem->Enabled = this->XRangeLocked;
+
 			this->YLockCurrentMenuItem->Enabled = !this->YRangeLocked;
 			this->YUnlockMenuItem->Enabled = this->YRangeLocked;
 
@@ -540,6 +584,229 @@ namespace IRCAMThermalViewer {
 			else { this->YTickCount = NewTickCount; }
 
 			this->ApplyAxisSettings();
+
+		}
+
+		System::String^ FormatRangeTime(double Seconds) {
+
+			// Elapsed time as h:mm:ss, with one decimal (h:mm:ss.f) when it is not a whole number of seconds
+			if (Seconds < 0.0) { Seconds = 0.0; }
+			long long Tenths = (long long)System::Math::Round(Seconds * 10.0);
+			long long WholeSeconds = Tenths / 10;
+			int Fraction = (int)(Tenths % 10);
+			int Minutes = (int)((WholeSeconds / 60) % 60);
+			int SecondsPart = (int)(WholeSeconds % 60);
+
+			System::String^ TimeText = System::Convert::ToString(WholeSeconds / 3600) + gcnew System::String(":") + Minutes.ToString("00") +
+				gcnew System::String(":") + SecondsPart.ToString("00");
+			if (Fraction > 0) { TimeText = TimeText + gcnew System::String(".") + System::Convert::ToString(Fraction); }
+
+			return TimeText;
+
+		}
+
+		bool ParseRangeTime(System::String^ TimeText, double% Seconds) {
+
+			// Reads h:mm:ss, m:ss or seconds (the last part may have decimals, with a point or a comma)
+			if (TimeText == nullptr) { return false; }
+			cli::array<System::String^>^ Parts = TimeText->Trim()->Split(gcnew cli::array<wchar_t>{ L':' });
+			if (Parts->Length < 1 || Parts->Length > 3) { return false; }
+
+			double Total = 0.0;
+
+			for (int i = 0; i < Parts->Length; i++) {
+
+				System::String^ Part = Parts[i]->Trim()->Replace(L',', L'.');
+				double PartValue = 0.0;
+
+				if (Part->Length == 0) { return false; }
+				if (!System::Double::TryParse(Part, System::Globalization::NumberStyles::Float, System::Globalization::CultureInfo::InvariantCulture, PartValue)) { return false; }
+				if (PartValue < 0.0) { return false; }
+				if (i < Parts->Length - 1 && PartValue != System::Math::Floor(PartValue)) { return false; }
+
+				Total = Total * 60.0 + PartValue;
+
+			}
+
+			Seconds = Total;
+			return true;
+
+		}
+
+		bool GetXViewRange(double% ViewMinimumSec, double% ViewMaximumSec) {
+
+			// The time range that is shown now, in seconds of elapsed time (the zoomed range, or the range of the whole axis)
+			try {
+
+				this->LogChart->ChartAreas[0]->RecalculateAxesScale();
+				System::Windows::Forms::DataVisualization::Charting::Axis^ AxisX = this->LogChart->ChartAreas[0]->AxisX;
+
+				double ViewMinimum = AxisX->Minimum;
+				double ViewMaximum = AxisX->Maximum;
+				if (AxisX->ScaleView->IsZoomed == true) { ViewMinimum = AxisX->ScaleView->ViewMinimum; ViewMaximum = AxisX->ScaleView->ViewMaximum; }
+
+				if (System::Double::IsNaN(ViewMinimum) || System::Double::IsNaN(ViewMaximum) || ViewMaximum <= ViewMinimum) { return false; }
+
+				double StartDay = this->ChartStartTime.ToOADate();
+				ViewMinimumSec = (ViewMinimum - StartDay) * 86400.0;
+				ViewMaximumSec = (ViewMaximum - StartDay) * 86400.0;
+				if (ViewMinimumSec < 0.0) { ViewMinimumSec = 0.0; }
+
+				return (ViewMaximumSec > ViewMinimumSec);
+
+			}
+			catch (System::Exception^) { return false; }
+
+		}
+
+		System::Void XLockCurrentMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Locks the time axis at the range that is shown now (rounded outwards to 0.1 second)
+			double CurrentMinimum = 0.0;
+			double CurrentMaximum = 0.0;
+
+			if (this->GetXViewRange(CurrentMinimum, CurrentMaximum)) {
+
+				this->XLockedMinimum = System::Math::Floor(CurrentMinimum * 10.0) / 10.0;
+				this->XLockedMaximum = System::Math::Ceiling(CurrentMaximum * 10.0) / 10.0;
+				this->XRangeLocked = true;
+
+				// The locked range is the range that is shown, so the zoom of this axis is not needed any more
+				this->LogChart->ChartAreas[0]->AxisX->ScaleView->ZoomReset(0);
+				this->ApplyAxisSettings();
+
+			}
+
+		}
+
+		System::Void XUnlockMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// The time axis follows the data again
+			this->XRangeLocked = false;
+			this->ApplyAxisSettings();
+
+		}
+
+		System::Void XSetRangeMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Shows a window for entering a time axis start and end (h:mm:ss), and locks the axis to that range
+			double StartMinimum = 0.0;
+			double StartMaximum = 60.0;
+
+			if (this->XRangeLocked == true) {
+
+				StartMinimum = this->XLockedMinimum;
+				StartMaximum = this->XLockedMaximum;
+
+			}
+			else {
+
+				double CurrentMinimum = 0.0;
+				double CurrentMaximum = 0.0;
+
+				if (this->GetXViewRange(CurrentMinimum, CurrentMaximum)) {
+
+					StartMinimum = System::Math::Floor(CurrentMinimum * 10.0) / 10.0;
+					StartMaximum = System::Math::Ceiling(CurrentMaximum * 10.0) / 10.0;
+
+				}
+
+			}
+
+			System::String^ MinimumText = this->FormatRangeTime(StartMinimum);
+			System::String^ MaximumText = this->FormatRangeTime(StartMaximum);
+
+			// The window is shown again (with the entered text) while the text is not a valid time
+			while (true) {
+
+				System::Windows::Forms::Form^ RangeWindow = gcnew System::Windows::Forms::Form();
+				RangeWindow->Text = "X-Axis Range";
+				RangeWindow->FormBorderStyle = System::Windows::Forms::FormBorderStyle::FixedDialog;
+				RangeWindow->StartPosition = System::Windows::Forms::FormStartPosition::CenterParent;
+				RangeWindow->MinimizeBox = false;
+				RangeWindow->MaximizeBox = false;
+				RangeWindow->ShowInTaskbar = false;
+				RangeWindow->BackColor = System::Drawing::Color::White;
+				RangeWindow->ForeColor = System::Drawing::Color::Black;
+				RangeWindow->ClientSize = System::Drawing::Size(380, 210);
+
+				System::Windows::Forms::Label^ MinimumLabel = gcnew System::Windows::Forms::Label();
+				MinimumLabel->Text = "Start (h:mm:ss):";
+				MinimumLabel->AutoSize = false;
+				MinimumLabel->Location = System::Drawing::Point(20, 24);
+				MinimumLabel->Size = System::Drawing::Size(120, 24);
+				RangeWindow->Controls->Add(MinimumLabel);
+
+				System::Windows::Forms::TextBox^ MinimumBox = gcnew System::Windows::Forms::TextBox();
+				MinimumBox->Text = MinimumText;
+				MinimumBox->Location = System::Drawing::Point(150, 22);
+				MinimumBox->Size = System::Drawing::Size(190, 24);
+				RangeWindow->Controls->Add(MinimumBox);
+
+				System::Windows::Forms::Label^ MaximumLabel = gcnew System::Windows::Forms::Label();
+				MaximumLabel->Text = "End (h:mm:ss):";
+				MaximumLabel->AutoSize = false;
+				MaximumLabel->Location = System::Drawing::Point(20, 64);
+				MaximumLabel->Size = System::Drawing::Size(120, 24);
+				RangeWindow->Controls->Add(MaximumLabel);
+
+				System::Windows::Forms::TextBox^ MaximumBox = gcnew System::Windows::Forms::TextBox();
+				MaximumBox->Text = MaximumText;
+				MaximumBox->Location = System::Drawing::Point(150, 62);
+				MaximumBox->Size = System::Drawing::Size(190, 24);
+				RangeWindow->Controls->Add(MaximumBox);
+
+				System::Windows::Forms::Label^ NoteLabel = gcnew System::Windows::Forms::Label();
+				NoteLabel->Text = "Elapsed time of the log session, for example 0:05:30 or 1:00:00.5 (also m:ss or seconds). The range stays locked until you choose Unlock X-Axis in the graph menu.";
+				NoteLabel->AutoSize = false;
+				NoteLabel->Location = System::Drawing::Point(20, 100);
+				NoteLabel->Size = System::Drawing::Size(340, 60);
+				RangeWindow->Controls->Add(NoteLabel);
+
+				System::Windows::Forms::Button^ RangeOkButton = gcnew System::Windows::Forms::Button();
+				RangeOkButton->Text = "Lock Range";
+				RangeOkButton->DialogResult = System::Windows::Forms::DialogResult::OK;
+				RangeOkButton->Location = System::Drawing::Point(80, 164);
+				RangeOkButton->Size = System::Drawing::Size(110, 30);
+				RangeWindow->Controls->Add(RangeOkButton);
+				RangeWindow->AcceptButton = RangeOkButton;
+
+				System::Windows::Forms::Button^ RangeCancelButton = gcnew System::Windows::Forms::Button();
+				RangeCancelButton->Text = "Cancel";
+				RangeCancelButton->DialogResult = System::Windows::Forms::DialogResult::Cancel;
+				RangeCancelButton->Location = System::Drawing::Point(200, 164);
+				RangeCancelButton->Size = System::Drawing::Size(110, 30);
+				RangeWindow->Controls->Add(RangeCancelButton);
+				RangeWindow->CancelButton = RangeCancelButton;
+
+				if (RangeWindow->ShowDialog(this) != System::Windows::Forms::DialogResult::OK) { return; }
+
+				MinimumText = MinimumBox->Text;
+				MaximumText = MaximumBox->Text;
+
+				double NewMinimum = 0.0;
+				double NewMaximum = 0.0;
+
+				if (this->ParseRangeTime(MinimumText, NewMinimum) && this->ParseRangeTime(MaximumText, NewMaximum)) {
+
+					// An end that is not later than the start is corrected
+					if (NewMaximum <= NewMinimum + 0.1) { NewMaximum = NewMinimum + 1.0; }
+
+					this->XLockedMinimum = NewMinimum;
+					this->XLockedMaximum = NewMaximum;
+					this->XRangeLocked = true;
+
+					// A locked range is a fresh view - the zoom is reset so the whole locked range is visible
+					this->LogChart->ChartAreas[0]->AxisX->ScaleView->ZoomReset(0);
+					this->ApplyAxisSettings();
+					return;
+
+				}
+
+				System::Windows::Forms::MessageBox::Show(this, "The start or the end is not a valid time. Use h:mm:ss, for example 0:05:30.", "X-Axis Range",
+					System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Warning);
+
+			}
 
 		}
 
@@ -743,14 +1010,40 @@ namespace IRCAMThermalViewer {
 
 			// Applies the number of ticks and the locked temperature range to the axes of the graph. With everything on automatic nothing is changed
 			// (and the automatic scaling of the graph is given back after a setting is switched to automatic).
-			if (this->XTickCount == 0 && this->YTickCount == 0 && this->YRangeLocked == false &&
-				this->YRangeSetByProgram == false && this->XIntervalSetByProgram == false && this->YIntervalSetByProgram == false) { return; }
+			if (this->XTickCount == 0 && this->YTickCount == 0 && this->YRangeLocked == false && this->XRangeLocked == false &&
+				this->XRangeSetByProgram == false && this->YRangeSetByProgram == false && this->XIntervalSetByProgram == false && this->YIntervalSetByProgram == false) { return; }
 
 			try {
 
 				System::Windows::Forms::DataVisualization::Charting::ChartArea^ Area = this->LogChart->ChartAreas[0];
 				System::Windows::Forms::DataVisualization::Charting::Axis^ AxisX = Area->AxisX;
 				System::Windows::Forms::DataVisualization::Charting::Axis^ AxisY = Area->AxisY;
+
+				// ---- Time axis range ----
+				if (this->XRangeLocked == true) {
+
+					double StartDay = this->ChartStartTime.ToOADate();
+					double LockedStartDay = StartDay + this->XLockedMinimum / 86400.0;
+					double LockedEndDay = StartDay + this->XLockedMaximum / 86400.0;
+
+					if (AxisX->Minimum != LockedStartDay || AxisX->Maximum != LockedEndDay) {
+
+						AxisX->Minimum = LockedStartDay;
+						AxisX->Maximum = LockedEndDay;
+
+					}
+
+					this->XRangeSetByProgram = true;
+
+				}
+				else if (this->XRangeSetByProgram == true) {
+
+					// Back to automatic
+					AxisX->Minimum = System::Double::NaN;
+					AxisX->Maximum = System::Double::NaN;
+					this->XRangeSetByProgram = false;
+
+				}
 
 				// ---- Temperature axis range ----
 				bool HasRange = false;
