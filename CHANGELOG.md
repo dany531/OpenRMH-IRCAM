@@ -5,6 +5,17 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data Log window: **Export Graph** now first opens the same "Graph Title" window as **Set Graph Title...** (it is one shared routine,
+  `ShowGraphTitleWindow`). The window shows the title that is set now, so it can be kept as it is, edited or replaced (an empty text removes
+  the title). **Set Title** applies the title and continues with the save window; **Cancel** cancels the export. The title that is entered stays
+  set for the graph, like with the menu item. Change in `DataLogGUI.h` (`ExportGraphButton_Click`, `GraphTitleMenuItem_Click`).
+
+- Data Log window graph: graph title. A new right-click menu item **Set Graph Title...** (below "Temperature At The Cursor") opens a window
+  to type a title (up to 200 characters). The title is shown in bold at the top center of the graph, above the plot area, and is part of an image saved
+  with **Export Graph**, so the image shows what the graph is about. An empty text removes the title. The title is kept when the view is cleared or
+  a new session starts, but it is not saved: it is empty again when the program is restarted. Change in `DataLogGUI.h` (`BuildChart`,
+  `GraphTitleMenuItem_Click`).
+
 - Data Log window graph: X-axis (time) range items in the right-click menu, the same as for the Y axis. Four new items, in their own block
   above the Y-axis block:
   - **X-Axis Range: Auto** (status line; **X-Axis Range: Locked h:mm:ss To h:mm:ss** when locked),
