@@ -5,11 +5,37 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data Log window graph: check box per graph line. Each line of the graph now has a check box above the graph (below the Start Logging /
+  Stop Logging / Show Log File / Clear View / Reset Zoom buttons), with the name of the line in the color of the line. Un-tick a box to
+  hide that line from the graph, tick it to show it again. All lines are shown (ticked) when a log is opened or a new session starts.
+  This replaces the legend of the graph (the boxes name the lines, the legend is removed). A hidden line is only hidden: its data keeps
+  being collected and is still in the table and in the log file. Hidden lines are ignored by the automatic Y-axis range and by the
+  Y-axis tick / range settings, so the Y axis fits the lines that are shown. Changes in `DataLogGUI.h` (`LineChecksPanel`,
+  `LineCheck_CheckedChanged`, `ProcessNewText`, `ResetView`, `GetDataRange`).
+
+- Data Log window graph: right-click menu item **Lock Y-Axis At Current Range** (like in the Plots window), between "Set Y-Axis Range
+  And Lock..." and "Unlock Y-Axis (Auto Range)". It locks the temperature axis at the range that is shown now (the zoomed range, or the
+  whole range), rounded outwards to one decimal. It is enabled while the axis is not locked. The "Set Y-Axis Range And Lock..." window
+  uses the same shown range as its start values. Change in `DataLogGUI.h` (`YLockCurrentMenuItem_Click`, `GetYViewRange`).
+
+- Data Log window graph: right-click menu. The left click that switched the mouse cursor temperature on or off is removed (a left click
+  does nothing now; dragging with the left button still zooms). A right click in the graph opens a menu with the same items as the
+  right-click menu of the Plots window, plus the cursor temperature:
+  - **Temperature At The Cursor** (check item): shows / hides the label with the temperature and the elapsed time at the mouse cursor.
+    The label also hides while the mouse is outside the graph.
+  - **X-Axis Number Of Ticks** (Auto, 5, 10, 20, 25, 50) and **Y-Axis Number Of Ticks** (Auto, 5, 10, 15, 20, 25, 30). The tick spacing is
+    the visible range divided by the number; it follows zooming, Reset Zoom and new data. With Y ticks set and the range not locked,
+    the Y axis fits the data (small margin, rounded to 0.1). Auto (default) leaves the scaling of the chart as before.
+  - **Y-Axis Range: Auto / Locked (min To max)** (status line), **Set Y-Axis Range And Lock...** (window for a minimum and maximum)
+    and **Unlock Y-Axis (Auto Range)**.
+  The lock and the tick settings are not saved (they reset when the program is restarted). Change in `DataLogGUI.h`
+  (`BuildChartContextMenu`, `ApplyAxisSettings`).
+
 - Data Log window graph zoom: dragging a rectangle with the left mouse button now zooms both the time (X) and the temperature (Y) axis
   to the area of the rectangle. Before, only the temperature axis zoomed: the time axis is a date / time axis, and the selection
   snapped to a large time unit. The selection cursors of both axes are now set to a fine step (X: 1 ms, Y: 0.001) and the smallest
   zoomed view is also small (X: 1 ms, Y: 0.001), so the rectangle is used as drawn. Reset Zoom is unchanged. A click without
-  dragging still switches the cursor temperature label on or off. Change in `DataLogGUI.h` (`BuildChart`).
+  dragging no longer does anything (the cursor temperature label is in the right-click menu now). Change in `DataLogGUI.h` (`BuildChart`).
 
 - Data logging: warning for sessions with many samples. When Start Logging is pressed (Data Log window button, the plot's right-click
   menu or hotkey M) and the session is set to more than 100000 samples (duration divided by sample interval), a window explains the
@@ -28,7 +54,7 @@ the number counts builds of this repository.
 - Data Log window graph: a left click in the graph switches a mouse cursor label on or off, like in the Plots window. While on, the
   label follows the mouse and shows the temperature at the cursor position (in the program's temperature unit) and the elapsed time,
   for example "Temperature: 25.43 C   (0:01:23)", or "Temperature: N/A" when the cursor is outside the plot area. Dragging a rectangle
-  (zoom) is not treated as a click. Change in `DataLogGUI.h`.
+  (zoom) is not treated as a click. Change in `DataLogGUI.h`. **Replaced in the entry "Data Log window graph: right-click menu" above: the left click no longer does this.**
 
 - Data logging: confirmation windows and temporary session file.
   - Data Log window: **Stop Logging** and **Clear View** now ask "Are you sure ...?" (Yes / No). "No" closes the window and does
