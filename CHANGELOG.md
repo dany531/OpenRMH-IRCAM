@@ -5,6 +5,20 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Spikes / dips in the **2D plot and in the data logging file during a camera shutter calibration** are removed. Cause: while the shutter
+  calibration runs (shutter closed, non-uniformity map and temperature look-up table regenerated, shutter reopened) the video thread kept
+  processing frames, so the plot and the data logging thread picked up the values of the closed shutter and of the first frames after it
+  reopened (maximum, minimum, center, points, lines and ROI values collapsing towards the shutter temperature). Now the **last good value of every
+  data set is held (frozen)** for the whole calibration plus a settle time of 300 ms. This applies to the 2D plot feed (all 10 data sets) and to the
+  data logging thread (the CSV file), and to every calibration: periodic (auto) calibration, temperature-drift-based calibration, the Calibrate
+  Camera button and the calibration after a temperature range switch. The frozen samples are written as a repeated last value; the CSV format is
+  not changed (no extra column, so the Data Log window and the MATLAB examples keep working). The settle time is `_CalibrationFreezeSettleTimeMs`
+  in `RMH_SupportedIRCameras_Resources.h`. Changes in `GlobalObjectsAndVariables.h/.cpp` (`CalibrationActiveFlag`, `CalibrationSettleUntilTick`,
+  `RMH_IsCalibrationFreezeActive`), `RMH_ThermalCameraSupport_Library.cpp` (`RMH_IRThermalCamera_CalibrateThermalCamera` sets and clears the freeze),
+  `RMH_Application_ThermalViewer.cpp` (new `RMH_FreezeValueDuringCalibration`, used in `RMH_ThermalViewer_ImageProcessingSequence` and
+  `RMH_ThermalViewer_DataLoggingThreadProcess`). Not changed: the calibration code and the video thread still use the same frame buffers without a
+  lock, so a single outlier frame right after a calibration is still possible in theory (see README section 7).
+
 - Closing the application while **data logging is running** now asks first. A window "Data Logging Is Running" says that the session is stopped
   if the application is closed and asks **"Are you sure you want to close the application?"** (the default button is **No**).
   - **No**: the application stays open and the logging continues.
