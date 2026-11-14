@@ -7,6 +7,8 @@
  */
 
 // Included libraries
+#include <limits>
+#include <math.h>
 #include "RMH_Application_ThermalViewer.h"
 #include "RMH_MathConversions_Library.h"
 #include "RMH_ImageProcessing_Library.h"
@@ -1113,12 +1115,25 @@ void RMH_ThermalViewer_UpdateDataLoggingCSVDataDelimiter() {
 
 }
 
+// Returns the live value, or the last good value while a camera calibration is running (LastGood is only updated when not calibrating)
+static double RMH_FreezeValueDuringCalibration(double* Source, double* LastGood) {
+
+	if (RMH_IsCalibrationFreezeActive() == false || _isnan(*LastGood)) { *LastGood = *Source; }
+
+	return *LastGood;
+
+}
+
 void RMH_ThermalViewer_DataLoggingThreadProcess() {
 
 	// This routine is the associated data logging processor thread
 
 	// Read the temporary array data and sort the kernel array
 	unsigned long NumberOfSampels = 0;
+
+	// Last good value of every data set - logged instead of the live value while the camera is calibrating
+	double DataLoggingLastGoodValues[_2DPlotMaxNumberOfDataSets];
+	for (unsigned int i = 0; i < _2DPlotMaxNumberOfDataSets; i++) { DataLoggingLastGoodValues[i] = std::numeric_limits<double>::quiet_NaN(); }
 
 	// Execute the thread process loop if data logging is active 
 	while (DataLoggingIsRunningFlag == true) {
@@ -1147,7 +1162,7 @@ void RMH_ThermalViewer_DataLoggingThreadProcess() {
 		for (unsigned int i = 0; i < DataLoggingNumberOfActiveSets; i++) {
 
 			// Load the data into the source data array
-			DataLoggingSourceDataArray[i] = *RMH_ThermalViewer_GetDataLoggingSourcePointerFromIndex(i);
+			DataLoggingSourceDataArray[i] = RMH_FreezeValueDuringCalibration(RMH_ThermalViewer_GetDataLoggingSourcePointerFromIndex(i), &DataLoggingLastGoodValues[i]);
 
 		}
 
@@ -4605,20 +4620,24 @@ void RMH_ThermalViewer_ImageProcessingSequence() {
 
 	// ---------------------------------------------- 2D Plot Data ---------------------------------------------- //
 
+	// Last good 2D plot values - held while the camera is calibrating
+	static double Plot2DLastGoodValues[10] = { std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(),
+		std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN() };
+
 	// Is the temperature plot form visible
 	if (isTempMeasurementsFormDocked == true || isTempMeasurementsFormUndocked == true) {
 
 		// Add measurements to the active 2D plot data sets 
-		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(*Plot2DDataSet1SourcePointer, _2DPlotDataSet_1);
-		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(*Plot2DDataSet2SourcePointer, _2DPlotDataSet_2);
-		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(*Plot2DDataSet3SourcePointer, _2DPlotDataSet_3);
-		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(*Plot2DDataSet4SourcePointer, _2DPlotDataSet_4);
-		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(*Plot2DDataSet5SourcePointer, _2DPlotDataSet_5);
-		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(*Plot2DDataSet6SourcePointer, _2DPlotDataSet_6);
-		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(*Plot2DDataSet7SourcePointer, _2DPlotDataSet_7);
-		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(*Plot2DDataSet8SourcePointer, _2DPlotDataSet_8);
-		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(*Plot2DDataSet9SourcePointer, _2DPlotDataSet_9);
-		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(*Plot2DDataSet10SourcePointer, _2DPlotDataSet_10);
+		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(RMH_FreezeValueDuringCalibration(Plot2DDataSet1SourcePointer, &Plot2DLastGoodValues[0]), _2DPlotDataSet_1);
+		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(RMH_FreezeValueDuringCalibration(Plot2DDataSet2SourcePointer, &Plot2DLastGoodValues[1]), _2DPlotDataSet_2);
+		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(RMH_FreezeValueDuringCalibration(Plot2DDataSet3SourcePointer, &Plot2DLastGoodValues[2]), _2DPlotDataSet_3);
+		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(RMH_FreezeValueDuringCalibration(Plot2DDataSet4SourcePointer, &Plot2DLastGoodValues[3]), _2DPlotDataSet_4);
+		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(RMH_FreezeValueDuringCalibration(Plot2DDataSet5SourcePointer, &Plot2DLastGoodValues[4]), _2DPlotDataSet_5);
+		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(RMH_FreezeValueDuringCalibration(Plot2DDataSet6SourcePointer, &Plot2DLastGoodValues[5]), _2DPlotDataSet_6);
+		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(RMH_FreezeValueDuringCalibration(Plot2DDataSet7SourcePointer, &Plot2DLastGoodValues[6]), _2DPlotDataSet_7);
+		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(RMH_FreezeValueDuringCalibration(Plot2DDataSet8SourcePointer, &Plot2DLastGoodValues[7]), _2DPlotDataSet_8);
+		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(RMH_FreezeValueDuringCalibration(Plot2DDataSet9SourcePointer, &Plot2DLastGoodValues[8]), _2DPlotDataSet_9);
+		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(RMH_FreezeValueDuringCalibration(Plot2DDataSet10SourcePointer, &Plot2DLastGoodValues[9]), _2DPlotDataSet_10);
 
 		// Read the maximum and minimum values of all active data sets and set the Y-axis range variables of the plot
 		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_ReadDataSetsMaxMinDataRangeValues();

@@ -215,6 +215,18 @@ unsigned int RecordingFrameRateTimeOutCounter = 0;
 
 // Data logging objects and variables
 bool DataLoggingIsRunningFlag = false;
+volatile bool CalibrationActiveFlag = false;
+volatile int CalibrationSettleUntilTick = 0;
+
+bool RMH_IsCalibrationFreezeActive() {
+
+	// Returns true while a shutter calibration is running and during the settle time after it (measurements are held at their last good values)
+	if (CalibrationActiveFlag == true) { return true; }
+
+	// Wrap-safe tick comparison
+	return ((int)(System::Environment::TickCount - CalibrationSettleUntilTick) < 0);
+
+}
 unsigned char DataLoggingNumberOfActiveSets = 0;
 unsigned long DataLoggingIntervalMilliSec = 1000;
 unsigned long DataLoggingDurationTimerMilliSec = 0;

@@ -190,6 +190,10 @@ extern unsigned int RecordingFrameRateTimeOutCounter;
 
 // Data logging objects and variables
 extern bool DataLoggingIsRunningFlag;
+// Thermal camera calibration freeze - true while a shutter calibration runs, the settle deadline (Environment::TickCount) extends it after the shutter reopens
+extern volatile bool CalibrationActiveFlag;
+extern volatile int CalibrationSettleUntilTick;
+bool RMH_IsCalibrationFreezeActive();
 extern unsigned char DataLoggingNumberOfActiveSets;
 extern unsigned long DataLoggingIntervalMilliSec;
 extern unsigned long DataLoggingDurationTimerMilliSec;

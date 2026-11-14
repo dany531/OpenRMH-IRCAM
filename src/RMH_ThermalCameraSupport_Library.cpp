@@ -2317,6 +2317,9 @@ void RMH_IRThermalCamera_CalibrateThermalCamera() {
 	// This routine calibrates the connected thermal camera
 	// and handles the events during camera calibration
 
+	// Freeze the plot and data logging values - the shutter, NUC map and look-up table changes would otherwise show as spikes/dips
+	CalibrationActiveFlag = true;
+
 	// Which thermal camera pool is connected
 	switch (IRCamera.ThermalCameraSupportPool) {
 
@@ -2463,6 +2466,10 @@ void RMH_IRThermalCamera_CalibrateThermalCamera() {
 
 	// Store the last calibration sensor detector temperature
 	CurrentCalDetectorTemperature = IRCamera.temp_fpa;
+
+	// Keep the values frozen for a short settle time after the calibration (the first frames after the shutter reopens are still unreliable)
+	CalibrationSettleUntilTick = System::Environment::TickCount + _CalibrationFreezeSettleTimeMs;
+	CalibrationActiveFlag = false;
 
 }
 

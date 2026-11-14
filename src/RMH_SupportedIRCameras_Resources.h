@@ -30,6 +30,9 @@
 #define _ThermalCameraShutter_CloseTimeMs                500
 #define _ThermalCameraShutter_OpenTimeMs                 850
 #define _ThermalCameraShutter_CALOpenTimeMs              1000
+
+// Time [ms] the plot / data logging values stay frozen after a shutter calibration has finished
+#define _CalibrationFreezeSettleTimeMs                   300
 #define _ThermalCameraPool1_RangeSwitchReadyTimeMs       500
 #define _ThermalCameraPool3_ReadyTimeMs                  4000
 #define _ThermalCameraPool3_RangeSwitchReadyTimeMs       5000
