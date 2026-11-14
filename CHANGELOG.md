@@ -5,6 +5,25 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Closing the application while **data logging is running** now asks first. A window "Data Logging Is Running" says that the session is stopped
+  if the application is closed and asks **"Are you sure you want to close the application?"** (the default button is **No**).
+  - **No**: the application stays open and the logging continues.
+  - **Yes**: the session is stopped, the program waits (up to 3 seconds) for the logging thread to finish, and the usual question "Do you want
+    to save this data logging session?" is asked. **Yes** there saves the file to the default save path, **No** deletes it. After this the
+    application closes.
+  - When Windows itself is shutting down no question is asked; the session is only stopped.
+  Change in `MainGUI.h` (`MainGUI_FormClosing`).
+
+- Temporary data log file when the application is closed during logging. Before, the file `DataLogSession_*.txt` stayed in
+  `%TEMP%\IRCAMThermalViewer_DataLogging` when the application was closed while logging ran, because the save / delete question was never asked
+  (the question is asked when the logging thread completes, and the application had already closed). With the change above the question is asked
+  before closing, so the file is saved or deleted. A file can still stay behind in that folder only after a crash, a power loss or when the process is
+  killed; it holds the samples written so far and can be opened or deleted by hand. Change in `MainGUI.h` (`MainGUI_FormClosing`).
+
+- Data Log window: the **Start Logging** and **Stop Logging** buttons are exactly like the other buttons again (same background, same text color and
+  font). Only the **border** keeps its color: **dark green** for Start Logging and **dark red** for Stop Logging. Change in `DataLogGUI.h`
+  (`SetButtonTextColor` is replaced by `SetButtonBorderColor`).
+
 - Data Log window graph: the **scroll bar of the zoomed time (X) axis** works now. After zooming in, the arrows of the bar jumped straight to the
   beginning or the end of the log, and dragging the bar did not move the view. Cause: the time axis is a date / time axis (values in days) and the
   scroll steps had their default size of one whole unit, which is far larger than a zoomed range (the bar snapped to the ends). The scroll steps
