@@ -131,16 +131,13 @@ namespace IRCAMThermalViewer {
 
 		}
 
-		// Gives a button a dark text colour on a light background, so that the dark colour stays easy to read
-		// (used for the "Start Logging" - dark green and "Stop Logging" - dark red buttons)
+		// Gives a button a coloured text and border (used for the "Start Logging" - dark green and "Stop Logging" - dark red buttons).
+		// The background stays the dark gray of the other buttons.
 		System::Void SetButtonTextColor(System::Windows::Forms::Button^ ButtonObject, System::Drawing::Color TextColor) {
 
 			ButtonObject->ForeColor = TextColor;
-			ButtonObject->BackColor = System::Drawing::Color::FromArgb(225, 225, 225);
 			ButtonObject->Font = gcnew System::Drawing::Font("Arial", 9, System::Drawing::FontStyle::Bold);
 			ButtonObject->FlatAppearance->BorderColor = TextColor;
-			ButtonObject->FlatAppearance->MouseOverBackColor = System::Drawing::Color::FromArgb(245, 245, 245);
-			ButtonObject->FlatAppearance->MouseDownBackColor = System::Drawing::Color::FromArgb(200, 200, 200);
 
 		}
 
@@ -329,6 +326,16 @@ namespace IRCAMThermalViewer {
 			MainArea->AxisX->ScaleView->MinSize = 1;
 			MainArea->AxisY->ScaleView->MinSize = 0.001;
 
+			// Scroll bars of the zoomed view (they show when the graph is zoomed). The time axis is a date / time axis, so its scroll steps must be set in
+			// milliseconds: with the default step (a whole unit) the arrows jumped to the beginning or the end and dragging the bar did not move the view.
+			// The temperature axis gets a fine step as well (its default step is 1 whole unit). The size of an arrow step is set in LogChart_AxisViewChanged.
+			MainArea->AxisX->ScaleView->SmallScrollMinSizeType = System::Windows::Forms::DataVisualization::Charting::DateTimeIntervalType::Milliseconds;
+			MainArea->AxisX->ScaleView->SmallScrollMinSize = 1;
+			MainArea->AxisX->ScaleView->SmallScrollSizeType = System::Windows::Forms::DataVisualization::Charting::DateTimeIntervalType::Milliseconds;
+			MainArea->AxisX->ScaleView->SmallScrollSize = 100;
+			MainArea->AxisY->ScaleView->SmallScrollMinSize = 0.001;
+			MainArea->AxisY->ScaleView->SmallScrollSize = 0.1;
+
 			this->LogChart->ChartAreas->Add(MainArea);
 
 			// Title of the graph (top center, above the graph) - empty and hidden until a title is set in the right-click menu. It is part of an exported image.
@@ -430,9 +437,37 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		System::Void UpdateScrollSteps() {
+
+			// An arrow of a scroll bar moves the zoomed view by a tenth of the visible range (at least the smallest step)
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::ChartArea^ Area = this->LogChart->ChartAreas[0];
+
+				if (Area->AxisX->ScaleView->IsZoomed == true) {
+
+					// The time axis is in days - the step is set in milliseconds
+					double ViewMilliSec = (Area->AxisX->ScaleView->ViewMaximum - Area->AxisX->ScaleView->ViewMinimum) * 86400000.0;
+					if (!System::Double::IsNaN(ViewMilliSec) && ViewMilliSec > 0.0) { Area->AxisX->ScaleView->SmallScrollSize = System::Math::Max(ViewMilliSec / 10.0, 1.0); }
+
+				}
+
+				if (Area->AxisY->ScaleView->IsZoomed == true) {
+
+					double ViewRange = Area->AxisY->ScaleView->ViewMaximum - Area->AxisY->ScaleView->ViewMinimum;
+					if (!System::Double::IsNaN(ViewRange) && ViewRange > 0.0) { Area->AxisY->ScaleView->SmallScrollSize = System::Math::Max(ViewRange / 10.0, 0.001); }
+
+				}
+
+			}
+			catch (System::Exception^) {}
+
+		}
+
 		System::Void LogChart_AxisViewChanged(System::Object^ sender, System::Windows::Forms::DataVisualization::Charting::ViewEventArgs^ e) {
 
-			// The graph was zoomed or the zoom was reset - the ticks follow the visible range
+			// The graph was zoomed, scrolled or the zoom was reset - the scroll steps and the ticks follow the visible range
+			this->UpdateScrollSteps();
 			this->ApplyAxisSettings();
 
 		}
@@ -1228,7 +1263,8 @@ namespace IRCAMThermalViewer {
 				// ---- Time axis ticks ----
 				if (this->XTickCount > 0) {
 
-					Area->RecalculateAxesScale();
+					// Not while zoomed: the view is read from the scale view, and recalculating the scale while the view is scrolled would interfere with the scroll bar
+					if (AxisX->ScaleView->IsZoomed == false) { Area->RecalculateAxesScale(); }
 
 					double ViewMinimum = AxisX->Minimum;
 					double ViewMaximum = AxisX->Maximum;
