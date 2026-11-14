@@ -5,9 +5,20 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data Log window graph: the **scroll bar of the zoomed time (X) axis** works now. After zooming in, the arrows of the bar jumped straight to the
+  beginning or the end of the log, and dragging the bar did not move the view. Cause: the time axis is a date / time axis (values in days) and the
+  scroll steps had their default size of one whole unit, which is far larger than a zoomed range (the bar snapped to the ends). The scroll steps
+  are now set in milliseconds: the smallest step is 1 ms and an arrow moves the view by a tenth of the visible range (updated at every zoom or
+  scroll). The scroll bar of the temperature (Y) axis had the same problem (default step of 1 unit) and got a fine step (smallest 0.001, an arrow
+  moves a tenth of the visible range). While the graph is zoomed the X-axis tick setting no longer recalculates the axis scale, so it does not
+  interfere with scrolling. Change in `DataLogGUI.h` (`BuildChart`, new `UpdateScrollSteps`, `LogChart_AxisViewChanged`, `ApplyAxisSettings`).
+
+- Data Log window: the **Start Logging** and **Stop Logging** buttons have their original dark gray background and hover colours back (the light gray
+  background of the previous change is removed). The dark green / dark red text and border colours stay (the text stays bold). Change in
+  `DataLogGUI.h` (`SetButtonTextColor`).
+
 - Data Log window: the text of the **Start Logging** button is now **dark green** and the text of the **Stop Logging** button is **dark red**
-  (both bold). Dark text is hard to read on the dark gray button background, so these two buttons now have a light gray background (with a
-  border in the text color); the other buttons of the window are unchanged. Change in `DataLogGUI.h` (new routine `SetButtonTextColor`,
+  (both bold), with a border in the text color. (A light gray background that was added with this change was removed again, see above.) Change in `DataLogGUI.h` (new routine `SetButtonTextColor`,
   used in `BuildLayout`).
 
 - Left menu: the **Data Log** text no longer overlaps its image. Cause: the column widths of the Data Log item were fixed values written
