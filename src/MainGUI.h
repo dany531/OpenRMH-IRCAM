@@ -1221,6 +1221,12 @@ namespace IRCAMThermalViewer {
 			this->tableLayoutPanel1->RowStyles->Add(gcnew System::Windows::Forms::RowStyle(TemplateRowStyle->SizeType, TemplateRowStyle->Height));
 			this->tableLayoutPanel1->SetRow(this->tableLayoutPanel6, 6);
 			this->tableLayoutPanel1->Controls->Add(this->DataLogMenuPanel, 0, 5);
+
+			// The panel that holds the left menu has a fixed height that was made for 6 items. With a 7th item all the rows became
+			// shorter, and the "Data Log" row was too low for the image and the text under it (they overlapped). The panel is made
+			// 7/6 higher, so that every row keeps the height it had before (the same as "Settings", "Stream", "Plots" ...).
+			this->MainMenuButtonsPanel->Height = (this->MainMenuButtonsPanel->Height * 7) / 6;
+
 			this->tableLayoutPanel1->ResumeLayout(true);
 
 			// Add the new buttons to the array of left menu buttons (they are enabled and disabled together with the others)

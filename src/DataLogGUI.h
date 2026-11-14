@@ -40,7 +40,6 @@ namespace IRCAMThermalViewer {
 			this->NoticeShowing = false;
 			this->HideDurationNotice = false;
 			this->CursorLabelEnabled = false;
-			this->ShowTitleOnScreen = false;
 			this->XTickCount = 0;
 			this->YTickCount = 0;
 			this->YRangeLocked = false;
@@ -79,8 +78,6 @@ namespace IRCAMThermalViewer {
 		System::Windows::Forms::ContextMenuStrip^ ChartContextMenu;
 		System::Windows::Forms::ToolStripMenuItem^ CursorTempMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ GraphTitleMenuItem;
-		System::Windows::Forms::ToolStripMenuItem^ ShowTitleMenuItem;
-		bool ShowTitleOnScreen;      // The title is also shown on the graph on the screen (off: it only takes space in exported images)
 		System::Windows::Forms::ToolStripMenuItem^ XTicksMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ YTicksMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ YRangeStatusMenuItem;
@@ -134,6 +131,17 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		// Same as StyleButton, but the text and the outline (border) of the button get the given color
+		// (used for Start Logging = green and Stop Logging = red)
+		System::Void StyleColoredButton(System::Windows::Forms::Button^ ButtonObject, System::String^ ButtonText, int X, int Width, System::Drawing::Color AccentColor) {
+
+			this->StyleButton(ButtonObject, ButtonText, X, Width);
+			ButtonObject->ForeColor = AccentColor;
+			ButtonObject->FlatAppearance->BorderColor = AccentColor;
+			ButtonObject->FlatAppearance->BorderSize = 2;
+
+		}
+
 		System::Void BuildLayout() {
 
 			this->Text = "Data Log";
@@ -158,12 +166,12 @@ namespace IRCAMThermalViewer {
 			TopPanel->Controls->Add(this->StatusLabel);
 
 			this->StartLoggingButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->StartLoggingButton, "Start Logging", 10, 120);
+			this->StyleColoredButton(this->StartLoggingButton, "Start Logging", 10, 120, System::Drawing::Color::FromArgb(0, 200, 70));
 			this->StartLoggingButton->Click += gcnew System::EventHandler(this, &DataLogGUI::StartLoggingButton_Click);
 			TopPanel->Controls->Add(this->StartLoggingButton);
 
 			this->StopLoggingButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->StopLoggingButton, "Stop Logging", 135, 120);
+			this->StyleColoredButton(this->StopLoggingButton, "Stop Logging", 135, 120, System::Drawing::Color::FromArgb(230, 40, 40));
 			this->StopLoggingButton->Click += gcnew System::EventHandler(this, &DataLogGUI::StopLoggingButton_Click);
 			TopPanel->Controls->Add(this->StopLoggingButton);
 
@@ -476,11 +484,6 @@ namespace IRCAMThermalViewer {
 			this->StyleMenuItem(this->GraphTitleMenuItem, "Set Graph Title...");
 			this->GraphTitleMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::GraphTitleMenuItem_Click);
 
-			this->ShowTitleMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
-			this->StyleMenuItem(this->ShowTitleMenuItem, "Show Title On Graph");
-			this->ShowTitleMenuItem->CheckOnClick = true;
-			this->ShowTitleMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::ShowTitleMenuItem_Click);
-
 			this->XTicksMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
 			this->StyleMenuItem(this->XTicksMenuItem, "X-Axis Number Of Ticks");
 			this->AddTickItems(this->XTicksMenuItem, gcnew cli::array<int>{ 5, 10, 20, 25, 50 });
@@ -526,7 +529,6 @@ namespace IRCAMThermalViewer {
 
 			this->ChartContextMenu->Items->Add(this->CursorTempMenuItem);
 			this->ChartContextMenu->Items->Add(this->GraphTitleMenuItem);
-			this->ChartContextMenu->Items->Add(this->ShowTitleMenuItem);
 			this->ChartContextMenu->Items->Add(Separator1);
 			this->ChartContextMenu->Items->Add(this->XTicksMenuItem);
 			this->ChartContextMenu->Items->Add(this->YTicksMenuItem);
@@ -564,7 +566,6 @@ namespace IRCAMThermalViewer {
 
 			// Updates the items before the menu is shown
 			this->CursorTempMenuItem->Checked = this->CursorLabelEnabled;
-			this->ShowTitleMenuItem->Checked = this->ShowTitleOnScreen;
 			this->CheckTickItems(this->XTicksMenuItem, this->XTickCount);
 			this->CheckTickItems(this->YTicksMenuItem, this->YTickCount);
 
@@ -594,16 +595,6 @@ namespace IRCAMThermalViewer {
 
 		}
 
-		System::Void ShowTitleMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
-
-			// Shows or hides the title on the graph on the screen (a shown title takes some height of the graph)
-			this->ShowTitleOnScreen = this->ShowTitleMenuItem->Checked;
-
-			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
-			if (GraphTitle != nullptr) { GraphTitle->Visible = (this->ShowTitleOnScreen == true && GraphTitle->Text->Length > 0); }
-
-		}
-
 		System::Void GraphTitleMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
 
 			this->ShowGraphTitleWindow();
@@ -626,10 +617,10 @@ namespace IRCAMThermalViewer {
 			TitleWindow->ShowInTaskbar = false;
 			TitleWindow->BackColor = System::Drawing::Color::White;
 			TitleWindow->ForeColor = System::Drawing::Color::Black;
-			TitleWindow->ClientSize = System::Drawing::Size(460, 175);
+			TitleWindow->ClientSize = System::Drawing::Size(460, 150);
 
 			System::Windows::Forms::Label^ TitleLabel = gcnew System::Windows::Forms::Label();
-			TitleLabel->Text = "Title (added at the top center of an exported image):";
+			TitleLabel->Text = "Title (shown at the top center of the graph and in an exported image):";
 			TitleLabel->AutoSize = false;
 			TitleLabel->Location = System::Drawing::Point(20, 16);
 			TitleLabel->Size = System::Drawing::Size(420, 22);
@@ -643,16 +634,16 @@ namespace IRCAMThermalViewer {
 			TitleWindow->Controls->Add(TitleBox);
 
 			System::Windows::Forms::Label^ NoteLabel = gcnew System::Windows::Forms::Label();
-			NoteLabel->Text = "Leave the text empty to remove the title. To also see the title on the graph on the screen, tick \"Show Title On Graph\" in the graph menu (it takes some height of the graph).";
+			NoteLabel->Text = "Leave the text empty to remove the title.";
 			NoteLabel->AutoSize = false;
 			NoteLabel->Location = System::Drawing::Point(20, 74);
-			NoteLabel->Size = System::Drawing::Size(420, 44);
+			NoteLabel->Size = System::Drawing::Size(420, 22);
 			TitleWindow->Controls->Add(NoteLabel);
 
 			System::Windows::Forms::Button^ TitleOkButton = gcnew System::Windows::Forms::Button();
 			TitleOkButton->Text = "Set Title";
 			TitleOkButton->DialogResult = System::Windows::Forms::DialogResult::OK;
-			TitleOkButton->Location = System::Drawing::Point(115, 130);
+			TitleOkButton->Location = System::Drawing::Point(115, 106);
 			TitleOkButton->Size = System::Drawing::Size(110, 30);
 			TitleWindow->Controls->Add(TitleOkButton);
 			TitleWindow->AcceptButton = TitleOkButton;
@@ -660,7 +651,7 @@ namespace IRCAMThermalViewer {
 			System::Windows::Forms::Button^ TitleCancelButton = gcnew System::Windows::Forms::Button();
 			TitleCancelButton->Text = "Cancel";
 			TitleCancelButton->DialogResult = System::Windows::Forms::DialogResult::Cancel;
-			TitleCancelButton->Location = System::Drawing::Point(235, 130);
+			TitleCancelButton->Location = System::Drawing::Point(235, 106);
 			TitleCancelButton->Size = System::Drawing::Size(110, 30);
 			TitleWindow->Controls->Add(TitleCancelButton);
 			TitleWindow->CancelButton = TitleCancelButton;
@@ -669,7 +660,7 @@ namespace IRCAMThermalViewer {
 
 				System::String^ NewTitle = TitleBox->Text->Trim();
 				GraphTitle->Text = NewTitle;
-				GraphTitle->Visible = (this->ShowTitleOnScreen == true && NewTitle->Length > 0);
+				GraphTitle->Visible = (NewTitle->Length > 0);
 				return true;
 
 			}
@@ -1347,16 +1338,7 @@ namespace IRCAMThermalViewer {
 			try {
 
 				ChartStream = gcnew System::IO::MemoryStream();
-				// The title is drawn in the strip above the graph (below), so the graph keeps its full height: the title of the chart is hidden while the image is made
-				System::Windows::Forms::DataVisualization::Charting::Title^ ChartTitle = this->LogChart->Titles->FindByName("GraphTitle");
-				System::String^ TitleText = "";
-				bool TitleWasVisible = false;
-
-				if (ChartTitle != nullptr) { TitleText = ChartTitle->Text; TitleWasVisible = ChartTitle->Visible; ChartTitle->Visible = false; }
-
-				try { this->LogChart->SaveImage(ChartStream, System::Windows::Forms::DataVisualization::Charting::ChartImageFormat::Png); }
-				finally { if (ChartTitle != nullptr) { ChartTitle->Visible = TitleWasVisible; } }
-
+				this->LogChart->SaveImage(ChartStream, System::Windows::Forms::DataVisualization::Charting::ChartImageFormat::Png);
 				ChartImage = gcnew System::Drawing::Bitmap(ChartStream);
 
 				// The lines that are shown
@@ -1393,37 +1375,17 @@ namespace IRCAMThermalViewer {
 
 				}
 
-				// The title (bold, centered, wraps when it is wider than the image) takes the first part of the strip
-				System::Drawing::Font^ TitleFont = gcnew System::Drawing::Font("Arial", 12, System::Drawing::FontStyle::Bold);
-				int TitleHeight = 0;
-				if (TitleText->Length > 0) { TitleHeight = (int)System::Math::Ceiling(MeasureGraphics->MeasureString(TitleText, TitleFont, (int)((float)ChartImage->Width - 2.0f * EdgeMargin)).Height) + 10; }
-
 				delete MeasureGraphics;
 
-				int NamesHeight = 0;
-				if (Rows > 0) { NamesHeight = Rows * RowHeight + 8; }
-				int StripHeight = TitleHeight + NamesHeight;
+				int StripHeight = 0;
+				if (Rows > 0) { StripHeight = Rows * RowHeight + 8; }
 
 				OutputImage = gcnew System::Drawing::Bitmap(ChartImage->Width, ChartImage->Height + StripHeight);
 				System::Drawing::Graphics^ OutputGraphics = System::Drawing::Graphics::FromImage(OutputImage);
 				OutputGraphics->Clear(System::Drawing::Color::FromArgb(35, 35, 35));
 				OutputGraphics->TextRenderingHint = System::Drawing::Text::TextRenderingHint::AntiAliasGridFit;
 
-				// The title
-				if (TitleHeight > 0) {
-
-					System::Drawing::StringFormat^ TitleFormat = gcnew System::Drawing::StringFormat();
-					TitleFormat->Alignment = System::Drawing::StringAlignment::Center;
-					System::Drawing::SolidBrush^ TitleBrush = gcnew System::Drawing::SolidBrush(System::Drawing::Color::White);
-					OutputGraphics->DrawString(TitleText, TitleFont, TitleBrush, System::Drawing::RectangleF(EdgeMargin, 6.0f, (float)ChartImage->Width - 2.0f * EdgeMargin, (float)TitleHeight - 6.0f), TitleFormat);
-					delete TitleBrush;
-					delete TitleFormat;
-
-				}
-
-				delete TitleFont;
-
-				// Second pass: draw the names above the graph (below the title)
+				// Second pass: draw the names above the graph
 				int RowIndex = -1;
 				PositionX = EdgeMargin;
 
@@ -1432,7 +1394,7 @@ namespace IRCAMThermalViewer {
 					float EntryWidth = (float)SquareSize + 6.0f + OutputGraphics->MeasureString(LineNames[i], NameFont).Width + EntryGap;
 					if (RowIndex < 0 || (PositionX + EntryWidth > (float)ChartImage->Width - EdgeMargin && PositionX > EdgeMargin)) { RowIndex++; PositionX = EdgeMargin; }
 
-					float PositionY = (float)TitleHeight + 4.0f + (float)(RowIndex * RowHeight);
+					float PositionY = 4.0f + (float)(RowIndex * RowHeight);
 					System::Drawing::SolidBrush^ LineBrush = gcnew System::Drawing::SolidBrush(LineColors[i]);
 					OutputGraphics->FillRectangle(LineBrush, PositionX, PositionY + 5.0f, (float)SquareSize, (float)SquareSize);
 					OutputGraphics->DrawString(LineNames[i], NameFont, LineBrush, PositionX + (float)SquareSize + 6.0f, PositionY);
