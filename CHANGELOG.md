@@ -5,16 +5,17 @@ the number counts builds of this repository.
 
 ## Unreleased
 
-- Data Log window: **Start Logging** now has green text and a green outline (border), **Stop Logging** red text and a red outline (2 px wide).
-  Colors: green RGB 0, 200, 70, red RGB 230, 40, 40. New helper `StyleColoredButton` (calls `StyleButton`, then sets `ForeColor` and the
-  `FlatAppearance` border color / size); the other buttons still use `StyleButton`. Change in `DataLogGUI.h` (`StyleColoredButton`, `BuildLayout`).
+- Data Log window: the text of the **Start Logging** button is now **dark green** and the text of the **Stop Logging** button is **dark red**
+  (both bold). Dark text is hard to read on the dark gray button background, so these two buttons now have a light gray background (with a
+  border in the text color); the other buttons of the window are unchanged. Change in `DataLogGUI.h` (new routine `SetButtonTextColor`,
+  used in `BuildLayout`).
 
-- Left menu: the text of the **Data Log** item no longer overlaps its image. The panel that holds the left menu (`MainMenuButtonsPanel`) has a fixed
-  height made for 6 items; with the 7th item every row became shorter and the Data Log row was too low for the image with the text under it. The
-  panel is now made 7/6 higher when the item is added, so each row keeps its normal height and the item looks like Settings, Stream, 3D Surface,
-  Plots and Emissivity. Change in `MainGUI.h` (`AddDataLogMenuItem`).
-
-- Notes: the README is now `README_IRCAM-for-T2Splus_V2_2Dplots_expansion_14.md` (sections 1.16 and 1.17 added, files table and test list updated).
+- Left menu: the **Data Log** text no longer overlaps its image. Cause: the column widths of the Data Log item were fixed values written
+  in code (100 % + 60 px), while the other items (Settings, Stream, 3D Surface, Plots, Emissivity) are scaled by the main GUI, so on this
+  screen the Data Log button was too narrow, the text wrapped into two lines ("Data" / "Log") and the first line was drawn over the image.
+  The column widths of the Data Log item are now copied from the Plots item as they are at run time, the button takes over the padding and
+  text / image relation of the Plots button, and a non-breaking space is used in the text so it can never wrap. "Data Log" now shows under
+  its image like the other items. Change in `MainGUI.h` (`AddDataLogMenuItem`).
 
 - Data Log window: **Export Graph** now first opens the same "Graph Title" window as **Set Graph Title...** (it is one shared routine,
   `ShowGraphTitleWindow`). The window shows the title that is set now, so it can be kept as it is, edited or replaced (an empty text removes
