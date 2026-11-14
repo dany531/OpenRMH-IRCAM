@@ -131,13 +131,11 @@ namespace IRCAMThermalViewer {
 
 		}
 
-		// Gives a button a coloured text and border (used for the "Start Logging" - dark green and "Stop Logging" - dark red buttons).
-		// The background stays the dark gray of the other buttons.
-		System::Void SetButtonTextColor(System::Windows::Forms::Button^ ButtonObject, System::Drawing::Color TextColor) {
+		// Gives a button a coloured border (used for the "Start Logging" - dark green and "Stop Logging" - dark red buttons).
+		// The background and the text stay exactly like the other buttons.
+		System::Void SetButtonBorderColor(System::Windows::Forms::Button^ ButtonObject, System::Drawing::Color BorderColor) {
 
-			ButtonObject->ForeColor = TextColor;
-			ButtonObject->Font = gcnew System::Drawing::Font("Arial", 9, System::Drawing::FontStyle::Bold);
-			ButtonObject->FlatAppearance->BorderColor = TextColor;
+			ButtonObject->FlatAppearance->BorderColor = BorderColor;
 
 		}
 
@@ -166,13 +164,13 @@ namespace IRCAMThermalViewer {
 
 			this->StartLoggingButton = gcnew System::Windows::Forms::Button();
 			this->StyleButton(this->StartLoggingButton, "Start Logging", 10, 120);
-			this->SetButtonTextColor(this->StartLoggingButton, System::Drawing::Color::DarkGreen);	// dark green text
+			this->SetButtonBorderColor(this->StartLoggingButton, System::Drawing::Color::DarkGreen);	// dark green border
 			this->StartLoggingButton->Click += gcnew System::EventHandler(this, &DataLogGUI::StartLoggingButton_Click);
 			TopPanel->Controls->Add(this->StartLoggingButton);
 
 			this->StopLoggingButton = gcnew System::Windows::Forms::Button();
 			this->StyleButton(this->StopLoggingButton, "Stop Logging", 135, 120);
-			this->SetButtonTextColor(this->StopLoggingButton, System::Drawing::Color::DarkRed);	// dark red text
+			this->SetButtonBorderColor(this->StopLoggingButton, System::Drawing::Color::DarkRed);	// dark red border
 			this->StopLoggingButton->Click += gcnew System::EventHandler(this, &DataLogGUI::StopLoggingButton_Click);
 			TopPanel->Controls->Add(this->StopLoggingButton);
 

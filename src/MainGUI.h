@@ -1016,6 +1016,45 @@ namespace IRCAMThermalViewer {
 
 			// This routine is the shutdown routine of the application GUI
 
+			// Data logging is still running - ask whether the application is really closed
+			if (DataLoggingIsRunningFlag == true) {
+
+				if (e->CloseReason == System::Windows::Forms::CloseReason::WindowsShutDown) {
+
+					// Windows is shutting down - no question is asked, the session is only stopped
+					RMH_ThermalViewer_StopDataLogging();
+
+				}
+				else {
+
+					System::Windows::Forms::DialogResult CloseAnswer = System::Windows::Forms::MessageBox::Show(
+						"Data logging is still running.\n\nIf you close the application now, the data logging session is stopped. " +
+						"You are then asked whether the session is saved or deleted.\n\nAre you sure you want to close the application?",
+						"Data Logging Is Running", System::Windows::Forms::MessageBoxButtons::YesNo, System::Windows::Forms::MessageBoxIcon::Warning, System::Windows::Forms::MessageBoxDefaultButton::Button2);
+
+					// No - the application stays open and the logging continues
+					if (CloseAnswer != System::Windows::Forms::DialogResult::Yes) { e->Cancel = true; return; }
+
+					// Yes - stop the session and wait (up to 3 seconds) for the logging thread to finish. Its completed event asks whether the session is saved
+					// (the file in the temporary folder is then saved or deleted, so no temporary file is left behind)
+					RMH_ThermalViewer_StopDataLogging();
+
+					int WaitedMilliSec = 0;
+					while (GlobalVariables::GlobalDataLoggingThread != nullptr && GlobalVariables::GlobalDataLoggingThread->IsBusy == true && WaitedMilliSec < 3000) {
+
+						System::Windows::Forms::Application::DoEvents();
+						System::Threading::Thread::Sleep(25);
+						WaitedMilliSec = WaitedMilliSec + 25;
+
+					}
+
+					// Safety: ask about the session file if the completed event did not do it (this does nothing when the file is already saved or deleted)
+					RMH_ThermalViewer_FinishDataLoggingSession();
+
+				}
+
+			}
+
 			// Update the thermal camera form session parameters into global variables
 			ManagedLocals::ThermalCameraGUIForm->SaveFormSessionSettings();
 
