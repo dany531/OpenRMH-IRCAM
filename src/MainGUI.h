@@ -1150,8 +1150,12 @@ namespace IRCAMThermalViewer {
 			this->DataLogMenuPanel->Margin = System::Windows::Forms::Padding(0);
 			this->DataLogMenuPanel->ColumnCount = 2;
 			this->DataLogMenuPanel->RowCount = 1;
-			this->DataLogMenuPanel->ColumnStyles->Add(gcnew System::Windows::Forms::ColumnStyle(System::Windows::Forms::SizeType::Percent, 100.0f));
-			this->DataLogMenuPanel->ColumnStyles->Add(gcnew System::Windows::Forms::ColumnStyle(System::Windows::Forms::SizeType::Absolute, 60.0f));
+			// The column widths are copied from the "Plots" item panel as they are NOW (after the automatic scaling of the main GUI)
+			// Fixed values do not get scaled for controls that are created in code, which made the button too narrow and the text wrap over the icon
+			for (int i = 0; i < this->tableLayoutPanel5->ColumnStyles->Count; i++) {
+				System::Windows::Forms::ColumnStyle^ SourceStyle = this->tableLayoutPanel5->ColumnStyles[i];
+				this->DataLogMenuPanel->ColumnStyles->Add(gcnew System::Windows::Forms::ColumnStyle(SourceStyle->SizeType, SourceStyle->Width));
+			}
 			this->DataLogMenuPanel->RowStyles->Add(gcnew System::Windows::Forms::RowStyle(System::Windows::Forms::SizeType::Percent, 100.0f));
 
 			// Icon of the menu button - a small table, drawn in code
@@ -1185,7 +1189,12 @@ namespace IRCAMThermalViewer {
 			this->DataLogMenuButton->Image = MenuIcon;
 			this->DataLogMenuButton->ImageAlign = System::Drawing::ContentAlignment::TopCenter;
 			this->DataLogMenuButton->TextAlign = System::Drawing::ContentAlignment::BottomCenter;
-			this->DataLogMenuButton->Text = "Data Log";
+			this->DataLogMenuButton->TextImageRelation = this->TempMeasMenuButton->TextImageRelation;
+			this->DataLogMenuButton->Padding = this->TempMeasMenuButton->Padding;
+			this->DataLogMenuButton->UseCompatibleTextRendering = this->TempMeasMenuButton->UseCompatibleTextRendering;
+			this->DataLogMenuButton->AutoEllipsis = false;
+			// A non-breaking space is used so that the text can never wrap to two lines and end up over the image
+			this->DataLogMenuButton->Text = L"Data\u00A0Log";
 			this->DataLogMenuButton->Name = "DataLogMenuButton";
 			this->DataLogMenuButton->UseVisualStyleBackColor = false;
 			this->DataLogMenuButton->Enabled = false;
@@ -1221,12 +1230,6 @@ namespace IRCAMThermalViewer {
 			this->tableLayoutPanel1->RowStyles->Add(gcnew System::Windows::Forms::RowStyle(TemplateRowStyle->SizeType, TemplateRowStyle->Height));
 			this->tableLayoutPanel1->SetRow(this->tableLayoutPanel6, 6);
 			this->tableLayoutPanel1->Controls->Add(this->DataLogMenuPanel, 0, 5);
-
-			// The panel that holds the left menu has a fixed height that was made for 6 items. With a 7th item all the rows became
-			// shorter, and the "Data Log" row was too low for the image and the text under it (they overlapped). The panel is made
-			// 7/6 higher, so that every row keeps the height it had before (the same as "Settings", "Stream", "Plots" ...).
-			this->MainMenuButtonsPanel->Height = (this->MainMenuButtonsPanel->Height * 7) / 6;
-
 			this->tableLayoutPanel1->ResumeLayout(true);
 
 			// Add the new buttons to the array of left menu buttons (they are enabled and disabled together with the others)

@@ -131,14 +131,16 @@ namespace IRCAMThermalViewer {
 
 		}
 
-		// Same as StyleButton, but the text and the outline (border) of the button get the given color
-		// (used for Start Logging = green and Stop Logging = red)
-		System::Void StyleColoredButton(System::Windows::Forms::Button^ ButtonObject, System::String^ ButtonText, int X, int Width, System::Drawing::Color AccentColor) {
+		// Gives a button a dark text colour on a light background, so that the dark colour stays easy to read
+		// (used for the "Start Logging" - dark green and "Stop Logging" - dark red buttons)
+		System::Void SetButtonTextColor(System::Windows::Forms::Button^ ButtonObject, System::Drawing::Color TextColor) {
 
-			this->StyleButton(ButtonObject, ButtonText, X, Width);
-			ButtonObject->ForeColor = AccentColor;
-			ButtonObject->FlatAppearance->BorderColor = AccentColor;
-			ButtonObject->FlatAppearance->BorderSize = 2;
+			ButtonObject->ForeColor = TextColor;
+			ButtonObject->BackColor = System::Drawing::Color::FromArgb(225, 225, 225);
+			ButtonObject->Font = gcnew System::Drawing::Font("Arial", 9, System::Drawing::FontStyle::Bold);
+			ButtonObject->FlatAppearance->BorderColor = TextColor;
+			ButtonObject->FlatAppearance->MouseOverBackColor = System::Drawing::Color::FromArgb(245, 245, 245);
+			ButtonObject->FlatAppearance->MouseDownBackColor = System::Drawing::Color::FromArgb(200, 200, 200);
 
 		}
 
@@ -166,12 +168,14 @@ namespace IRCAMThermalViewer {
 			TopPanel->Controls->Add(this->StatusLabel);
 
 			this->StartLoggingButton = gcnew System::Windows::Forms::Button();
-			this->StyleColoredButton(this->StartLoggingButton, "Start Logging", 10, 120, System::Drawing::Color::FromArgb(0, 200, 70));
+			this->StyleButton(this->StartLoggingButton, "Start Logging", 10, 120);
+			this->SetButtonTextColor(this->StartLoggingButton, System::Drawing::Color::DarkGreen);	// dark green text
 			this->StartLoggingButton->Click += gcnew System::EventHandler(this, &DataLogGUI::StartLoggingButton_Click);
 			TopPanel->Controls->Add(this->StartLoggingButton);
 
 			this->StopLoggingButton = gcnew System::Windows::Forms::Button();
-			this->StyleColoredButton(this->StopLoggingButton, "Stop Logging", 135, 120, System::Drawing::Color::FromArgb(230, 40, 40));
+			this->StyleButton(this->StopLoggingButton, "Stop Logging", 135, 120);
+			this->SetButtonTextColor(this->StopLoggingButton, System::Drawing::Color::DarkRed);	// dark red text
 			this->StopLoggingButton->Click += gcnew System::EventHandler(this, &DataLogGUI::StopLoggingButton_Click);
 			TopPanel->Controls->Add(this->StopLoggingButton);
 
