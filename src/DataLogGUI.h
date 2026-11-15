@@ -309,6 +309,26 @@ namespace IRCAMThermalViewer {
 			MainArea->AxisY->TitleForeColor = System::Drawing::Color::White;
 			MainArea->AxisY->IsStartedFromZero = false;
 
+			// Frame (border box) around the whole plot area, always shown - like "Show Plot Border Box" of the 2D plot in the Plots window. The left and bottom sides
+			// are the X and Y axis lines; the top and right sides are the secondary axes with only their line switched on (no labels, tick marks or grid lines),
+			// so the layout of the graph does not change. The frame has the color of the axis lines and is part of an exported image.
+			MainArea->AxisX2->Enabled = System::Windows::Forms::DataVisualization::Charting::AxisEnabled::True;
+			MainArea->AxisX2->LineColor = System::Drawing::Color::FromArgb(150, 150, 150);
+			MainArea->AxisX2->LineWidth = 1;
+			MainArea->AxisX2->LabelStyle->Enabled = false;
+			MainArea->AxisX2->MajorTickMark->Enabled = false;
+			MainArea->AxisX2->MinorTickMark->Enabled = false;
+			MainArea->AxisX2->MajorGrid->Enabled = false;
+			MainArea->AxisX2->MinorGrid->Enabled = false;
+			MainArea->AxisY2->Enabled = System::Windows::Forms::DataVisualization::Charting::AxisEnabled::True;
+			MainArea->AxisY2->LineColor = System::Drawing::Color::FromArgb(150, 150, 150);
+			MainArea->AxisY2->LineWidth = 1;
+			MainArea->AxisY2->LabelStyle->Enabled = false;
+			MainArea->AxisY2->MajorTickMark->Enabled = false;
+			MainArea->AxisY2->MinorTickMark->Enabled = false;
+			MainArea->AxisY2->MajorGrid->Enabled = false;
+			MainArea->AxisY2->MinorGrid->Enabled = false;
+
 			// Zoom by dragging a rectangle in the graph (Reset Zoom button to go back)
 			MainArea->CursorX->IsUserSelectionEnabled = true;
 			MainArea->CursorY->IsUserSelectionEnabled = true;
@@ -1413,10 +1433,29 @@ namespace IRCAMThermalViewer {
 
 				}
 
+				// The first and last value of both axes as shown now (the labels on the axes only show the ticks, so the last value is often missing there).
+				// They are written in the strip above the graph, in one line, or in two lines when the graph is too narrow for one.
+				System::String^ TimeRangeText = nullptr;
+				System::String^ TemperatureRangeText = nullptr;
+				this->GetAxisRangeTexts(TimeRangeText, TemperatureRangeText);
+
+				System::Collections::Generic::List<System::String^>^ RangeLines = gcnew System::Collections::Generic::List<System::String^>();
+
+				if (TimeRangeText->Length > 0 && TemperatureRangeText->Length > 0) {
+
+					System::String^ CombinedText = TimeRangeText + gcnew System::String("      ") + TemperatureRangeText;
+
+					if (MeasureGraphics->MeasureString(CombinedText, NameFont).Width <= (float)ChartImage->Width - 2.0f * EdgeMargin) { RangeLines->Add(CombinedText); }
+					else { RangeLines->Add(TimeRangeText); RangeLines->Add(TemperatureRangeText); }
+
+				}
+				else if (TimeRangeText->Length > 0) { RangeLines->Add(TimeRangeText); }
+				else if (TemperatureRangeText->Length > 0) { RangeLines->Add(TemperatureRangeText); }
+
 				delete MeasureGraphics;
 
 				int StripHeight = 0;
-				if (Rows > 0) { StripHeight = Rows * RowHeight + 8; }
+				if (Rows + RangeLines->Count > 0) { StripHeight = (Rows + RangeLines->Count) * RowHeight + 8; }
 
 				OutputImage = gcnew System::Drawing::Bitmap(ChartImage->Width, ChartImage->Height + StripHeight);
 				System::Drawing::Graphics^ OutputGraphics = System::Drawing::Graphics::FromImage(OutputImage);
@@ -1442,6 +1481,17 @@ namespace IRCAMThermalViewer {
 
 				}
 
+				// The axis ranges, below the names of the lines
+				System::Drawing::SolidBrush^ RangeBrush = gcnew System::Drawing::SolidBrush(System::Drawing::Color::FromArgb(220, 220, 220));
+
+				for (int i = 0; i < RangeLines->Count; i++) {
+
+					OutputGraphics->DrawString(RangeLines[i], NameFont, RangeBrush, EdgeMargin, 4.0f + (float)((Rows + i) * RowHeight));
+
+				}
+
+				delete RangeBrush;
+
 				OutputGraphics->DrawImage(ChartImage, 0, StripHeight, ChartImage->Width, ChartImage->Height);
 				delete OutputGraphics;
 				delete NameFont;
@@ -1462,6 +1512,71 @@ namespace IRCAMThermalViewer {
 				if (ChartStream != nullptr) { delete ChartStream; }
 
 			}
+
+		}
+
+		System::Void GetAxisRangeTexts(System::String^% TimeText, System::String^% TemperatureText) {
+
+			// Text with the first and last value of the time axis and of the temperature axis as they are shown now (zoom, locked range or automatic range).
+			// An empty text is returned for an axis whose range is not known.
+			TimeText = gcnew System::String("");
+			TemperatureText = gcnew System::String("");
+
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::ChartArea^ Area = this->LogChart->ChartAreas[0];
+				System::Windows::Forms::DataVisualization::Charting::Axis^ AxisX = Area->AxisX;
+				System::Windows::Forms::DataVisualization::Charting::Axis^ AxisY = Area->AxisY;
+
+				bool XZoomed = AxisX->ScaleView->IsZoomed;
+				bool YZoomed = AxisY->ScaleView->IsZoomed;
+
+				// Not while zoomed: recalculating the scale while the view is zoomed would interfere with it (and with the scroll bars)
+				if (XZoomed == false && YZoomed == false) { Area->RecalculateAxesScale(); }
+
+				double XMinimum = AxisX->Minimum;
+				double XMaximum = AxisX->Maximum;
+				double YMinimum = AxisY->Minimum;
+				double YMaximum = AxisY->Maximum;
+
+				if (XZoomed == true) { XMinimum = AxisX->ScaleView->ViewMinimum; XMaximum = AxisX->ScaleView->ViewMaximum; }
+				if (YZoomed == true) { YMinimum = AxisY->ScaleView->ViewMinimum; YMaximum = AxisY->ScaleView->ViewMaximum; }
+
+				// Time axis (values in days) -> elapsed time of the log session
+				if (!System::Double::IsNaN(XMinimum) && !System::Double::IsNaN(XMaximum) && XMaximum > XMinimum) {
+
+					double StartDay = this->ChartStartTime.ToOADate();
+					bool WithMilliSeconds = ((XMaximum - XMinimum) * 86400.0 < 60.0);	// a zoomed range of less than a minute needs the milliseconds
+
+					TimeText = gcnew System::String("Time axis: ") + this->FormatAxisTime((XMinimum - StartDay) * 86400000.0, WithMilliSeconds) + gcnew System::String(" to ") +
+						this->FormatAxisTime((XMaximum - StartDay) * 86400000.0, WithMilliSeconds) + gcnew System::String(" (h:mm:ss)");
+
+				}
+
+				// Temperature axis
+				if (!System::Double::IsNaN(YMinimum) && !System::Double::IsNaN(YMaximum) && YMaximum > YMinimum) {
+
+					TemperatureText = gcnew System::String("Temperature axis: ") + YMinimum.ToString("0.0##") + gcnew System::String(" to ") + YMaximum.ToString("0.0##") +
+						gcnew System::String(" ") + GlobalVariables::DefaultTempUnitString;
+
+				}
+
+			}
+			catch (System::Exception^) {}
+
+		}
+
+		System::String^ FormatAxisTime(double MilliSeconds, bool WithMilliSeconds) {
+
+			// Elapsed time as h:mm:ss (rounded to the nearest millisecond first, so a value like 59.9996 s is not shown as 59 s); h:mm:ss.fff when asked
+			if (MilliSeconds < 0.0) { MilliSeconds = 0.0; }
+
+			System::TimeSpan Duration = System::TimeSpan::FromMilliseconds(System::Math::Round(MilliSeconds));
+			System::String^ Text = System::Convert::ToString((int)Duration.TotalHours) + gcnew System::String(":") + Duration.Minutes.ToString("00") + gcnew System::String(":") + Duration.Seconds.ToString("00");
+
+			if (WithMilliSeconds == true) { Text = Text + gcnew System::String(".") + Duration.Milliseconds.ToString("000"); }
+
+			return Text;
 
 		}
 
