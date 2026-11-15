@@ -5,7 +5,7 @@ A modified version of **OpenRMH-IRCAM** (based on v3.0.0-community.5) for the **
 
 - Fork: https://github.com/dany531/OpenRMH-IRCAM
 - Original project: https://github.com/Cyclotronic/OpenRMH-IRCAM
-- This branch contains **all** changes made so far: correct temperatures, automatic start-up, the 2D plot fixes and extras, the Data Log window, the confirmation / save questions of data logging, readable log file names, the mouse cursor temperature in the Data Log graph, a warning for sessions with many samples, zooming in both axes, the right-click menu of the Data Log graph a check box per graph line an Export Graph button and X-axis range lock in the Data Log graph menu a graph title that is asked for again when exporting, colored Start / Stop Logging button borders and a corrected Data Log menu item, and a working scroll bar for the zoomed graph, a question when the application is closed while data logging is running, frozen plot / data logging values during a camera shutter calibration (no more spikes or dips), a frame around the Data Log graph, and the first and last value of both axes written in an exported graph image.
+- This branch contains **all** changes made so far: correct temperatures, automatic start-up, the 2D plot fixes and extras, the Data Log window, the confirmation / save questions of data logging, readable log file names, the mouse cursor temperature in the Data Log graph, a warning for sessions with many samples, zooming in both axes, the right-click menu of the Data Log graph a check box per graph line an Export Graph button and X-axis range lock in the Data Log graph menu a graph title that is asked for again when exporting, colored Start / Stop Logging button borders and a corrected Data Log menu item, and a working scroll bar for the zoomed graph, a question when the application is closed while data logging is running, frozen plot / data logging values during a camera shutter calibration (no more spikes or dips), a frame around the Data Log graph, the first and last value of both axes written in an exported graph image, a Clear Graph button, and an orange Reset Zoom border while the graph is zoomed.
 
 ---
 
@@ -74,7 +74,7 @@ The window shows the values collected by the **Data Logging** feature, in a tabl
 - It follows the **data logging session settings** (data sets, interval, duration) because it displays what Data Logging writes.
 - **Start Logging / Stop Logging** buttons do the same as the data logging start and stop in the plot menu.
 - The status line shows running or stopped, the log file, the number of samples, the elapsed time of the session and the interval.
-- **Show Log File** opens the log file in the Windows explorer. **Clear View** empties the table and graph (the file is not changed). **Auto-scroll** keeps the newest row visible.
+- **Show Log File** opens the log file in the Windows explorer. **Clear Graph** empties the table and graph (the file is not changed). **Auto-scroll** keeps the newest row visible.
 - Above the table the window draws the values as a **graph: temperature (Y axis, in the program's temperature unit) against elapsed
   time (X axis, h:mm:ss)**. The time axis starts at **0:00:00** when the log session starts, and also works beyond 24 hours. There is
   one line per logged data set, with the same line colors as the 2D plot, and a legend. Hover a line to see its value and time.
@@ -91,7 +91,7 @@ The window shows the values collected by the **Data Logging** feature, in a tabl
 
 - **Stop Logging** (Data Log window) asks **"Are you sure you want to stop logging?"**. **Yes** stops; **No** closes the window and
   logging continues.
-- **Clear View** asks **"Are you sure you want to clear the view?"**. **Yes** clears; **No** closes the window and nothing changes.
+- **Clear Graph** asks **"Are you sure you want to clear the graph and the table?"**. **Yes** clears; **No** closes the window and nothing changes.
   Both windows have **No** as the default button, so pressing Enter by mistake does nothing.
 - **Start Logging** now writes the session to a **temporary file** in `%TEMP%\IRCAMThermalViewer_DataLogging`, not to the default
   save path.
@@ -166,7 +166,7 @@ Hidden lines (1.12) are ignored. The settings are not saved: they reset to Auto 
 
 ### 1.12 Show / hide each graph line (new)
 
-Above the graph (below the Start Logging / Stop Logging / Show Log File / Clear View / Reset Zoom buttons) there is one **check box per
+Above the graph (below the Start Logging / Stop Logging / Show Log File / Clear Graph / Reset Zoom buttons) there is one **check box per
 graph line**, with the line's name in the line's color. Un-tick a box to hide that line, tick it to show it again, for example to look at
 2 of 10 logged data sets. All lines are ticked when a log is opened or a new session starts. The check boxes replace the legend of the graph.
 A hidden line is only hidden from the graph: its data keeps being collected and stays in the table and in the log file. The automatic
@@ -174,7 +174,7 @@ Y range and the Y tick / range settings only use the lines that are shown.
 
 ### 1.13 Export Graph as an image (new)
 
-The **Export Graph** button, next to Start Logging, Stop Logging, Show Log File, Clear View and Reset Zoom, saves the Data Log graph as an image.
+The **Export Graph** button, next to Start Logging, Stop Logging, Show Log File, Clear Graph and Reset Zoom, saves the Data Log graph as an image.
 First the **Graph Title** window opens (the same window as **Set Graph Title...**, see 1.15). It shows the title that is set now, so you can keep it, edit it or replace it (an empty text removes the title); **Set Title** continues, **Cancel** cancels the export. Then a save window opens (file types **PNG**, **JPEG** and **BMP**; the format follows the extension you type, PNG by default) with the session file
 name plus `_graph` as the suggested name (or `DataLogGraph_` and the date and time when there is no session file name).
 
@@ -205,7 +205,7 @@ you fix the exact window of the graph before using **Export Graph** (1.13).
 
 Right-click in the Data Log graph and choose **Set Graph Title...**. Type a title (up to 200 characters) and press **Set Title**. The title
 appears in bold at the **top center above the graph** and is part of the image saved with **Export Graph** (1.13), so you can see later
-what the graph was about. Choose the item again to change the title; an empty text removes it. The same window also opens when you press **Export Graph** (1.13), with the current title filled in. The title stays when you use Clear View or start a new
+what the graph was about. Choose the item again to change the title; an empty text removes it. The same window also opens when you press **Export Graph** (1.13), with the current title filled in. The title stays when you use Clear Graph or start a new
 session, but it is not saved: it is empty again when the program is restarted.
 
 ### 1.16 Colored Start / Stop Logging button borders and Data Log menu item fix (new)
@@ -272,6 +272,15 @@ the names of the lines, always has a line like:
 - These are the ends of the axes, not the highest sample of a line. With an automatic range the end of the axis can be a little above the highest sample.
 - The graph itself and the size of the graph part of the image are not changed; the strip is just one row (or two) taller.
 
+### 1.22 Clear Graph button and zoom indicator (new)
+
+- The **Clear View** button is now called **Clear Graph**. It still empties the table **and** the graph (only data logged from now on is shown; the file is
+  not changed), so its question reads "Are you sure you want to clear the graph and the table?".
+- The **border of the Reset Zoom button turns orange** while the graph is zoomed in (time axis and / or temperature axis), so you can see at a glance that
+  you are looking at a part of the graph. After **Reset Zoom** (or when a range is locked / unlocked, which also resets the zoom) the border goes back to the
+  normal gray of the other buttons. Only the border changes, not the text or the background. The colors are in `UpdateZoomIndicator` in `DataLogGUI.h`
+  (`FromArgb(255, 140, 0)` orange, `FromArgb(100, 100, 100)` normal).
+
 ---
 
 ## 2. How to use it
@@ -294,7 +303,7 @@ the names of the lines, always has a line like:
 | `RMH_Application_ThermalViewer.cpp` | Start-up routines (select camera and connect, enable periodic calibration), applying the plot data set settings, temporary data log file, save / discard question (`RMH_ThermalViewer_FinishDataLoggingSession`), 50 ms stop check of the logging thread, readable log file name, warning window for sessions with many samples; `RMH_FreezeValueDuringCalibration` (holds the last good value during a camera calibration) used by the 2D plot feed and the data logging thread |
 | `RMH_Application_ThermalViewer.h` | Start-up settings and declarations (incl. `RMH_ThermalViewer_FinishDataLoggingSession`); Data Log window limits (`_DataLogView_MaxRows`, `_DataLogView_MaxPlotPoints`); `AskUserAboutSampleLimit` parameter of `RMH_ThermalViewer_StartDataLogging` |
 | `MainGUI.h` | Question when closing the application during data logging (`MainGUI_FormClosing`); start-up timer (switch to the stream window, press Q), the three information windows, applying the plot settings, and the Data Log menu item (column widths, padding and text copied from the Plots item so the text shows under the image) |
-| `DataLogGUI.h` (new) | The Data Log window (table and graph that follow the data logging file); frame around the plot area (secondary axes with only the line shown); first / last axis values in the strip of an exported image (`GetAxisRangeTexts`, `FormatAxisTime`); Yes / No questions for Stop Logging and Clear View; follows the session file to the saved location; mouse cursor temperature label in the graph (right-click menu); note about many samples in the opening notice; zoom rectangle on both axes; right-click menu of the graph (cursor temperature, number of ticks, Y-axis range set / lock at current / unlock); check box per graph line; Export Graph button (graph saved as image); X-axis range items (set / lock at current / unlock); graph title; dark green / dark red Start / Stop Logging button borders; scroll steps of the zoomed graph (`UpdateScrollSteps`) |
+| `DataLogGUI.h` (new) | The Data Log window (table and graph that follow the data logging file); frame around the plot area (secondary axes with only the line shown); first / last axis values in the strip of an exported image (`GetAxisRangeTexts`, `FormatAxisTime`); Clear Graph button; orange Reset Zoom border while zoomed (`UpdateZoomIndicator`); Yes / No questions for Stop Logging and Clear Graph; follows the session file to the saved location; mouse cursor temperature label in the graph (right-click menu); note about many samples in the opening notice; zoom rectangle on both axes; right-click menu of the graph (cursor temperature, number of ticks, Y-axis range set / lock at current / unlock); check box per graph line; Export Graph button (graph saved as image); X-axis range items (set / lock at current / unlock); graph title; dark green / dark red Start / Stop Logging button borders; scroll steps of the zoomed graph (`UpdateScrollSteps`) |
 | `GlobalObjectsAndVariables.h/.cpp` | Flags for the Data Log window; `DataLoggingSessionFolderString` (folder of the current session file); calibration freeze (`CalibrationActiveFlag`, `CalibrationSettleUntilTick`, `RMH_IsCalibrationFreezeActive`) |
 | `RMH_SupportedIRCameras_Resources.h` | New setting `_CalibrationFreezeSettleTimeMs` |
 | `RMH_OpenGL_2DPlot.h` | OpenGL window created at the panel size and resized with it; right-click menu on the plot; locked Y-axis range |
@@ -360,7 +369,7 @@ Fallbacks: Build #7 (commit `7b355e8`, branch `fix-t2s-v2-temperature`) and the 
 | Plot: starts without visiting Settings | Not tested yet |
 | Plot: Y-axis range set / lock / unlock | Not tested yet |
 | Data Log window | Not tested yet |
-| Stop Logging / Clear View confirmation windows (Yes / No) | Not tested yet |
+| Stop Logging / Clear Graph confirmation windows (Yes / No) | Not tested yet |
 | Temporary data log file: save (Yes) and discard (No) when a session ends | Not tested yet |
 | Log file name format `DataLogSession_12Nov2026_09-57-39.txt` | Not tested yet |
 | Data Log graph: right-click menu item Temperature At The Cursor shows / hides the temperature at the mouse cursor; left click does nothing | Not tested yet |
@@ -380,6 +389,8 @@ Fallbacks: Build #7 (commit `7b355e8`, branch `fix-t2s-v2-temperature`) and the 
 | Export Graph: line with the first and last value of the time and temperature axis in the strip (automatic range, zoomed, locked X / Y range, number of ticks) | Not tested yet |
 | Export Graph: the axis line is split into two rows for a narrow graph; milliseconds shown only for a zoomed range below one minute (not for a short unzoomed log) | Not tested yet |
 | Frame and Export Graph change: build compiles (MSVC, /clr) | Not tested yet |
+| Data Log graph: Clear Graph button (new name, new question text) clears table and graph after Yes | Not tested yet |
+| Data Log graph: Reset Zoom border turns orange when zoomed (drag rectangle, one axis or both) and returns to gray after Reset Zoom / locking or unlocking a range | Not tested yet |
 
 ---
 

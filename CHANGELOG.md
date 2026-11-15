@@ -5,6 +5,15 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data Log window: the **Clear View** button is now called **Clear Graph**. Its question window has the title "Clear Graph" and asks **"Are you sure
+  you want to clear the graph and the table?"** (the button still empties both the table and the graph, as before; only data logged from now on is
+  shown, the file is not changed). Change in `DataLogGUI.h` (`BuildLayout`, `ClearViewButton_Click`). Older entries in this file still use the old name.
+
+- Data Log window: the **border of the Reset Zoom button turns orange** (dark orange, RGB 255 / 140 / 0) while the graph is zoomed in (time axis and / or
+  temperature axis) and goes back to the normal gray border of the other buttons when the zoom is reset (Reset Zoom button, or when a range is
+  locked / unlocked). Only the border color changes. Change in `DataLogGUI.h` (new `UpdateZoomIndicator`, called from `LogChart_AxisViewChanged`,
+  `ResetZoomButton_Click` and the 1 s refresh timer as a safety net).
+
 - Data Log window graph: **frame around the graph**. The plot area now always has a border on all four sides, like **Show Plot Border Box** in the
   2D plot of the Plots window (there is no right-click item to show / hide it: it is always shown). Before, only the left (Y) and bottom (X) axis
   lines were drawn. The top and right sides are the secondary axes with only their line switched on (same gray as the axis lines; no labels, tick
