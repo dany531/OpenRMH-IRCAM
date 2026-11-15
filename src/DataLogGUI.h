@@ -1546,7 +1546,7 @@ namespace IRCAMThermalViewer {
 				if (!System::Double::IsNaN(XMinimum) && !System::Double::IsNaN(XMaximum) && XMaximum > XMinimum) {
 
 					double StartDay = this->ChartStartTime.ToOADate();
-					bool WithMilliSeconds = ((XMaximum - XMinimum) * 86400.0 < 60.0);	// a zoomed range of less than a minute needs the milliseconds
+					bool WithMilliSeconds = (XZoomed == true && (XMaximum - XMinimum) * 86400.0 < 60.0);	// only a zoomed range of less than a minute needs the milliseconds
 
 					TimeText = gcnew System::String("Time axis: ") + this->FormatAxisTime((XMinimum - StartDay) * 86400000.0, WithMilliSeconds) + gcnew System::String(" to ") +
 						this->FormatAxisTime((XMaximum - StartDay) * 86400000.0, WithMilliSeconds) + gcnew System::String(" (h:mm:ss)");
