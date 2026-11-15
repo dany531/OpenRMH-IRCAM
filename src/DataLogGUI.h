@@ -180,7 +180,7 @@ namespace IRCAMThermalViewer {
 			TopPanel->Controls->Add(this->OpenFolderButton);
 
 			this->ClearViewButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->ClearViewButton, "Clear View", 385, 100);
+			this->StyleButton(this->ClearViewButton, "Clear Graph", 385, 100);
 			this->ClearViewButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ClearViewButton_Click);
 			TopPanel->Controls->Add(this->ClearViewButton);
 
@@ -455,6 +455,26 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		System::Void UpdateZoomIndicator() {
+
+			// The border of the Reset Zoom button shows whether the graph is zoomed in: orange while the time axis and / or the temperature axis is zoomed,
+			// the normal button border color (like the other buttons) when the graph shows its whole range
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::ChartArea^ Area = this->LogChart->ChartAreas[0];
+				bool Zoomed = (Area->AxisX->ScaleView->IsZoomed == true || Area->AxisY->ScaleView->IsZoomed == true);
+
+				System::Drawing::Color WantedColor = System::Drawing::Color::FromArgb(100, 100, 100);
+				if (Zoomed == true) { WantedColor = System::Drawing::Color::FromArgb(255, 140, 0); }
+
+				System::Drawing::Color CurrentColor = this->ResetZoomButton->FlatAppearance->BorderColor;
+				if (CurrentColor.ToArgb() != WantedColor.ToArgb()) { this->SetButtonBorderColor(this->ResetZoomButton, WantedColor); }
+
+			}
+			catch (System::Exception^) {}
+
+		}
+
 		System::Void UpdateScrollSteps() {
 
 			// An arrow of a scroll bar moves the zoomed view by a tenth of the visible range (at least the smallest step)
@@ -487,6 +507,7 @@ namespace IRCAMThermalViewer {
 			// The graph was zoomed, scrolled or the zoom was reset - the scroll steps and the ticks follow the visible range
 			this->UpdateScrollSteps();
 			this->ApplyAxisSettings();
+			this->UpdateZoomIndicator();
 
 		}
 
@@ -1585,6 +1606,7 @@ namespace IRCAMThermalViewer {
 			this->LogChart->ChartAreas[0]->AxisX->ScaleView->ZoomReset(0);
 			this->LogChart->ChartAreas[0]->AxisY->ScaleView->ZoomReset(0);
 			this->ApplyAxisSettings();
+			this->UpdateZoomIndicator();
 
 		}
 
@@ -1987,6 +2009,9 @@ namespace IRCAMThermalViewer {
 
 			this->RefreshLogView();
 
+			// Safety net: the zoom indicator also follows zoom resets that come from other routines (range lock / unlock)
+			this->UpdateZoomIndicator();
+
 		}
 
 		System::Void DataLogGUI_VisibleChanged(System::Object^ sender, System::EventArgs^ e) {
@@ -2090,7 +2115,7 @@ namespace IRCAMThermalViewer {
 		System::Void ClearViewButton_Click(System::Object^ sender, System::EventArgs^ e) {
 
 			System::Windows::Forms::DialogResult Answer = System::Windows::Forms::MessageBox::Show(this,
-				"Are you sure you want to clear the view?", "Clear View",
+				"Are you sure you want to clear the graph and the table?", "Clear Graph",
 				System::Windows::Forms::MessageBoxButtons::YesNo, System::Windows::Forms::MessageBoxIcon::Question, System::Windows::Forms::MessageBoxDefaultButton::Button2);
 
 			// "No": close the window and keep the view
