@@ -5,6 +5,22 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data Log window graph: **frame around the graph**. The plot area now always has a border on all four sides, like **Show Plot Border Box** in the
+  2D plot of the Plots window (there is no right-click item to show / hide it: it is always shown). Before, only the left (Y) and bottom (X) axis
+  lines were drawn. The top and right sides are the secondary axes with only their line switched on (same gray as the axis lines; no labels, tick
+  marks or grid lines), so the layout of the graph does not change. The frame is part of an image saved with **Export Graph**. Change in `DataLogGUI.h`
+  (`BuildChart`).
+
+- Data Log window graph: **Export Graph always shows the last (maximum) value of the time axis and of the temperature axis**. Before, the labels on
+  the axes only show the tick marks, so when the end of an axis did not fall on a tick (zoomed view, locked range, number of ticks, automatic range) the
+  maximum duration and the maximum temperature could not be read in the saved image. Now the strip above the graph (where the names of the lines are)
+  gets a line with the first and last value of both axes as shown at the moment of the export, for example
+  `Time axis: 0:00:00 to 1:02:37 (h:mm:ss)      Temperature axis: 20.5 to 134.2 °C`. The line is split in two rows when the graph is too narrow for one
+  row. The values follow what the graph shows: zoom, locked X / Y range and automatic range. A zoomed time range shorter than one minute is written
+  with milliseconds (`h:mm:ss.fff`); the temperature has one to three decimals. The axes themselves and the image size of the graph are not changed.
+  Change in `DataLogGUI.h` (`ExportGraphButton_Click`, new `GetAxisRangeTexts` and `FormatAxisTime`). Note: the values are the ends of the axes (the
+  visible range), not the highest sample of a line; with an automatic range the axis end can be a little above the highest sample.
+
 - Spikes / dips in the **2D plot and in the data logging file during a camera shutter calibration** are removed. Cause: while the shutter
   calibration runs (shutter closed, non-uniformity map and temperature look-up table regenerated, shutter reopened) the video thread kept
   processing frames, so the plot and the data logging thread picked up the values of the closed shutter and of the first frames after it
