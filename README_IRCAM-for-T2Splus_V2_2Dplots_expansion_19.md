@@ -268,7 +268,7 @@ the names of the lines, always has a line like:
 
 - The values are the **first and last value of each axis as shown at the moment of the export**: zoom, locked X / Y range and automatic range are followed.
 - The line is split into two rows (time, temperature) when the graph is too narrow for one row.
-- A zoomed time range shorter than one minute is written with milliseconds (`h:mm:ss.fff`). The temperature has one to three decimals.
+- Only a **zoomed** time range shorter than one minute is written with milliseconds (`h:mm:ss.fff`, e.g. `0:12:03.400 to 0:12:41.900`). In every other case (not zoomed, a locked range, a range of 60 s or more) the time is `h:mm:ss`, cut to whole seconds like the axis labels. The temperature has one to three decimals.
 - These are the ends of the axes, not the highest sample of a line. With an automatic range the end of the axis can be a little above the highest sample.
 - The graph itself and the size of the graph part of the image are not changed; the strip is just one row (or two) taller.
 
@@ -378,7 +378,7 @@ Fallbacks: Build #7 (commit `7b355e8`, branch `fix-t2s-v2-temperature`) and the 
 | Calibration freeze: build compiles (MSVC, /clr) | Not tested yet |
 | Data Log graph: frame on all four sides of the plot area (also while zoomed and in the exported image); layout of the graph unchanged | Not tested yet |
 | Export Graph: line with the first and last value of the time and temperature axis in the strip (automatic range, zoomed, locked X / Y range, number of ticks) | Not tested yet |
-| Export Graph: the axis line is split into two rows for a narrow graph; milliseconds shown for a zoomed range below one minute | Not tested yet |
+| Export Graph: the axis line is split into two rows for a narrow graph; milliseconds shown only for a zoomed range below one minute (not for a short unzoomed log) | Not tested yet |
 | Frame and Export Graph change: build compiles (MSVC, /clr) | Not tested yet |
 
 ---

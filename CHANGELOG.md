@@ -16,8 +16,8 @@ the number counts builds of this repository.
   maximum duration and the maximum temperature could not be read in the saved image. Now the strip above the graph (where the names of the lines are)
   gets a line with the first and last value of both axes as shown at the moment of the export, for example
   `Time axis: 0:00:00 to 1:02:37 (h:mm:ss)      Temperature axis: 20.5 to 134.2 °C`. The line is split in two rows when the graph is too narrow for one
-  row. The values follow what the graph shows: zoom, locked X / Y range and automatic range. A zoomed time range shorter than one minute is written
-  with milliseconds (`h:mm:ss.fff`); the temperature has one to three decimals. The axes themselves and the image size of the graph are not changed.
+  row. The values follow what the graph shows: zoom, locked X / Y range and automatic range. Only a **zoomed** time range shorter than one minute is
+  written with milliseconds (`h:mm:ss.fff`); in every other case (not zoomed, locked range, 60 s or more) the time is `h:mm:ss`; the temperature has one to three decimals. The axes themselves and the image size of the graph are not changed.
   Change in `DataLogGUI.h` (`ExportGraphButton_Click`, new `GetAxisRangeTexts` and `FormatAxisTime`). Note: the values are the ends of the axes (the
   visible range), not the highest sample of a line; with an automatic range the axis end can be a little above the highest sample.
 
