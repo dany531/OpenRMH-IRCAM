@@ -5,6 +5,20 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data Log window graph: **thermal camera configuration list in an exported image**. **Export Graph** now adds a list **below the graph** with the heading
+  **Thermal Camera Configuration:** and one line per setting of the Thermal Camera Configuration panel (Settings): **Temperature Correction**,
+  **Ambient Temperature**, **Reflected Temperature**, **Surrounding Humidity** (%), **Object Surface Emissivity** and **Surface Distance** (m), for example
+  `Ambient Temperature: 23.0 °C`. The temperatures are in the temperature unit of the program, like the panel. The values are the ones **in use by the
+  camera at the moment of the export** (the ones set with the Set button of the panel, not text typed in the panel and not yet set), not the ones at the time
+  the data was logged. The image gets taller by the height of the list; the graph and the strip above it are not changed. Change in `DataLogGUI.h`
+  (`ExportGraphButton_Click`, new `GetCameraConfigLines`).
+
+- Data Log window graph: **scroll bars, arrows and Reset Zoom buttons are lighter gray** on both axes (time axis and temperature axis), so they are easier to
+  see when the graph is zoomed. Track: dark gray (70 / 70 / 70), buttons - arrows, Reset Zoom button and the sliding part - light gray (200 / 200 / 200), symbols
+  on the buttons dark (40 / 40 / 40). The three colors are the macros `_DataLogScrollBar_TrackColor`, `_DataLogScrollBar_ButtonColor` and
+  `_DataLogScrollBar_LineColor` at the top of `DataLogGUI.h`. Change in `DataLogGUI.h` (`BuildChart`, new `StyleAxisScrollBar`). Note: the Reset Zoom button
+  meant here is the small button at the end of the scroll bar, not the **Reset Zoom** button above the graph.
+
 - Data Log window: the **Clear View** button is now called **Clear Graph**. Its question window has the title "Clear Graph" and asks **"Are you sure
   you want to clear the graph and the table?"** (the button still empties both the table and the graph, as before; only data logged from now on is
   shown, the file is not changed). Change in `DataLogGUI.h` (`BuildLayout`, `ClearViewButton_Click`). Older entries in this file still use the old name.
