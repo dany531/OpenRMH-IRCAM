@@ -13,6 +13,29 @@ the number counts builds of this repository.
   the data was logged. The image gets taller by the height of the list; the graph and the strip above it are not changed. Change in `DataLogGUI.h`
   (`ExportGraphButton_Click`, new `GetCameraConfigLines`).
 
+- **Bug fix: Ambient and Reflected temperature swapped when the temperature unit is changed.** In the Thermal Camera Configuration panel, changing the temperature
+  unit (°C / °F / K) wrote the Reflected temperature into the Ambient box and the Ambient temperature into the Reflected box. It was only visible when the two
+  values differ (the defaults are equal), and pressing **Set** afterwards would have written the swapped values to the camera. The two boxes now get their own
+  values (the same assignment that the read-from-camera and default-recover routines already used). Change in `RMH_Application_ThermalViewer.cpp` (the
+  temperature unit change routine, "Update the parameter values of the camera configuration NumericUpDowns"). Note: this file uses an older Windows text
+  encoding; upload it as a file on GitHub (do not copy-paste it).
+
+- Data Log window: **a new data logging session starts with the zoom reset**. When the window switches to the file of a new session (Start Logging, hotkey, plot
+  menu, alarm or trigger event), both axes go back to the whole view and the border of the Reset Zoom button returns to normal. Before, a zoomed view of the
+  previous session stayed, and a time range that the new session had not reached yet showed an empty graph. A locked X / Y range is not a zoom and stays.
+  Change in `DataLogGUI.h` (`ResetView`).
+
+- Data Log window graph: **"Export Information" list next to the camera configuration list in an exported image**. On the right of the **Thermal Camera
+  Configuration:** list the image now has a second list, **Export Information:**, for later reference: **Date** and **Time** of the export, **Camera Model**
+  (for example `InfiRay T2S+ V2`), **Camera Temperature Range** (Low / High), **Auto Calibration** (Off, or On with its period in seconds),
+  **Drift-Based Calibration** (Off, or On with its threshold), **Log File** (name of the session file, when there is one), **Sample Interval**, **Session
+  Duration Setting**, **Samples In Data Log**, **Logged Time** (elapsed time of the last sample in the graph) and **Temperature Unit**. When the image is too
+  narrow for two columns, the second list is written below the first. All values are the ones at the moment of the export (settings are not stored in the log
+  file). Change in `DataLogGUI.h` (`ExportGraphButton_Click`, new `GetExportInfoLines`, new include of `RMH_SupportedIRCameras_Resources.h` for the model names).
+
+- Data Log window graph: new macro `_DataLogScrollBar_ApplyColors` at the top of `DataLogGUI.h`. 1 (default) = the lighter gray scroll bar colors below,
+  0 = the scroll bars keep the default colors of the chart control. Only meant to compare the two when checking the scroll bar behavior while logging.
+
 - Data Log window graph: **scroll bars, arrows and Reset Zoom buttons are lighter gray** on both axes (time axis and temperature axis), so they are easier to
   see when the graph is zoomed. Track: dark gray (70 / 70 / 70), buttons - arrows, Reset Zoom button and the sliding part - light gray (200 / 200 / 200), symbols
   on the buttons dark (40 / 40 / 40). The three colors are the macros `_DataLogScrollBar_TrackColor`, `_DataLogScrollBar_ButtonColor` and

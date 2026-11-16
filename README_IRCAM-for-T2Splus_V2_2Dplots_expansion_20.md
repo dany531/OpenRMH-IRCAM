@@ -5,7 +5,7 @@ A modified version of **OpenRMH-IRCAM** (based on v3.0.0-community.5) for the **
 
 - Fork: https://github.com/dany531/OpenRMH-IRCAM
 - Original project: https://github.com/Cyclotronic/OpenRMH-IRCAM
-- This branch contains **all** changes made so far: correct temperatures, automatic start-up, the 2D plot fixes and extras, the Data Log window, the confirmation / save questions of data logging, readable log file names, the mouse cursor temperature in the Data Log graph, a warning for sessions with many samples, zooming in both axes, the right-click menu of the Data Log graph a check box per graph line an Export Graph button and X-axis range lock in the Data Log graph menu a graph title that is asked for again when exporting, colored Start / Stop Logging button borders and a corrected Data Log menu item, and a working scroll bar for the zoomed graph, a question when the application is closed while data logging is running, frozen plot / data logging values during a camera shutter calibration (no more spikes or dips), a frame around the Data Log graph, the first and last value of both axes written in an exported graph image, a Clear Graph button, an orange Reset Zoom border while the graph is zoomed, lighter gray scroll bars / arrows / Reset Zoom buttons on the zoomed graph, and the thermal camera configuration listed in an exported graph image.
+- This branch contains **all** changes made so far: correct temperatures, automatic start-up, the 2D plot fixes and extras, the Data Log window, the confirmation / save questions of data logging, readable log file names, the mouse cursor temperature in the Data Log graph, a warning for sessions with many samples, zooming in both axes, the right-click menu of the Data Log graph a check box per graph line an Export Graph button and X-axis range lock in the Data Log graph menu a graph title that is asked for again when exporting, colored Start / Stop Logging button borders and a corrected Data Log menu item, and a working scroll bar for the zoomed graph, a question when the application is closed while data logging is running, frozen plot / data logging values during a camera shutter calibration (no more spikes or dips), a frame around the Data Log graph, the first and last value of both axes written in an exported graph image, a Clear Graph button, an orange Reset Zoom border while the graph is zoomed, lighter gray scroll bars / arrows / Reset Zoom buttons on the zoomed graph, and the thermal camera configuration plus export information (date, time, camera model, calibration, session) listed in an exported graph image, a zoom reset at the start of a new logging session, and a fix for swapped Ambient / Reflected temperature when the temperature unit changes.
 
 ---
 
@@ -181,7 +181,7 @@ name plus `_graph` as the suggested name (or `DataLogGraph_` and the date and ti
 - The image is the graph **as it is shown now**: zoom, number of ticks and locked Y range are included; lines you hid with the check boxes (1.12) are not.
 - It has the size of the graph on the screen. A strip above the graph names the lines that are shown, each name in the color of its line.
 - The strip also has a line with the first and last value of the time axis and of the temperature axis (see 1.21).
-- Below the graph the image has a list with the thermal camera configuration (see 1.24).
+- Below the graph the image has a list with the thermal camera configuration and, on its right, a list with the export information (see 1.24).
 - The mouse cursor temperature label (1.8) is not part of the image.
 - If there is no graph yet, or saving fails, a message window says so.
 
@@ -294,7 +294,7 @@ button** next to the arrows. These were hard to see on the dark graph. On **both
 | Symbols and outline on the buttons | dark, 40 / 40 / 40 |
 
 The three colors are the macros `_DataLogScrollBar_TrackColor`, `_DataLogScrollBar_ButtonColor` and `_DataLogScrollBar_LineColor` at the top of `DataLogGUI.h`;
-change the numbers there if you want a different gray. How the scroll bars work (1.17) is not changed. The Reset Zoom button at the end of the scroll bar is not the
+change the numbers there if you want a different gray. `_DataLogScrollBar_ApplyColors` (1 or 0) switches the colors on or off, to compare with the default chart colors. How the scroll bars work (1.17) is not changed. The Reset Zoom button at the end of the scroll bar is not the
 **Reset Zoom** button above the graph (1.10), but does the same for its axis.
 
 ### 1.24 Thermal camera configuration in the exported image (new)
@@ -319,6 +319,46 @@ Thermal Camera Configuration:
   moment, not of the logging session. Export while the settings are still the ones used during the measurement.
 - The image is taller by the height of the list. The graph itself and the strip above it (line names, axis ranges) are not changed.
 
+**Export Information** (second list, on the right of the configuration list; below it when the image is too narrow for two columns):
+
+```
+Export Information:
+ -  Date: 16 Nov 2026
+ -  Time: 14:32:07
+ -  Camera Model: InfiRay T2S+ V2
+ -  Camera Temperature Range: Low
+ -  Auto Calibration: On, every 180 s
+ -  Drift-Based Calibration: Off
+ -  Log File: DataLogSession_16Nov2026_14-05-12.txt
+ -  Sample Interval: 1 s
+ -  Session Duration Setting: 1:00:00
+ -  Samples In Data Log: 1635
+ -  Logged Time: 0:27:14
+ -  Temperature Unit: °C
+```
+
+- **Date / Time** are those of the export, not of the measurement; the log file name holds the start of the session. **Logged Time** is the elapsed time of the
+  last sample in the graph.
+- **Auto Calibration** is the periodic shutter calibration (period from the Auto Calibration Period setting); **Drift-Based Calibration** is the calibration
+  triggered by the sensor temperature drift (threshold in the program's temperature unit).
+- **Sample Interval** and **Session Duration Setting** are the data logging session settings at the moment of the export. If you open an older log file, they
+  may differ from the ones used for that file; the file itself is not changed.
+- **Samples In Data Log** is the number of rows read into the Data Log window.
+- The camera model is the camera selected in the program; **Log File** is left out when there is no session file name.
+
+### 1.25 Zoom reset for a new logging session (new)
+
+When a new data logging session starts, the Data Log graph automatically goes back to the **whole view** on both axes (like **Reset Zoom**), and the border of the
+Reset Zoom button goes back to gray. This applies however the session was started (Start Logging, hotkey **M**, the plot's right-click menu, an alarm or trigger
+event). Before, the zoomed range of the previous session stayed, so a zoomed time range that the new session had not reached yet showed an empty graph.
+A **locked** X or Y range (1.11, 1.14) is not a zoom and is kept; unlock it from the right-click menu if the new session needs a different window.
+
+### 1.26 Fix: Ambient / Reflected temperature swapped on a unit change (bug fix)
+
+Changing the temperature unit (°C / °F / K) used to write the Reflected temperature into the **Ambient** box and the Ambient temperature into the **Reflected** box of
+the Thermal Camera Configuration panel. It was only visible when the two values differ, and **Set** afterwards would have written the swapped values to the camera.
+Each box now gets its own value. This bug comes from the original code, not from this branch.
+
 ---
 
 ## 2. How to use it
@@ -341,7 +381,8 @@ Thermal Camera Configuration:
 | `RMH_Application_ThermalViewer.cpp` | Start-up routines (select camera and connect, enable periodic calibration), applying the plot data set settings, temporary data log file, save / discard question (`RMH_ThermalViewer_FinishDataLoggingSession`), 50 ms stop check of the logging thread, readable log file name, warning window for sessions with many samples; `RMH_FreezeValueDuringCalibration` (holds the last good value during a camera calibration) used by the 2D plot feed and the data logging thread |
 | `RMH_Application_ThermalViewer.h` | Start-up settings and declarations (incl. `RMH_ThermalViewer_FinishDataLoggingSession`); Data Log window limits (`_DataLogView_MaxRows`, `_DataLogView_MaxPlotPoints`); `AskUserAboutSampleLimit` parameter of `RMH_ThermalViewer_StartDataLogging` |
 | `MainGUI.h` | Question when closing the application during data logging (`MainGUI_FormClosing`); start-up timer (switch to the stream window, press Q), the three information windows, applying the plot settings, and the Data Log menu item (column widths, padding and text copied from the Plots item so the text shows under the image) |
-| `DataLogGUI.h` (new) | The Data Log window (table and graph that follow the data logging file); light gray scroll bars, arrows and Reset Zoom buttons on both axes (`StyleAxisScrollBar`, `_DataLogScrollBar_...` macros); thermal camera configuration list in an exported image (`GetCameraConfigLines`); frame around the plot area (secondary axes with only the line shown); first / last axis values in the strip of an exported image (`GetAxisRangeTexts`, `FormatAxisTime`); Clear Graph button; orange Reset Zoom border while zoomed (`UpdateZoomIndicator`); Yes / No questions for Stop Logging and Clear Graph; follows the session file to the saved location; mouse cursor temperature label in the graph (right-click menu); note about many samples in the opening notice; zoom rectangle on both axes; right-click menu of the graph (cursor temperature, number of ticks, Y-axis range set / lock at current / unlock); check box per graph line; Export Graph button (graph saved as image); X-axis range items (set / lock at current / unlock); graph title; dark green / dark red Start / Stop Logging button borders; scroll steps of the zoomed graph (`UpdateScrollSteps`) |
+| `DataLogGUI.h` (new) | The Data Log window (table and graph that follow the data logging file); light gray scroll bars, arrows and Reset Zoom buttons on both axes (`StyleAxisScrollBar`, `_DataLogScrollBar_...` macros); thermal camera configuration list and export information list in an exported image (`GetCameraConfigLines`, `GetExportInfoLines`); zoom reset when a new session starts (`ResetView`); frame around the plot area (secondary axes with only the line shown); first / last axis values in the strip of an exported image (`GetAxisRangeTexts`, `FormatAxisTime`); Clear Graph button; orange Reset Zoom border while zoomed (`UpdateZoomIndicator`); Yes / No questions for Stop Logging and Clear Graph; follows the session file to the saved location; mouse cursor temperature label in the graph (right-click menu); note about many samples in the opening notice; zoom rectangle on both axes; right-click menu of the graph (cursor temperature, number of ticks, Y-axis range set / lock at current / unlock); check box per graph line; Export Graph button (graph saved as image); X-axis range items (set / lock at current / unlock); graph title; dark green / dark red Start / Stop Logging button borders; scroll steps of the zoomed graph (`UpdateScrollSteps`) |
+| `RMH_Application_ThermalViewer.cpp` (also, in this branch) | Fix: Ambient / Reflected temperature boxes of the configuration panel were swapped when the temperature unit changed (see 1.26) |
 | `GlobalObjectsAndVariables.h/.cpp` | Flags for the Data Log window; `DataLoggingSessionFolderString` (folder of the current session file); calibration freeze (`CalibrationActiveFlag`, `CalibrationSettleUntilTick`, `RMH_IsCalibrationFreezeActive`) |
 | `RMH_SupportedIRCameras_Resources.h` | New setting `_CalibrationFreezeSettleTimeMs` |
 | `RMH_OpenGL_2DPlot.h` | OpenGL window created at the panel size and resized with it; right-click menu on the plot; locked Y-axis range |
@@ -432,7 +473,11 @@ Fallbacks: Build #7 (commit `7b355e8`, branch `fix-t2s-v2-temperature`) and the 
 | Data Log graph: scroll bars, arrows and small Reset Zoom buttons are light gray and clearly visible on both axes when zoomed; arrows are visible on the buttons | Not tested yet |
 | Export Graph: list "Thermal Camera Configuration" below the graph with all 6 settings; values follow the panel (after Set) and the temperature unit (°C, °F, K) | Not tested yet |
 | Export Graph: image with the list saves correctly as PNG, JPEG and BMP; graph and strip above unchanged | Not tested yet |
-| Scroll bar colors and configuration list: build compiles (MSVC, /clr) | Not tested yet |
+| Export Graph: Export Information list (date, time, camera model, temperature range, auto / drift calibration, log file, interval, duration, samples, logged time, unit) on the right of the configuration list; below it for a narrow image | Not tested yet |
+| Zoomed graph while logging: the view stays on the zoomed part (axis labels do not change); the thumb of the scroll bar moves left and gets smaller as the log grows (the bar shows the position in the whole log) | Not tested yet |
+| Start a new logging session while the graph is zoomed: both axes reset, Reset Zoom border back to gray; a locked range stays | Not tested yet |
+| Change the temperature unit with different Ambient and Reflected values: each box keeps its own value (then Set, then Read) | Not tested yet |
+| Scroll bar colors, configuration list, export information, zoom reset and unit fix: build compiles (MSVC, /clr) | Not tested yet |
 
 ---
 
