@@ -6,6 +6,7 @@
 
 #include "GlobalObjectsAndVariables.h"
 #include "RMH_Application_ThermalViewer.h"
+#include "RMH_SupportedIRCameras_Resources.h"	// Names of the supported camera models (camera model in an exported graph image)
 
 // Class namespace
 namespace IRCAMThermalViewer {
@@ -26,6 +27,8 @@ namespace IRCAMThermalViewer {
 
 	// Colors of the scroll bars of the zoomed graph (time axis and temperature axis): the track, the buttons (arrows, Reset Zoom button and the sliding
 	// part of the bar) and the lines / symbols drawn on the buttons. Light gray buttons with dark symbols so they stand out against the dark graph.
+	// 1 = the scroll bars use the colors below, 0 = the scroll bars keep the default colors of the chart control (to compare the two)
+	#define _DataLogScrollBar_ApplyColors 1
 	#define _DataLogScrollBar_TrackColor  System::Drawing::Color::FromArgb(70, 70, 70)
 	#define _DataLogScrollBar_ButtonColor System::Drawing::Color::FromArgb(200, 200, 200)
 	#define _DataLogScrollBar_LineColor   System::Drawing::Color::FromArgb(40, 40, 40)
@@ -469,12 +472,14 @@ namespace IRCAMThermalViewer {
 
 			// Colors of the scroll bar that shows under / beside a zoomed axis: the bar track, the buttons (the two arrows, the Reset Zoom button and the
 			// sliding part) and the symbols on the buttons. The colors are set at the top of this file (_DataLogScrollBar_...).
+#if _DataLogScrollBar_ApplyColors
 			System::Windows::Forms::DataVisualization::Charting::AxisScrollBar^ Bar = AxisObject->ScrollBar;
 
 			Bar->ButtonStyle = System::Windows::Forms::DataVisualization::Charting::ScrollBarButtonStyles::All;	// arrows and the Reset Zoom button
 			Bar->BackColor = _DataLogScrollBar_TrackColor;
 			Bar->ButtonColor = _DataLogScrollBar_ButtonColor;
 			Bar->LineColor = _DataLogScrollBar_LineColor;
+#endif
 
 		}
 
@@ -1391,7 +1396,7 @@ namespace IRCAMThermalViewer {
 		System::Void ExportGraphButton_Click(System::Object^ sender, System::EventArgs^ e) {
 
 			// Saves the graph as an image (PNG, JPEG or BMP) - the graph as it is shown now (zoom, ticks, Y range), without the hidden lines,
-			// with the names of the lines that are shown (in the color of the lines) in a strip above the graph and the list of the thermal camera configuration below it
+			// with the names of the lines that are shown (in the color of the lines) in a strip above the graph, then the thermal camera configuration list with the export information on its right below the graph
 			if (this->LogChart->Series->Count == 0) {
 
 				System::Windows::Forms::MessageBox::Show(this, "There is no graph to export yet. Start a data logging session first.", "Export Graph",
@@ -1504,7 +1509,27 @@ namespace IRCAMThermalViewer {
 				// List with the thermal camera configuration (as it is now), below the graph: a heading and one line per setting
 				System::Collections::Generic::List<System::String^>^ ConfigLines = gcnew System::Collections::Generic::List<System::String^>();
 				this->GetCameraConfigLines(ConfigLines);
-				int FooterHeight = (ConfigLines->Count + 1) * RowHeight + 12;
+
+				// The information for later reference (date, time, camera model, calibration, session) is written on the right of the configuration list. When the
+				// image is too narrow for two columns it is written below the list instead.
+				System::Collections::Generic::List<System::String^>^ InfoLines = gcnew System::Collections::Generic::List<System::String^>();
+				this->GetExportInfoLines(InfoLines);
+
+				System::Drawing::Font^ HeadingFont = gcnew System::Drawing::Font("Arial", 10, System::Drawing::FontStyle::Bold);
+				System::Drawing::Graphics^ FooterMeasure = System::Drawing::Graphics::FromImage(ChartImage);
+				float ConfigColumnWidth = FooterMeasure->MeasureString("Thermal Camera Configuration:", HeadingFont).Width;
+				for (int i = 0; i < ConfigLines->Count; i++) { ConfigColumnWidth = System::Math::Max(ConfigColumnWidth, FooterMeasure->MeasureString(gcnew System::String("-  ") + ConfigLines[i], NameFont).Width + 6.0f); }
+				float InfoColumnWidth = FooterMeasure->MeasureString("Export Information:", HeadingFont).Width;
+				for (int i = 0; i < InfoLines->Count; i++) { InfoColumnWidth = System::Math::Max(InfoColumnWidth, FooterMeasure->MeasureString(gcnew System::String("-  ") + InfoLines[i], NameFont).Width + 6.0f); }
+				delete FooterMeasure;
+
+				const float ColumnGap = 40.0f;
+				float InfoColumnX = EdgeMargin + ConfigColumnWidth + ColumnGap;
+				bool InfoBelow = (InfoColumnX + InfoColumnWidth + EdgeMargin > (float)ChartImage->Width);
+
+				int FooterRows = System::Math::Max(ConfigLines->Count, InfoLines->Count) + 1;
+				if (InfoBelow == true) { FooterRows = ConfigLines->Count + InfoLines->Count + 2; }
+				int FooterHeight = FooterRows * RowHeight + 12;
 
 				OutputImage = gcnew System::Drawing::Bitmap(ChartImage->Width, ChartImage->Height + StripHeight + FooterHeight);
 				System::Drawing::Graphics^ OutputGraphics = System::Drawing::Graphics::FromImage(OutputImage);
@@ -1543,8 +1568,7 @@ namespace IRCAMThermalViewer {
 
 				OutputGraphics->DrawImage(ChartImage, 0, StripHeight, ChartImage->Width, ChartImage->Height);
 
-				// The thermal camera configuration list below the graph
-				System::Drawing::Font^ HeadingFont = gcnew System::Drawing::Font("Arial", 10, System::Drawing::FontStyle::Bold);
+				// The thermal camera configuration list below the graph, and the information for later reference on its right
 				System::Drawing::SolidBrush^ ConfigBrush = gcnew System::Drawing::SolidBrush(System::Drawing::Color::FromArgb(220, 220, 220));
 				float ConfigTop = (float)(StripHeight + ChartImage->Height) + 8.0f;
 
@@ -1553,6 +1577,18 @@ namespace IRCAMThermalViewer {
 				for (int i = 0; i < ConfigLines->Count; i++) {
 
 					OutputGraphics->DrawString(gcnew System::String("-  ") + ConfigLines[i], NameFont, ConfigBrush, EdgeMargin + 6.0f, ConfigTop + (float)((i + 1) * RowHeight));
+
+				}
+
+				float InfoX = InfoColumnX;
+				float InfoTop = ConfigTop;
+				if (InfoBelow == true) { InfoX = EdgeMargin; InfoTop = ConfigTop + (float)((ConfigLines->Count + 1) * RowHeight); }
+
+				OutputGraphics->DrawString("Export Information:", HeadingFont, ConfigBrush, InfoX, InfoTop);
+
+				for (int i = 0; i < InfoLines->Count; i++) {
+
+					OutputGraphics->DrawString(gcnew System::String("-  ") + InfoLines[i], NameFont, ConfigBrush, InfoX + 6.0f, InfoTop + (float)((i + 1) * RowHeight));
 
 				}
 
@@ -1599,6 +1635,53 @@ namespace IRCAMThermalViewer {
 			Lines->Add(gcnew System::String("Surrounding Humidity: ") + Humidity.ToString("0.0#") + gcnew System::String(" %"));
 			Lines->Add(gcnew System::String("Object Surface Emissivity: ") + Emissivity.ToString("0.00#"));
 			Lines->Add(gcnew System::String("Surface Distance: ") + Distance.ToString("0.0#") + gcnew System::String(" m"));
+
+		}
+
+		System::Void GetExportInfoLines(System::Collections::Generic::List<System::String^>^ Lines) {
+
+			// Information for later reference, written next to the camera configuration list in an exported graph image: date and time of the export, camera model,
+			// temperature range of the camera, calibration settings and the data logging session. All values are the ones at the moment of the export.
+			System::DateTime NowTime = System::DateTime::Now;
+			Lines->Add(gcnew System::String("Date: ") + NowTime.ToString("dd MMM yyyy", System::Globalization::CultureInfo::InvariantCulture));
+			Lines->Add(gcnew System::String("Time: ") + NowTime.ToString("HH:mm:ss", System::Globalization::CultureInfo::InvariantCulture));
+
+			// Camera model (the index is the camera macro index, which is also the index in the list of model names)
+			System::String^ ModelName = gcnew System::String("Unknown");
+			if ((size_t)IRCamera.SellectedCameraIndex < SupportedCamerasModelNames.size()) { ModelName = gcnew System::String(SupportedCamerasModelNames[IRCamera.SellectedCameraIndex].c_str()); }
+			Lines->Add(gcnew System::String("Camera Model: ") + ModelName);
+
+			if (IRCamera.CurrentIRTempRangeFlag == 2) { Lines->Add(gcnew System::String("Camera Temperature Range: High")); }
+			else { Lines->Add(gcnew System::String("Camera Temperature Range: Low")); }
+
+			// Periodic (auto) shutter calibration and the temperature-drift-based calibration
+			if (AutoShutterCalEnableFlag == true) {
+
+				double CalibrationPeriod = 0.0;
+				if (GlobalVariables::GlobalAutoCalPeriodUpDown != nullptr) { CalibrationPeriod = System::Decimal::ToDouble(GlobalVariables::GlobalAutoCalPeriodUpDown->Value); }
+				Lines->Add(gcnew System::String("Auto Calibration: On, every ") + CalibrationPeriod.ToString("0.#") + gcnew System::String(" s"));
+
+			}
+			else { Lines->Add(gcnew System::String("Auto Calibration: Off")); }
+
+			if (DriftBasedCalEnableFlag == true) {
+
+				double DriftThreshold = (double)TempDriftCalibrationSetValue;
+				Lines->Add(gcnew System::String("Drift-Based Calibration: On, at ") + DriftThreshold.ToString("0.0##") + gcnew System::String(" ") + GlobalVariables::DefaultTempUnitString);
+
+			}
+			else { Lines->Add(gcnew System::String("Drift-Based Calibration: Off")); }
+
+			// Data logging session: the file, the sample interval and duration set for the session, and what the graph holds
+			System::String^ SessionFileName = GlobalVariables::DataLoggingSessionFileNameString;
+			if (SessionFileName != nullptr && SessionFileName->Length > 0) { Lines->Add(gcnew System::String("Log File: ") + System::IO::Path::GetFileName(SessionFileName)); }
+
+			double IntervalSeconds = (double)DataLoggingIntervalMilliSec / 1000.0;
+			Lines->Add(gcnew System::String("Sample Interval: ") + IntervalSeconds.ToString("0.0##") + gcnew System::String(" s"));
+			Lines->Add(gcnew System::String("Session Duration Setting: ") + this->FormatDuration((double)DataLoggingSessionDurationMilliSec));
+			Lines->Add(gcnew System::String("Samples In Data Log: ") + System::Convert::ToString(this->ViewedSampleRows));
+			Lines->Add(gcnew System::String("Logged Time: ") + this->FormatDuration(this->LastElapsedMilliSec));
+			Lines->Add(gcnew System::String("Temperature Unit: ") + GlobalVariables::DefaultTempUnitString);
 
 		}
 
@@ -1750,6 +1833,13 @@ namespace IRCAMThermalViewer {
 			this->PartialLine = "";
 			this->ViewedSampleRows = 0;
 			this->LastElapsedMilliSec = 0.0;
+
+			// A new session (or a restart of the view) starts with the whole graph: a zoomed view of the previous session would show a time range that the new
+			// data has not reached yet (an empty graph). A locked X / Y range is not zoom and stays.
+			this->LogChart->ChartAreas[0]->AxisX->ScaleView->ZoomReset(0);
+			this->LogChart->ChartAreas[0]->AxisY->ScaleView->ZoomReset(0);
+			this->ApplyAxisSettings();
+			this->UpdateZoomIndicator();
 
 		}
 

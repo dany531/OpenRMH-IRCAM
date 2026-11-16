@@ -2551,8 +2551,8 @@ void RMH_ThermalViewer_ChangeTemperatureUnit(System::Object^ sender) {
 		RMH_ThermalViewer_SetCameraConfigUpDownRanges(TemperatureUnitScaleFactor, TemperatureUnitOffsetFactor);
 
 		// Update the parameter values of the camera configuration NumericUpDowns
-		RMH_Winforms_NumericUpDown_ChangeNumber(GlobalVariables::CameraConfigNumericUpDowns[1], IRCamera.ReflectedTemperatureSetting, TemperatureUnitScaleFactor, TemperatureUnitOffsetFactor, _IRThermalCameraDefault_ReflectedTemperatureValue);
-		RMH_Winforms_NumericUpDown_ChangeNumber(GlobalVariables::CameraConfigNumericUpDowns[2], IRCamera.AmbientTemperatureSetting, TemperatureUnitScaleFactor, TemperatureUnitOffsetFactor, _IRThermalCameraDefault_AmbientTemperatureValue);
+		RMH_Winforms_NumericUpDown_ChangeNumber(GlobalVariables::CameraConfigNumericUpDowns[1], IRCamera.AmbientTemperatureSetting, TemperatureUnitScaleFactor, TemperatureUnitOffsetFactor, _IRThermalCameraDefault_AmbientTemperatureValue);
+		RMH_Winforms_NumericUpDown_ChangeNumber(GlobalVariables::CameraConfigNumericUpDowns[2], IRCamera.ReflectedTemperatureSetting, TemperatureUnitScaleFactor, TemperatureUnitOffsetFactor, _IRThermalCameraDefault_ReflectedTemperatureValue);
 
 		// Update the temperature unit string of the labels of the camera configuration panel
 		GlobalVariables::CameraConfigLabels[0]->Text = "Temperature Correction [" + GlobalVariables::DefaultTempUnitString + "]:";
