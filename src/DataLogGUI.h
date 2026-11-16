@@ -24,6 +24,12 @@ namespace IRCAMThermalViewer {
 	// Old rows and points are removed in blocks of this size (removing them one at a time from a long list is slow)
 	#define _DataLogView_TrimBlockSize 1000
 
+	// Colors of the scroll bars of the zoomed graph (time axis and temperature axis): the track, the buttons (arrows, Reset Zoom button and the sliding
+	// part of the bar) and the lines / symbols drawn on the buttons. Light gray buttons with dark symbols so they stand out against the dark graph.
+	#define _DataLogScrollBar_TrackColor  System::Drawing::Color::FromArgb(70, 70, 70)
+	#define _DataLogScrollBar_ButtonColor System::Drawing::Color::FromArgb(200, 200, 200)
+	#define _DataLogScrollBar_LineColor   System::Drawing::Color::FromArgb(40, 40, 40)
+
 	public ref class DataLogGUI : public System::Windows::Forms::Form {
 
 	public:
@@ -354,6 +360,10 @@ namespace IRCAMThermalViewer {
 			MainArea->AxisY->ScaleView->SmallScrollMinSize = 0.001;
 			MainArea->AxisY->ScaleView->SmallScrollSize = 0.1;
 
+			// Lighter gray scroll bars, arrows and Reset Zoom buttons on both axes (more visible against the dark graph)
+			this->StyleAxisScrollBar(MainArea->AxisX);
+			this->StyleAxisScrollBar(MainArea->AxisY);
+
 			this->LogChart->ChartAreas->Add(MainArea);
 
 			// Title of the graph (top center, above the graph) - empty and hidden until a title is set in the right-click menu. It is part of an exported image.
@@ -452,6 +462,19 @@ namespace IRCAMThermalViewer {
 
 			// The label is hidden when the mouse leaves the graph (it shows again when the mouse comes back)
 			this->CursorLabel->Visible = false;
+
+		}
+
+		System::Void StyleAxisScrollBar(System::Windows::Forms::DataVisualization::Charting::Axis^ AxisObject) {
+
+			// Colors of the scroll bar that shows under / beside a zoomed axis: the bar track, the buttons (the two arrows, the Reset Zoom button and the
+			// sliding part) and the symbols on the buttons. The colors are set at the top of this file (_DataLogScrollBar_...).
+			System::Windows::Forms::DataVisualization::Charting::AxisScrollBar^ Bar = AxisObject->ScrollBar;
+
+			Bar->ButtonStyle = System::Windows::Forms::DataVisualization::Charting::ScrollBarButtonStyles::All;	// arrows and the Reset Zoom button
+			Bar->BackColor = _DataLogScrollBar_TrackColor;
+			Bar->ButtonColor = _DataLogScrollBar_ButtonColor;
+			Bar->LineColor = _DataLogScrollBar_LineColor;
 
 		}
 
@@ -1368,7 +1391,7 @@ namespace IRCAMThermalViewer {
 		System::Void ExportGraphButton_Click(System::Object^ sender, System::EventArgs^ e) {
 
 			// Saves the graph as an image (PNG, JPEG or BMP) - the graph as it is shown now (zoom, ticks, Y range), without the hidden lines,
-			// with the names of the lines that are shown (in the color of the lines) in a strip above the graph
+			// with the names of the lines that are shown (in the color of the lines) in a strip above the graph and the list of the thermal camera configuration below it
 			if (this->LogChart->Series->Count == 0) {
 
 				System::Windows::Forms::MessageBox::Show(this, "There is no graph to export yet. Start a data logging session first.", "Export Graph",
@@ -1478,7 +1501,12 @@ namespace IRCAMThermalViewer {
 				int StripHeight = 0;
 				if (Rows + RangeLines->Count > 0) { StripHeight = (Rows + RangeLines->Count) * RowHeight + 8; }
 
-				OutputImage = gcnew System::Drawing::Bitmap(ChartImage->Width, ChartImage->Height + StripHeight);
+				// List with the thermal camera configuration (as it is now), below the graph: a heading and one line per setting
+				System::Collections::Generic::List<System::String^>^ ConfigLines = gcnew System::Collections::Generic::List<System::String^>();
+				this->GetCameraConfigLines(ConfigLines);
+				int FooterHeight = (ConfigLines->Count + 1) * RowHeight + 12;
+
+				OutputImage = gcnew System::Drawing::Bitmap(ChartImage->Width, ChartImage->Height + StripHeight + FooterHeight);
 				System::Drawing::Graphics^ OutputGraphics = System::Drawing::Graphics::FromImage(OutputImage);
 				OutputGraphics->Clear(System::Drawing::Color::FromArgb(35, 35, 35));
 				OutputGraphics->TextRenderingHint = System::Drawing::Text::TextRenderingHint::AntiAliasGridFit;
@@ -1514,6 +1542,22 @@ namespace IRCAMThermalViewer {
 				delete RangeBrush;
 
 				OutputGraphics->DrawImage(ChartImage, 0, StripHeight, ChartImage->Width, ChartImage->Height);
+
+				// The thermal camera configuration list below the graph
+				System::Drawing::Font^ HeadingFont = gcnew System::Drawing::Font("Arial", 10, System::Drawing::FontStyle::Bold);
+				System::Drawing::SolidBrush^ ConfigBrush = gcnew System::Drawing::SolidBrush(System::Drawing::Color::FromArgb(220, 220, 220));
+				float ConfigTop = (float)(StripHeight + ChartImage->Height) + 8.0f;
+
+				OutputGraphics->DrawString("Thermal Camera Configuration:", HeadingFont, ConfigBrush, EdgeMargin, ConfigTop);
+
+				for (int i = 0; i < ConfigLines->Count; i++) {
+
+					OutputGraphics->DrawString(gcnew System::String("-  ") + ConfigLines[i], NameFont, ConfigBrush, EdgeMargin + 6.0f, ConfigTop + (float)((i + 1) * RowHeight));
+
+				}
+
+				delete ConfigBrush;
+				delete HeadingFont;
 				delete OutputGraphics;
 				delete NameFont;
 
@@ -1533,6 +1577,28 @@ namespace IRCAMThermalViewer {
 				if (ChartStream != nullptr) { delete ChartStream; }
 
 			}
+
+		}
+
+		System::Void GetCameraConfigLines(System::Collections::Generic::List<System::String^>^ Lines) {
+
+			// The thermal camera configuration (the values of the "Thermal Camera Configuration" panel in Settings that are in use by the camera now), one text
+			// per line, for the list in an exported graph image. Temperatures are shown in the temperature unit of the program, like the panel does.
+			System::String^ Unit = GlobalVariables::DefaultTempUnitString;
+
+			double TemperatureCorrection = (double)IRCamera.TemperatureCorrectionSetting;
+			double AmbientTemperature = ((double)IRCamera.AmbientTemperatureSetting * (double)TemperatureUnitScaleFactor) + (double)TemperatureUnitOffsetFactor;
+			double ReflectedTemperature = ((double)IRCamera.ReflectedTemperatureSetting * (double)TemperatureUnitScaleFactor) + (double)TemperatureUnitOffsetFactor;
+			double Humidity = (double)IRCamera.HumiditySetting;
+			double Emissivity = (double)IRCamera.EmissivitySetting;
+			double Distance = (double)IRCamera.DistanceSetting;
+
+			Lines->Add(gcnew System::String("Temperature Correction: ") + TemperatureCorrection.ToString("0.0#") + gcnew System::String(" ") + Unit);
+			Lines->Add(gcnew System::String("Ambient Temperature: ") + AmbientTemperature.ToString("0.0#") + gcnew System::String(" ") + Unit);
+			Lines->Add(gcnew System::String("Reflected Temperature: ") + ReflectedTemperature.ToString("0.0#") + gcnew System::String(" ") + Unit);
+			Lines->Add(gcnew System::String("Surrounding Humidity: ") + Humidity.ToString("0.0#") + gcnew System::String(" %"));
+			Lines->Add(gcnew System::String("Object Surface Emissivity: ") + Emissivity.ToString("0.00#"));
+			Lines->Add(gcnew System::String("Surface Distance: ") + Distance.ToString("0.0#") + gcnew System::String(" m"));
 
 		}
 
