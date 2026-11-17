@@ -27,6 +27,19 @@ namespace IRCAMThermalViewer {
 
 	// Colors of the scroll bars of the zoomed graph (time axis and temperature axis): the track, the buttons (arrows, Reset Zoom button and the sliding
 	// part of the bar) and the lines / symbols drawn on the buttons. Light gray buttons with dark symbols so they stand out against the dark graph.
+	// Exported image (Export Graph):
+	// - _DataLogExport_TextScale: the text around the graph (names of the lines, axis ranges, table), the title of the graph and the titles of the axes are this
+	//   much bigger than the values on the axes (1.2 = 20 % bigger).
+	// - _DataLogExport_ResolutionScale: the image has this many times more pixels in width and in height than the graph on the screen (3 = 3 x 3 = 9 times the
+	//   pixels). 1 = the size of the graph on the screen.
+	// - _DataLogExport_UseVectorChart: 1 = the graph is taken as a vector drawing (EMF+) and drawn at the high resolution, so lines and text stay sharp.
+	//   0 = the graph is taken as a picture of the screen size (it is only stretched at a higher resolution; use it to compare or when 1 does not look right).
+	// - _DataLogExport_JpegQuality: quality (0 - 100) of a JPEG image.
+	#define _DataLogExport_TextScale 1.2f
+	#define _DataLogExport_ResolutionScale 3
+	#define _DataLogExport_UseVectorChart 1
+	#define _DataLogExport_JpegQuality 95
+
 	// 1 = the scroll bars use the colors below, 0 = the scroll bars keep the default colors of the chart control (to compare the two)
 	#define _DataLogScrollBar_ApplyColors 1
 	#define _DataLogScrollBar_TrackColor  System::Drawing::Color::FromArgb(70, 70, 70)
@@ -120,6 +133,7 @@ namespace IRCAMThermalViewer {
 		System::Windows::Forms::Button^ OpenFolderButton;
 		System::Windows::Forms::Button^ ClearViewButton;
 		System::Windows::Forms::CheckBox^ AutoScrollCheckBox;
+		System::Windows::Forms::CheckBox^ ShowTitleCheckBox;     // Shows / hides the graph title on the graph and in an exported image (the title text is kept)
 		System::Windows::Forms::Timer^ RefreshTimer;
 
 		// State of the data that is shown
@@ -156,7 +170,7 @@ namespace IRCAMThermalViewer {
 			this->Text = "Data Log";
 			this->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
 			this->ForeColor = System::Drawing::Color::White;
-			this->ClientSize = System::Drawing::Size(1000, 600);
+			this->ClientSize = System::Drawing::Size(1130, 600);
 			this->Font = gcnew System::Drawing::Font("Arial", 9);
 
 			// Top panel with the status text and the buttons
@@ -168,7 +182,7 @@ namespace IRCAMThermalViewer {
 			this->StatusLabel = gcnew System::Windows::Forms::Label();
 			this->StatusLabel->AutoSize = false;
 			this->StatusLabel->Location = System::Drawing::Point(10, 8);
-			this->StatusLabel->Size = System::Drawing::Size(970, 24);
+			this->StatusLabel->Size = System::Drawing::Size(1100, 24);
 			this->StatusLabel->Anchor = System::Windows::Forms::AnchorStyles::Top | System::Windows::Forms::AnchorStyles::Left | System::Windows::Forms::AnchorStyles::Right;
 			this->StatusLabel->Font = gcnew System::Drawing::Font("Arial", 10, System::Drawing::FontStyle::Bold);
 			this->StatusLabel->ForeColor = System::Drawing::Color::White;
@@ -211,11 +225,20 @@ namespace IRCAMThermalViewer {
 			this->ExportGraphButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ExportGraphButton_Click);
 			TopPanel->Controls->Add(this->ExportGraphButton);
 
+			this->ShowTitleCheckBox = gcnew System::Windows::Forms::CheckBox();
+			this->ShowTitleCheckBox->Text = "Show Graph Title";
+			this->ShowTitleCheckBox->Checked = true;
+			this->ShowTitleCheckBox->AutoSize = true;
+			this->ShowTitleCheckBox->Location = System::Drawing::Point(818, 43);
+			this->ShowTitleCheckBox->ForeColor = System::Drawing::Color::White;
+			this->ShowTitleCheckBox->CheckedChanged += gcnew System::EventHandler(this, &DataLogGUI::ShowTitleCheckBox_CheckedChanged);
+			TopPanel->Controls->Add(this->ShowTitleCheckBox);
+
 			this->AutoScrollCheckBox = gcnew System::Windows::Forms::CheckBox();
 			this->AutoScrollCheckBox->Text = "Auto-scroll table to newest";
 			this->AutoScrollCheckBox->Checked = true;
 			this->AutoScrollCheckBox->AutoSize = true;
-			this->AutoScrollCheckBox->Location = System::Drawing::Point(818, 43);
+			this->AutoScrollCheckBox->Location = System::Drawing::Point(950, 43);
 			this->AutoScrollCheckBox->ForeColor = System::Drawing::Color::White;
 			TopPanel->Controls->Add(this->AutoScrollCheckBox);
 
@@ -715,6 +738,22 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		System::Void ShowTitleCheckBox_CheckedChanged(System::Object^ sender, System::EventArgs^ e) {
+
+			this->UpdateGraphTitleVisibility();
+
+		}
+
+		System::Void UpdateGraphTitleVisibility() {
+
+			// The title is shown when the Show Graph Title check box is ticked and there is a title text
+			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
+			if (GraphTitle == nullptr) { return; }
+
+			GraphTitle->Visible = (this->ShowTitleCheckBox->Checked == true && GraphTitle->Text->Length > 0);
+
+		}
+
 		bool ShowGraphTitleWindow() {
 
 			// Shows a window for entering the title of the graph (it starts with the title that is set now). An empty text removes the title.
@@ -774,7 +813,10 @@ namespace IRCAMThermalViewer {
 
 				System::String^ NewTitle = TitleBox->Text->Trim();
 				GraphTitle->Text = NewTitle;
-				GraphTitle->Visible = (NewTitle->Length > 0);
+
+				// A new title is shown: it ticks the Show Graph Title check box (an empty text leaves the check box as it is)
+				if (NewTitle->Length > 0) { this->ShowTitleCheckBox->Checked = true; }
+				this->UpdateGraphTitleVisibility();
 				return true;
 
 			}
@@ -1485,7 +1527,8 @@ namespace IRCAMThermalViewer {
 			}
 
 			// First the window for the title of the graph (it shows the title that is set now - keep it or change it). Cancel cancels the export.
-			if (this->ShowGraphTitleWindow() == false) { return; }
+			// When Show Graph Title is not ticked the image has no title, so the window is skipped (tick the check box, or use Set Graph Title..., to add one).
+			if (this->ShowTitleCheckBox->Checked == true) { if (this->ShowGraphTitleWindow() == false) { return; } }
 
 			// Then the window for the notes (it shows the notes that are set now - keep them, change them or empty the text). Cancel cancels the export.
 			if (this->ShowGraphNotesWindow() == false) { return; }
@@ -1523,12 +1566,49 @@ namespace IRCAMThermalViewer {
 			System::IO::MemoryStream^ ChartStream = nullptr;
 			System::Drawing::Bitmap^ ChartImage = nullptr;
 			System::Drawing::Bitmap^ OutputImage = nullptr;
+			System::IO::MemoryStream^ VectorStream = nullptr;
+			System::Drawing::Imaging::Metafile^ VectorImage = nullptr;
+
+			// The title of the graph and the titles of the axes are made bigger for the image (and put back in the finally part below)
+			System::Windows::Forms::DataVisualization::Charting::Title^ TitleObject = this->LogChart->Titles->FindByName("GraphTitle");
+			System::Drawing::Font^ SavedTitleFont = nullptr;
+			System::Drawing::Font^ SavedXTitleFont = nullptr;
+			System::Drawing::Font^ SavedYTitleFont = nullptr;
 
 			try {
+
+				if (TitleObject != nullptr) {
+
+					SavedTitleFont = TitleObject->Font;
+					TitleObject->Font = gcnew System::Drawing::Font(SavedTitleFont->FontFamily, SavedTitleFont->Size * _DataLogExport_TextScale, SavedTitleFont->Style, SavedTitleFont->Unit);
+
+				}
+
+				SavedXTitleFont = this->LogChart->ChartAreas[0]->AxisX->TitleFont;
+				this->LogChart->ChartAreas[0]->AxisX->TitleFont = gcnew System::Drawing::Font(SavedXTitleFont->FontFamily, SavedXTitleFont->Size * _DataLogExport_TextScale, SavedXTitleFont->Style, SavedXTitleFont->Unit);
+				SavedYTitleFont = this->LogChart->ChartAreas[0]->AxisY->TitleFont;
+				this->LogChart->ChartAreas[0]->AxisY->TitleFont = gcnew System::Drawing::Font(SavedYTitleFont->FontFamily, SavedYTitleFont->Size * _DataLogExport_TextScale, SavedYTitleFont->Style, SavedYTitleFont->Unit);
 
 				ChartStream = gcnew System::IO::MemoryStream();
 				this->LogChart->SaveImage(ChartStream, System::Windows::Forms::DataVisualization::Charting::ChartImageFormat::Png);
 				ChartImage = gcnew System::Drawing::Bitmap(ChartStream);
+
+#if _DataLogExport_UseVectorChart
+				// The same graph as a vector drawing (EMF+): it can be drawn at any resolution and stays sharp. When it is not possible the picture is used.
+				try {
+
+					VectorStream = gcnew System::IO::MemoryStream();
+					this->LogChart->SaveImage(VectorStream, System::Windows::Forms::DataVisualization::Charting::ChartImageFormat::EmfPlus);
+					VectorStream->Position = 0;
+					VectorImage = gcnew System::Drawing::Imaging::Metafile(VectorStream);
+
+				}
+				catch (System::Exception^) {
+
+					if (VectorImage != nullptr) { delete VectorImage; VectorImage = nullptr; }
+
+				}
+#endif
 
 				// The lines that are shown
 				System::Collections::Generic::List<System::String^>^ LineNames = gcnew System::Collections::Generic::List<System::String^>();
@@ -1545,10 +1625,11 @@ namespace IRCAMThermalViewer {
 
 				}
 
-				// All the text around the graph (names of the lines, axis ranges, table) has the font and size of the values on the axes (for example 20.0 and
-				// 0:00:00). Only the title of the graph (drawn by the chart) is bigger.
+				// All the text around the graph (names of the lines, axis ranges, table) has the font of the values on the axes (for example 20.0 and 0:00:00),
+				// _DataLogExport_TextScale times bigger (20 % bigger). The title of the graph and the titles of the axes are bigger by the same factor.
+				// The values on the axes are not changed.
 				System::Drawing::Font^ AxisFont = this->LogChart->ChartAreas[0]->AxisY->LabelStyle->Font;
-				System::Drawing::Font^ NameFont = gcnew System::Drawing::Font(AxisFont->FontFamily, AxisFont->Size, System::Drawing::FontStyle::Regular, AxisFont->Unit);
+				System::Drawing::Font^ NameFont = gcnew System::Drawing::Font(AxisFont->FontFamily, AxisFont->Size * _DataLogExport_TextScale, System::Drawing::FontStyle::Regular, AxisFont->Unit);
 				float TextHeight = NameFont->GetHeight(96.0f);
 				int RowHeight = (int)System::Math::Ceiling((double)TextHeight) + 7;
 				int SquareSize = (int)(TextHeight * 0.7f);
@@ -1559,10 +1640,12 @@ namespace IRCAMThermalViewer {
 				System::Drawing::Graphics^ MeasureGraphics = System::Drawing::Graphics::FromImage(ChartImage);
 				int Rows = 0;
 				float PositionX = EdgeMargin;
+				System::Collections::Generic::List<float>^ EntryWidths = gcnew System::Collections::Generic::List<float>();
 
 				for (int i = 0; i < LineNames->Count; i++) {
 
 					float EntryWidth = (float)SquareSize + 6.0f + MeasureGraphics->MeasureString(LineNames[i], NameFont).Width + EntryGap;
+					EntryWidths->Add(EntryWidth);
 					if (Rows == 0 || (PositionX + EntryWidth > (float)ChartImage->Width - EdgeMargin && PositionX > EdgeMargin)) { Rows++; PositionX = EdgeMargin; }
 					PositionX = PositionX + EntryWidth;
 
@@ -1692,10 +1775,16 @@ namespace IRCAMThermalViewer {
 
 				int FooterHeight = (int)System::Math::Ceiling((double)(TableTop + RowBottom)) + 10;
 
-				OutputImage = gcnew System::Drawing::Bitmap(ChartImage->Width, ChartImage->Height + StripHeight + FooterHeight);
+				// The image has _DataLogExport_ResolutionScale times more pixels in width and height. Everything below is drawn in the units of the graph on the
+				// screen: the scale transform makes the text, lines and the table sharp at the higher resolution.
+				const int ImageScale = _DataLogExport_ResolutionScale;
+				OutputImage = gcnew System::Drawing::Bitmap(ChartImage->Width * ImageScale, (ChartImage->Height + StripHeight + FooterHeight) * ImageScale);
 				System::Drawing::Graphics^ OutputGraphics = System::Drawing::Graphics::FromImage(OutputImage);
 				OutputGraphics->Clear(System::Drawing::Color::FromArgb(35, 35, 35));
+				OutputGraphics->ScaleTransform((float)ImageScale, (float)ImageScale);
 				OutputGraphics->TextRenderingHint = System::Drawing::Text::TextRenderingHint::AntiAliasGridFit;
+				OutputGraphics->InterpolationMode = System::Drawing::Drawing2D::InterpolationMode::HighQualityBicubic;
+				OutputGraphics->PixelOffsetMode = System::Drawing::Drawing2D::PixelOffsetMode::Half;
 
 				// Second pass: draw the names above the graph
 				int RowIndex = -1;
@@ -1703,7 +1792,7 @@ namespace IRCAMThermalViewer {
 
 				for (int i = 0; i < LineNames->Count; i++) {
 
-					float EntryWidth = (float)SquareSize + 6.0f + OutputGraphics->MeasureString(LineNames[i], NameFont).Width + EntryGap;
+					float EntryWidth = EntryWidths[i];
 					if (RowIndex < 0 || (PositionX + EntryWidth > (float)ChartImage->Width - EdgeMargin && PositionX > EdgeMargin)) { RowIndex++; PositionX = EdgeMargin; }
 
 					float PositionY = 4.0f + (float)(RowIndex * RowHeight);
@@ -1727,7 +1816,8 @@ namespace IRCAMThermalViewer {
 
 				delete RangeBrush;
 
-				OutputGraphics->DrawImage(ChartImage, 0, StripHeight, ChartImage->Width, ChartImage->Height);
+				if (VectorImage != nullptr) { OutputGraphics->DrawImage(VectorImage, 0, StripHeight, ChartImage->Width, ChartImage->Height); }
+				else { OutputGraphics->DrawImage(ChartImage, 0, StripHeight, ChartImage->Width, ChartImage->Height); }
 
 				// The table below the graph
 				System::Drawing::SolidBrush^ ConfigBrush = gcnew System::Drawing::SolidBrush(System::Drawing::Color::FromArgb(220, 220, 220));
@@ -1777,7 +1867,29 @@ namespace IRCAMThermalViewer {
 				delete OutputGraphics;
 				delete NameFont;
 
-				OutputImage->Save(SaveDialog->FileName, SaveFormat);
+				if (SaveFormat == System::Drawing::Imaging::ImageFormat::Jpeg) {
+
+					// JPEG with a high quality (the default quality of the framework makes the text blurry)
+					System::Drawing::Imaging::ImageCodecInfo^ JpegCodec = nullptr;
+					cli::array<System::Drawing::Imaging::ImageCodecInfo^>^ Codecs = System::Drawing::Imaging::ImageCodecInfo::GetImageEncoders();
+
+					for (int i = 0; i < Codecs->Length; i++) {
+
+						if (Codecs[i]->FormatID == System::Drawing::Imaging::ImageFormat::Jpeg->Guid) { JpegCodec = Codecs[i]; }
+
+					}
+
+					if (JpegCodec != nullptr) {
+
+						System::Drawing::Imaging::EncoderParameters^ JpegParameters = gcnew System::Drawing::Imaging::EncoderParameters(1);
+						JpegParameters->Param[0] = gcnew System::Drawing::Imaging::EncoderParameter(System::Drawing::Imaging::Encoder::Quality, (System::Int64)_DataLogExport_JpegQuality);
+						OutputImage->Save(SaveDialog->FileName, JpegCodec, JpegParameters);
+
+					}
+					else { OutputImage->Save(SaveDialog->FileName, SaveFormat); }
+
+				}
+				else { OutputImage->Save(SaveDialog->FileName, SaveFormat); }
 
 			}
 			catch (System::Exception^ ExportError) {
@@ -1788,7 +1900,14 @@ namespace IRCAMThermalViewer {
 			}
 			finally {
 
+				// Put the titles back to their size on the screen
+				if (TitleObject != nullptr && SavedTitleFont != nullptr) { TitleObject->Font = SavedTitleFont; }
+				if (SavedXTitleFont != nullptr) { this->LogChart->ChartAreas[0]->AxisX->TitleFont = SavedXTitleFont; }
+				if (SavedYTitleFont != nullptr) { this->LogChart->ChartAreas[0]->AxisY->TitleFont = SavedYTitleFont; }
+
 				if (OutputImage != nullptr) { delete OutputImage; }
+				if (VectorImage != nullptr) { delete VectorImage; }
+				if (VectorStream != nullptr) { delete VectorStream; }
 				if (ChartImage != nullptr) { delete ChartImage; }
 				if (ChartStream != nullptr) { delete ChartStream; }
 
