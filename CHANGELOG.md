@@ -5,6 +5,16 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data Log window: **new check box Show Graph Title**, before **Auto-scroll table to newest** (ticked by default). Not ticked = the title is hidden on the graph and in the
+  exported image (the text is kept) and **Export Graph** skips the Graph Title window. Setting a title (right-click menu **Set Graph Title...** or the export window) ticks the
+  check box again. The separate Data Log window is 1130 px wide (was 1000) and Auto-scroll moved right. Change in `DataLogGUI.h` (`ShowTitleCheckBox`,
+  `UpdateGraphTitleVisibility`, `ShowGraphTitleWindow`, `BuildLayout`).
+
+- Data Log window: **higher resolution of the exported image**. The image has 3 times more pixels in width and height. The graph is taken as a vector drawing (EMF+) and
+  drawn at the high resolution (falls back to the stretched picture when that fails); the strip and the table are drawn at the high resolution too. JPEG images are saved
+  with quality 95. Macros at the top of `DataLogGUI.h`: `_DataLogExport_ResolutionScale` (3), `_DataLogExport_UseVectorChart` (1; 0 = picture of the screen size),
+  `_DataLogExport_JpegQuality` (95). Change in `DataLogGUI.h` (`ExportGraphButton_Click`).
+
 - Data Log window: **Add Notes button and notes in the exported image**. New **Add Notes** button between **Reset Zoom** and **Export Graph** opens the **Graph Notes**
   window (multi-line text, up to 2000 characters, **Set Notes** / **Cancel**, empty text removes the notes). **Export Graph** now asks for the notes after the graph
   title, with the same behavior as the title (shows the notes that are set now to keep, edit or empty them; **Cancel** cancels the export). The notes are written
@@ -20,9 +30,10 @@ the number counts builds of this repository.
   full row). The Log File line shows `none` when there is no session file. Change in `DataLogGUI.h` (`ExportGraphButton_Click`, `GetExportInfoLines` now fills
   two lists, new `SplitInfoLine`).
 
-- Data Log window: **same text size in the exported image**. All text around the graph (line names, first / last axis values, table) now has the font and size of the
-  values on the axes (for example `20.0`, `0:00:00`), read from the graph itself, instead of Arial 10. Only the title is bigger. Rows and the colored squares follow
-  the text size. Change in `DataLogGUI.h` (`ExportGraphButton_Click`).
+- Data Log window: **text in the exported image is 20 % bigger than the axis values**. All text apart from the values on the axes (line names, first / last axis
+  values, table, title of the graph, titles of the axes) has the font of the axis values (for example `20.0`, `0:00:00`, read from the graph itself) at 1.2 times the
+  size; the axis values keep their size. The title and axis titles on the screen are only made bigger while the image is made. Macro `_DataLogExport_TextScale` (1.2).
+  Change in `DataLogGUI.h` (`ExportGraphButton_Click`).
 
 - Data Log window graph: **thermal camera configuration list in an exported image**. **Export Graph** now adds a list **below the graph** with the heading
   **Thermal Camera Configuration:** and one line per setting of the Thermal Camera Configuration panel (Settings): **Temperature Correction**,
