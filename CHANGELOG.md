@@ -5,6 +5,12 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- **Bug fix: with X-Axis Number Of Ticks other than Auto, the Data Log graph periodically changed its size and the last time value appeared and disappeared.** The
+  tick interval was calculated from the axis range while the chart rounded the end of the axis up to a multiple of the same interval, so the end switched between N and N + 1
+  intervals from one refresh to the next. With a number of ticks the time axis now runs from 0:00:00 to the newest point (the end is no longer rounded) and the interval is 0.1
+  millisecond shorter in total, so the last tick is always drawn. The axis `RecalculateAxesScale` call of this part is removed. **Auto**, a zoomed view and a locked X range are unchanged.
+  This bug was in earlier versions. Change in `DataLogGUI.h` (`ApplyAxisSettings`, new `GetDataEndTime`).
+
 - Data Log window: **new check box Show Graph Title**, before **Auto-scroll table to newest**, **not ticked** by default. Ticked shows the title above the graph and in the
   exported image (`Title` until a title is typed); not ticked hides it (the text is kept). **The title is edited directly: double-click it on the graph**, type, **Enter** (or click
   elsewhere) keeps, **Esc** cancels; a new title ticks the check box, an empty text hides the title (unticks it, text back to `Title`). **Export Graph** opens the Graph Title window also
