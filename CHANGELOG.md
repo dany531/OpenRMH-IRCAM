@@ -5,6 +5,15 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- **Bug fix: the Data Log graph jumped horizontally (the right edge moved) while logging, with X-Axis Number Of Ticks on a fixed number and also on Auto.** The graph used the
+  automatic layout of the chart, which makes the plot area (the part inside the axes) smaller or larger whenever the width of an axis label changes, for example a time label on the
+  right end of the time axis that comes and goes while the log grows. The round tick steps (next entry) were not enough. Now the plot area has a **fixed size**, set in pixels from each side
+  of the graph (left 75, right 40, top 12, bottom 55, plus about 30 at the top while the graph title is shown) and converted to percentages for the chart, so a label can no longer move
+  it. It is only written when it changes (window resize, graph title shown / hidden), not at every refresh. **While the graph is zoomed the automatic layout is used** (the zoom scroll
+  bars need room; the plot area does not change by itself then). The margins are constants at the top of `UpdatePlotAreaLayout`: increase one if an axis title or label is cut off.
+  Reported as working; not tested on every window size. Change in `DataLogGUI.h` (new `UpdatePlotAreaLayout`, `LogChart_SizeChanged`; called from `ApplyAxisSettings`,
+  `UpdateGraphTitleVisibility` and `BuildChart`).
+
 - **Bug fix: with X-Axis Number Of Ticks other than Auto, the Data Log graph changed its size and the last time value appeared and disappeared at random moments.** The tick interval was
   the range divided by the number of ticks (a different odd value at every refresh), written to the axis together with the range, so the chart laid the axis out again every second.
   Now the interval is a round time step (1, 2, 3, 5, 10, 15, 20, 30 s, the same in minutes, 1, 2, 3, 6, 12 h, whole days; milliseconds for a deep zoom), the smallest one that gives at
