@@ -5,6 +5,25 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- Data Log window: **Add Notes button and notes in the exported image**. New **Add Notes** button between **Reset Zoom** and **Export Graph** opens the **Graph Notes**
+  window (multi-line text, up to 2000 characters, **Set Notes** / **Cancel**, empty text removes the notes). **Export Graph** now asks for the notes after the graph
+  title, with the same behavior as the title (shows the notes that are set now to keep, edit or empty them; **Cancel** cancels the export). The notes are written
+  in the exported image in a **Notes** cell on the right of **Other Information**, wrapped to the width of the cell; without notes there is no Notes cell. Like the
+  title, the notes stay until changed (not saved with the log file or between program runs). To make room, **Export Graph** is narrower (115 px), **Auto-scroll
+  table to newest** moved right and the separate Data Log window is 1000 px wide (was 900). Change in `DataLogGUI.h` (`AddNotesButton_Click`,
+  `ShowGraphNotesWindow`, `GraphNotes`, `BuildLayout`, `ExportGraphButton_Click`).
+
+- Data Log window: **the information below the exported graph is now a table**. Cells from left to right: **Thermal Camera Configuration** (as before),
+  **Export Information** (Date, Time, Logged Time, Session Duration Setting, Sample Interval, Samples In Data Log), **Other Information** (Log File, Camera Model,
+  Camera Temperature Range, Auto Calibration, Drift-Based Calibration, Temperature Unit) and **Notes**. Each cell has a heading band and borders, label on the left
+  and value next to it, and the cells in a row have the same height. Cells that do not fit the width of a narrow image go to a next row (notes: at least 220 px or a
+  full row). The Log File line shows `none` when there is no session file. Change in `DataLogGUI.h` (`ExportGraphButton_Click`, `GetExportInfoLines` now fills
+  two lists, new `SplitInfoLine`).
+
+- Data Log window: **same text size in the exported image**. All text around the graph (line names, first / last axis values, table) now has the font and size of the
+  values on the axes (for example `20.0`, `0:00:00`), read from the graph itself, instead of Arial 10. Only the title is bigger. Rows and the colored squares follow
+  the text size. Change in `DataLogGUI.h` (`ExportGraphButton_Click`).
+
 - Data Log window graph: **thermal camera configuration list in an exported image**. **Export Graph** now adds a list **below the graph** with the heading
   **Thermal Camera Configuration:** and one line per setting of the Thermal Camera Configuration panel (Settings): **Temperature Correction**,
   **Ambient Temperature**, **Reflected Temperature**, **Surrounding Humidity** (%), **Object Surface Emissivity** and **Surface Distance** (m), for example
