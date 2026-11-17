@@ -1417,6 +1417,26 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		bool GetDataEndTime(double% DataEnd) {
+
+			// The time (in days, the unit of the time axis) of the newest point of the graph. Returns false when the graph has no points.
+			bool Found = false;
+
+			for (int i = 0; i < this->LogChart->Series->Count; i++) {
+
+				System::Windows::Forms::DataVisualization::Charting::Series^ LineSeries = this->LogChart->Series[i];
+				if (LineSeries->Points->Count == 0) { continue; }
+
+				double LastTime = LineSeries->Points[LineSeries->Points->Count - 1]->XValue;
+				if (Found == false || LastTime > DataEnd) { DataEnd = LastTime; }
+				Found = true;
+
+			}
+
+			return Found;
+
+		}
+
 		System::Void ApplyAxisSettings() {
 
 			// Applies the number of ticks and the locked temperature range to the axes of the graph. With everything on automatic nothing is changed
@@ -1445,6 +1465,36 @@ namespace IRCAMThermalViewer {
 					}
 
 					this->XRangeSetByProgram = true;
+
+				}
+				else if (this->XTickCount > 0) {
+
+					// A number of ticks: the time axis runs from the start (0:00:00) to the newest point, so the ticks are spread evenly over the data and the last
+					// tick is exactly at the end. With an automatic end the chart rounds the end of the axis up to a multiple of the tick interval; because the
+					// interval is calculated from the same range, the rounding switched between N and N + 1 intervals - the last value appeared and disappeared and the
+					// plot area changed its size.
+					double StartDay = this->ChartStartTime.ToOADate();
+					double EndDay = 0.0;
+
+					if (this->GetDataEndTime(EndDay) == true && EndDay > StartDay) {
+
+						if (AxisX->Minimum != StartDay || AxisX->Maximum != EndDay) {
+
+							AxisX->Minimum = StartDay;
+							AxisX->Maximum = EndDay;
+
+						}
+
+						this->XRangeSetByProgram = true;
+
+					}
+					else if (this->XRangeSetByProgram == true) {
+
+						AxisX->Minimum = System::Double::NaN;
+						AxisX->Maximum = System::Double::NaN;
+						this->XRangeSetByProgram = false;
+
+					}
 
 				}
 				else if (this->XRangeSetByProgram == true) {
@@ -1533,9 +1583,7 @@ namespace IRCAMThermalViewer {
 				// ---- Time axis ticks ----
 				if (this->XTickCount > 0) {
 
-					// Not while zoomed: the view is read from the scale view, and recalculating the scale while the view is scrolled would interfere with the scroll bar
-					if (AxisX->ScaleView->IsZoomed == false) { Area->RecalculateAxesScale(); }
-
+					// The range is the one set above (not zoomed) or the zoomed view
 					double ViewMinimum = AxisX->Minimum;
 					double ViewMaximum = AxisX->Maximum;
 
@@ -1547,7 +1595,13 @@ namespace IRCAMThermalViewer {
 					if (!System::Double::IsNaN(RangeSeconds) && RangeSeconds > 0.0) {
 
 						AxisX->IntervalType = System::Windows::Forms::DataVisualization::Charting::DateTimeIntervalType::Seconds;
-						AxisX->Interval = System::Math::Max(RangeSeconds / (double)this->XTickCount, 0.001);
+
+						// The interval is made a tiny bit shorter (0.1 millisecond in total), so that the last tick is never just beyond the end of the axis because of
+						// the rounding of the calculation (the label of the last tick would not be drawn)
+						double TickRangeSeconds = RangeSeconds;
+						if (TickRangeSeconds > 0.01) { TickRangeSeconds = TickRangeSeconds - 0.0001; }
+
+						AxisX->Interval = System::Math::Max(TickRangeSeconds / (double)this->XTickCount, 0.001);
 						this->XIntervalSetByProgram = true;
 
 					}
