@@ -1602,8 +1602,15 @@ namespace IRCAMThermalViewer {
 
 					}
 
+					// A fixed number of ticks puts a tick (and its label) exactly on the right end of the axis every time the data grows past a tick. A label on the
+					// edge sticks out of the plot area, so the chart's automatic layout shrinks the plot area while that label exists and gives the width back when
+					// it does not: the graph jumps horizontally. Not drawing the end label keeps the plot area the same size.
+					AxisX->LabelStyle->IsEndLabelVisible = false;
+
 				}
 				else if (this->XIntervalSetByProgram == true) {
+
+					AxisX->LabelStyle->IsEndLabelVisible = true;
 
 					AxisX->Interval = 0;
 					AxisX->IntervalType = System::Windows::Forms::DataVisualization::Charting::DateTimeIntervalType::Auto;
