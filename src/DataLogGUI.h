@@ -71,6 +71,7 @@ namespace IRCAMThermalViewer {
 			this->XLockedMaximum = 60.0;
 			this->XRangeSetByProgram = false;
 			this->XIntervalSetByProgram = false;
+			this->XIntervalSeconds = 0.0;
 			this->YIntervalSetByProgram = false;
 
 			this->BuildLayout();
@@ -121,6 +122,7 @@ namespace IRCAMThermalViewer {
 		bool XRangeSetByProgram;     // The range of the time axis was set by this code (so it is given back to automatic when not needed)
 		bool YRangeSetByProgram;     // The range of the temperature axis was set by this code (so it is given back to automatic when not needed)
 		bool XIntervalSetByProgram;
+		double XIntervalSeconds;     // The tick interval (in seconds) of the time axis that was written to the axis (when XIntervalSetByProgram is true)
 		bool YIntervalSetByProgram;
 		bool NoticeShowing;
 		bool HideDurationNotice;
@@ -1417,6 +1419,23 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		double GetRoundTickSeconds(double MinimumSeconds) {
+
+			// The smallest round time step (in seconds) that is at least MinimumSeconds: 1, 2, 3, 5, 10, 15, 20, 30 seconds, the same in minutes, 1, 2, 3, 6, 12 hours,
+			// whole days - and, for a zoom into less than a few seconds, steps down to a millisecond. So with a number of ticks N the axis has at most N intervals.
+			cli::array<double>^ Steps = gcnew cli::array<double>{ 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 15.0, 20.0, 30.0,
+				60.0, 120.0, 180.0, 300.0, 600.0, 900.0, 1200.0, 1800.0, 3600.0, 7200.0, 10800.0, 21600.0, 43200.0, 86400.0 };
+
+			for (int i = 0; i < Steps->Length; i++) {
+
+				if (Steps[i] >= MinimumSeconds) { return Steps[i]; }
+
+			}
+
+			return System::Math::Ceiling(MinimumSeconds / 86400.0) * 86400.0;
+
+		}
+
 		bool GetDataEndTime(double% DataEnd) {
 
 			// The time (in days, the unit of the time axis) of the newest point of the graph. Returns false when the graph has no points.
@@ -1465,36 +1484,6 @@ namespace IRCAMThermalViewer {
 					}
 
 					this->XRangeSetByProgram = true;
-
-				}
-				else if (this->XTickCount > 0) {
-
-					// A number of ticks: the time axis runs from the start (0:00:00) to the newest point, so the ticks are spread evenly over the data and the last
-					// tick is exactly at the end. With an automatic end the chart rounds the end of the axis up to a multiple of the tick interval; because the
-					// interval is calculated from the same range, the rounding switched between N and N + 1 intervals - the last value appeared and disappeared and the
-					// plot area changed its size.
-					double StartDay = this->ChartStartTime.ToOADate();
-					double EndDay = 0.0;
-
-					if (this->GetDataEndTime(EndDay) == true && EndDay > StartDay) {
-
-						if (AxisX->Minimum != StartDay || AxisX->Maximum != EndDay) {
-
-							AxisX->Minimum = StartDay;
-							AxisX->Maximum = EndDay;
-
-						}
-
-						this->XRangeSetByProgram = true;
-
-					}
-					else if (this->XRangeSetByProgram == true) {
-
-						AxisX->Minimum = System::Double::NaN;
-						AxisX->Maximum = System::Double::NaN;
-						this->XRangeSetByProgram = false;
-
-					}
 
 				}
 				else if (this->XRangeSetByProgram == true) {
@@ -1583,26 +1572,33 @@ namespace IRCAMThermalViewer {
 				// ---- Time axis ticks ----
 				if (this->XTickCount > 0) {
 
-					// The range is the one set above (not zoomed) or the zoomed view
-					double ViewMinimum = AxisX->Minimum;
-					double ViewMaximum = AxisX->Maximum;
+					// The range that the ticks are for: the locked range, the zoomed view, or the data (from 0:00:00 to the newest point). It is not read from the axis:
+					// the end of the axis is rounded by the chart to a multiple of the tick interval, so a range read from the axis depends on the interval.
+					double RangeSeconds = 0.0;
 
-					if (AxisX->ScaleView->IsZoomed == true) { ViewMinimum = AxisX->ScaleView->ViewMinimum; ViewMaximum = AxisX->ScaleView->ViewMaximum; }
+					if (this->XRangeLocked == true) { RangeSeconds = this->XLockedMaximum - this->XLockedMinimum; }
+					else if (AxisX->ScaleView->IsZoomed == true) { RangeSeconds = (AxisX->ScaleView->ViewMaximum - AxisX->ScaleView->ViewMinimum) * 86400.0; }
+					else {
 
-					// The time axis is in days (date / time values) - the ticks are set in seconds
-					double RangeSeconds = (ViewMaximum - ViewMinimum) * 86400.0;
+						double EndDay = 0.0;
+						if (this->GetDataEndTime(EndDay) == true) { RangeSeconds = (EndDay - this->ChartStartTime.ToOADate()) * 86400.0; }
+
+					}
 
 					if (!System::Double::IsNaN(RangeSeconds) && RangeSeconds > 0.0) {
 
-						AxisX->IntervalType = System::Windows::Forms::DataVisualization::Charting::DateTimeIntervalType::Seconds;
+						// The tick interval is a round time step (see GetRoundTickSeconds), so it only changes when the range grows into the next step, and it is only
+						// written to the axis when it changes. Writing a new, odd interval and range to the axis at every refresh made the graph re-layout every second.
+						double WantedSeconds = this->GetRoundTickSeconds(RangeSeconds / (double)this->XTickCount);
 
-						// The interval is made a tiny bit shorter (0.1 millisecond in total), so that the last tick is never just beyond the end of the axis because of
-						// the rounding of the calculation (the label of the last tick would not be drawn)
-						double TickRangeSeconds = RangeSeconds;
-						if (TickRangeSeconds > 0.01) { TickRangeSeconds = TickRangeSeconds - 0.0001; }
+						if (this->XIntervalSetByProgram == false || WantedSeconds != this->XIntervalSeconds) {
 
-						AxisX->Interval = System::Math::Max(TickRangeSeconds / (double)this->XTickCount, 0.001);
-						this->XIntervalSetByProgram = true;
+							AxisX->IntervalType = System::Windows::Forms::DataVisualization::Charting::DateTimeIntervalType::Seconds;
+							AxisX->Interval = WantedSeconds;
+							this->XIntervalSeconds = WantedSeconds;
+							this->XIntervalSetByProgram = true;
+
+						}
 
 					}
 
