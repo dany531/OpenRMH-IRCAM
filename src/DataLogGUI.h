@@ -40,6 +40,7 @@ namespace IRCAMThermalViewer {
 		DataLogGUI(void) {
 
 			this->ViewedFilePath = nullptr;
+			this->GraphNotes = "";
 			this->ViewedFilePosition = 0;
 			this->PartialLine = "";
 			this->ViewedSampleRows = 0;
@@ -79,6 +80,8 @@ namespace IRCAMThermalViewer {
 		bool SplitDistanceSet;
 		System::Windows::Forms::Button^ ResetZoomButton;
 		System::Windows::Forms::Button^ ExportGraphButton;
+		System::Windows::Forms::Button^ AddNotesButton;
+		System::String^ GraphNotes;     // Notes about the logging, written in the table below the graph of an exported image (like the graph title, they stay until changed)
 		System::DateTime ChartStartTime;
 		System::Windows::Forms::Label^ CursorLabel;     // Shows the temperature at the mouse cursor (switched on / off in the right click menu of the graph)
 		bool CursorLabelEnabled;
@@ -153,7 +156,7 @@ namespace IRCAMThermalViewer {
 			this->Text = "Data Log";
 			this->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
 			this->ForeColor = System::Drawing::Color::White;
-			this->ClientSize = System::Drawing::Size(900, 600);
+			this->ClientSize = System::Drawing::Size(1000, 600);
 			this->Font = gcnew System::Drawing::Font("Arial", 9);
 
 			// Top panel with the status text and the buttons
@@ -165,7 +168,7 @@ namespace IRCAMThermalViewer {
 			this->StatusLabel = gcnew System::Windows::Forms::Label();
 			this->StatusLabel->AutoSize = false;
 			this->StatusLabel->Location = System::Drawing::Point(10, 8);
-			this->StatusLabel->Size = System::Drawing::Size(870, 24);
+			this->StatusLabel->Size = System::Drawing::Size(970, 24);
 			this->StatusLabel->Anchor = System::Windows::Forms::AnchorStyles::Top | System::Windows::Forms::AnchorStyles::Left | System::Windows::Forms::AnchorStyles::Right;
 			this->StatusLabel->Font = gcnew System::Drawing::Font("Arial", 10, System::Drawing::FontStyle::Bold);
 			this->StatusLabel->ForeColor = System::Drawing::Color::White;
@@ -198,8 +201,13 @@ namespace IRCAMThermalViewer {
 			this->ResetZoomButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ResetZoomButton_Click);
 			TopPanel->Controls->Add(this->ResetZoomButton);
 
+			this->AddNotesButton = gcnew System::Windows::Forms::Button();
+			this->StyleButton(this->AddNotesButton, "Add Notes", 595, 95);
+			this->AddNotesButton->Click += gcnew System::EventHandler(this, &DataLogGUI::AddNotesButton_Click);
+			TopPanel->Controls->Add(this->AddNotesButton);
+
 			this->ExportGraphButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->ExportGraphButton, "Export Graph", 595, 120);
+			this->StyleButton(this->ExportGraphButton, "Export Graph", 695, 115);
 			this->ExportGraphButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ExportGraphButton_Click);
 			TopPanel->Controls->Add(this->ExportGraphButton);
 
@@ -207,7 +215,7 @@ namespace IRCAMThermalViewer {
 			this->AutoScrollCheckBox->Text = "Auto-scroll table to newest";
 			this->AutoScrollCheckBox->Checked = true;
 			this->AutoScrollCheckBox->AutoSize = true;
-			this->AutoScrollCheckBox->Location = System::Drawing::Point(725, 43);
+			this->AutoScrollCheckBox->Location = System::Drawing::Point(818, 43);
 			this->AutoScrollCheckBox->ForeColor = System::Drawing::Color::White;
 			TopPanel->Controls->Add(this->AutoScrollCheckBox);
 
@@ -767,6 +775,77 @@ namespace IRCAMThermalViewer {
 				System::String^ NewTitle = TitleBox->Text->Trim();
 				GraphTitle->Text = NewTitle;
 				GraphTitle->Visible = (NewTitle->Length > 0);
+				return true;
+
+			}
+
+			return false;
+
+		}
+
+		System::Void AddNotesButton_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			this->ShowGraphNotesWindow();
+
+		}
+
+		bool ShowGraphNotesWindow() {
+
+			// Shows a window for entering notes about the logging (it starts with the notes that are set now). The notes are written in the table below the graph
+			// in an exported image. An empty text removes the notes. Returns true when the window was closed with Set Notes, false when it was cancelled.
+			System::Windows::Forms::Form^ NotesWindow = gcnew System::Windows::Forms::Form();
+			NotesWindow->Text = "Graph Notes";
+			NotesWindow->FormBorderStyle = System::Windows::Forms::FormBorderStyle::FixedDialog;
+			NotesWindow->StartPosition = System::Windows::Forms::FormStartPosition::CenterParent;
+			NotesWindow->MinimizeBox = false;
+			NotesWindow->MaximizeBox = false;
+			NotesWindow->ShowInTaskbar = false;
+			NotesWindow->BackColor = System::Drawing::Color::White;
+			NotesWindow->ForeColor = System::Drawing::Color::Black;
+			NotesWindow->ClientSize = System::Drawing::Size(520, 290);
+
+			System::Windows::Forms::Label^ NotesLabel = gcnew System::Windows::Forms::Label();
+			NotesLabel->Text = "Notes about the logging (shown in the table below the graph in an exported image):";
+			NotesLabel->AutoSize = false;
+			NotesLabel->Location = System::Drawing::Point(20, 16);
+			NotesLabel->Size = System::Drawing::Size(480, 22);
+			NotesWindow->Controls->Add(NotesLabel);
+
+			System::Windows::Forms::TextBox^ NotesBox = gcnew System::Windows::Forms::TextBox();
+			NotesBox->Multiline = true;
+			NotesBox->AcceptsReturn = true;
+			NotesBox->ScrollBars = System::Windows::Forms::ScrollBars::Vertical;
+			NotesBox->MaxLength = 2000;
+			NotesBox->Text = this->GraphNotes;
+			NotesBox->Location = System::Drawing::Point(20, 42);
+			NotesBox->Size = System::Drawing::Size(480, 160);
+			NotesWindow->Controls->Add(NotesBox);
+
+			System::Windows::Forms::Label^ NotesInfoLabel = gcnew System::Windows::Forms::Label();
+			NotesInfoLabel->Text = "Leave the text empty to remove the notes. Enter starts a new line.";
+			NotesInfoLabel->AutoSize = false;
+			NotesInfoLabel->Location = System::Drawing::Point(20, 208);
+			NotesInfoLabel->Size = System::Drawing::Size(480, 22);
+			NotesWindow->Controls->Add(NotesInfoLabel);
+
+			System::Windows::Forms::Button^ NotesOkButton = gcnew System::Windows::Forms::Button();
+			NotesOkButton->Text = "Set Notes";
+			NotesOkButton->DialogResult = System::Windows::Forms::DialogResult::OK;
+			NotesOkButton->Location = System::Drawing::Point(140, 242);
+			NotesOkButton->Size = System::Drawing::Size(110, 30);
+			NotesWindow->Controls->Add(NotesOkButton);
+
+			System::Windows::Forms::Button^ NotesCancelButton = gcnew System::Windows::Forms::Button();
+			NotesCancelButton->Text = "Cancel";
+			NotesCancelButton->DialogResult = System::Windows::Forms::DialogResult::Cancel;
+			NotesCancelButton->Location = System::Drawing::Point(270, 242);
+			NotesCancelButton->Size = System::Drawing::Size(110, 30);
+			NotesWindow->Controls->Add(NotesCancelButton);
+			NotesWindow->CancelButton = NotesCancelButton;
+
+			if (NotesWindow->ShowDialog(this) == System::Windows::Forms::DialogResult::OK) {
+
+				this->GraphNotes = NotesBox->Text->Trim();
 				return true;
 
 			}
@@ -1396,7 +1475,7 @@ namespace IRCAMThermalViewer {
 		System::Void ExportGraphButton_Click(System::Object^ sender, System::EventArgs^ e) {
 
 			// Saves the graph as an image (PNG, JPEG or BMP) - the graph as it is shown now (zoom, ticks, Y range), without the hidden lines,
-			// with the names of the lines that are shown (in the color of the lines) in a strip above the graph, then the thermal camera configuration list with the export information on its right below the graph
+			// with the names of the lines that are shown (in the color of the lines) in a strip above the graph, then a table below the graph (thermal camera configuration, export information, other information and the notes)
 			if (this->LogChart->Series->Count == 0) {
 
 				System::Windows::Forms::MessageBox::Show(this, "There is no graph to export yet. Start a data logging session first.", "Export Graph",
@@ -1407,6 +1486,9 @@ namespace IRCAMThermalViewer {
 
 			// First the window for the title of the graph (it shows the title that is set now - keep it or change it). Cancel cancels the export.
 			if (this->ShowGraphTitleWindow() == false) { return; }
+
+			// Then the window for the notes (it shows the notes that are set now - keep them, change them or empty the text). Cancel cancels the export.
+			if (this->ShowGraphNotesWindow() == false) { return; }
 
 			// Default file name: the name of the session file + _graph, or the date and time
 			System::String^ DefaultName;
@@ -1463,9 +1545,13 @@ namespace IRCAMThermalViewer {
 
 				}
 
-				System::Drawing::Font^ NameFont = gcnew System::Drawing::Font("Arial", 10);
-				const int SquareSize = 10;
-				const int RowHeight = 22;
+				// All the text around the graph (names of the lines, axis ranges, table) has the font and size of the values on the axes (for example 20.0 and
+				// 0:00:00). Only the title of the graph (drawn by the chart) is bigger.
+				System::Drawing::Font^ AxisFont = this->LogChart->ChartAreas[0]->AxisY->LabelStyle->Font;
+				System::Drawing::Font^ NameFont = gcnew System::Drawing::Font(AxisFont->FontFamily, AxisFont->Size, System::Drawing::FontStyle::Regular, AxisFont->Unit);
+				float TextHeight = NameFont->GetHeight(96.0f);
+				int RowHeight = (int)System::Math::Ceiling((double)TextHeight) + 7;
+				int SquareSize = (int)(TextHeight * 0.7f);
 				const float EdgeMargin = 10.0f;
 				const float EntryGap = 18.0f;
 
@@ -1506,30 +1592,105 @@ namespace IRCAMThermalViewer {
 				int StripHeight = 0;
 				if (Rows + RangeLines->Count > 0) { StripHeight = (Rows + RangeLines->Count) * RowHeight + 8; }
 
-				// List with the thermal camera configuration (as it is now), below the graph: a heading and one line per setting
+				// Table below the graph, in this order from left to right: Thermal Camera Configuration, Export Information, Other Information and (when there are
+				// notes) Notes. A cell has a heading and the lines of its list (label on the left, value next to it). The notes cell takes the rest of the width; when
+				// the image is too narrow for all cells, the cells that do not fit go to a next row.
 				System::Collections::Generic::List<System::String^>^ ConfigLines = gcnew System::Collections::Generic::List<System::String^>();
+				System::Collections::Generic::List<System::String^>^ ExportLines = gcnew System::Collections::Generic::List<System::String^>();
+				System::Collections::Generic::List<System::String^>^ OtherLines = gcnew System::Collections::Generic::List<System::String^>();
 				this->GetCameraConfigLines(ConfigLines);
+				this->GetExportInfoLines(ExportLines, OtherLines);
 
-				// The information for later reference (date, time, camera model, calibration, session) is written on the right of the configuration list. When the
-				// image is too narrow for two columns it is written below the list instead.
-				System::Collections::Generic::List<System::String^>^ InfoLines = gcnew System::Collections::Generic::List<System::String^>();
-				this->GetExportInfoLines(InfoLines);
+				System::String^ NotesText = (this->GraphNotes != nullptr) ? this->GraphNotes->Trim() : gcnew System::String("");
+				int CellCount = 3;
+				if (NotesText->Length > 0) { CellCount = 4; }
 
-				System::Drawing::Font^ HeadingFont = gcnew System::Drawing::Font("Arial", 10, System::Drawing::FontStyle::Bold);
+				cli::array<System::String^>^ CellHeadings = gcnew cli::array<System::String^>{ "Thermal Camera Configuration:", "Export Information:", "Other Information:", "Notes:" };
+				cli::array<System::Collections::Generic::List<System::String^>^>^ CellLists = gcnew cli::array<System::Collections::Generic::List<System::String^>^>{ ConfigLines, ExportLines, OtherLines, nullptr };
+
+				System::Drawing::Font^ HeadingFont = gcnew System::Drawing::Font(NameFont, System::Drawing::FontStyle::Bold);
 				System::Drawing::Graphics^ FooterMeasure = System::Drawing::Graphics::FromImage(ChartImage);
-				float ConfigColumnWidth = FooterMeasure->MeasureString("Thermal Camera Configuration:", HeadingFont).Width;
-				for (int i = 0; i < ConfigLines->Count; i++) { ConfigColumnWidth = System::Math::Max(ConfigColumnWidth, FooterMeasure->MeasureString(gcnew System::String("-  ") + ConfigLines[i], NameFont).Width + 6.0f); }
-				float InfoColumnWidth = FooterMeasure->MeasureString("Export Information:", HeadingFont).Width;
-				for (int i = 0; i < InfoLines->Count; i++) { InfoColumnWidth = System::Math::Max(InfoColumnWidth, FooterMeasure->MeasureString(gcnew System::String("-  ") + InfoLines[i], NameFont).Width + 6.0f); }
+
+				const float CellPad = 8.0f;
+				const float LabelGap = 12.0f;
+				const float MinNotesWidth = 220.0f;
+				const float TableTop = 8.0f;
+				float TableRight = (float)ChartImage->Width - EdgeMargin;
+
+				cli::array<float>^ CellX = gcnew cli::array<float>(CellCount);
+				cli::array<float>^ CellY = gcnew cli::array<float>(CellCount);
+				cli::array<float>^ CellW = gcnew cli::array<float>(CellCount);
+				cli::array<float>^ CellH = gcnew cli::array<float>(CellCount);
+				cli::array<float>^ CellLabelW = gcnew cli::array<float>(CellCount);
+
+				float CursorX = EdgeMargin;
+				float RowTop = 0.0f;
+				float RowBottom = 0.0f;
+
+				for (int c = 0; c < CellCount; c++) {
+
+					float CellWidth = 0.0f;
+					float CellHeight = 0.0f;
+					CellLabelW[c] = 0.0f;
+
+					if (c < 3) {
+
+						// Width: the widest of the heading and the (label + value) lines
+						float ValueWidth = 0.0f;
+
+						for (int i = 0; i < CellLists[c]->Count; i++) {
+
+							System::String^ LabelText = nullptr;
+							System::String^ ValueText = nullptr;
+							this->SplitInfoLine(CellLists[c][i], LabelText, ValueText);
+							CellLabelW[c] = System::Math::Max(CellLabelW[c], FooterMeasure->MeasureString(LabelText, NameFont).Width);
+							ValueWidth = System::Math::Max(ValueWidth, FooterMeasure->MeasureString(ValueText, NameFont).Width);
+
+						}
+
+						CellWidth = System::Math::Max(FooterMeasure->MeasureString(CellHeadings[c], HeadingFont).Width, CellLabelW[c] + LabelGap + ValueWidth) + (2.0f * CellPad);
+
+						// The cell does not fit in the rest of the row: next row
+						if (CursorX + CellWidth > TableRight && CursorX > EdgeMargin) { RowTop = RowBottom; CursorX = EdgeMargin; }
+
+						CellHeight = (float)((CellLists[c]->Count + 1) * RowHeight) + 8.0f;
+
+					}
+					else {
+
+						// The notes take the rest of the width of the row (a full row when less than the minimum width is left)
+						if (TableRight - CursorX < MinNotesWidth && CursorX > EdgeMargin) { RowTop = RowBottom; CursorX = EdgeMargin; }
+
+						CellWidth = TableRight - CursorX;
+						float NotesTextHeight = FooterMeasure->MeasureString(NotesText, NameFont, (int)(CellWidth - (2.0f * CellPad))).Height;
+						CellHeight = (float)RowHeight + NotesTextHeight + 12.0f;
+
+					}
+
+					CellX[c] = CursorX;
+					CellY[c] = RowTop;
+					CellW[c] = CellWidth;
+					CellH[c] = CellHeight;
+
+					CursorX = CursorX + CellWidth;
+					RowBottom = System::Math::Max(RowBottom, RowTop + CellHeight);
+
+				}
+
 				delete FooterMeasure;
 
-				const float ColumnGap = 40.0f;
-				float InfoColumnX = EdgeMargin + ConfigColumnWidth + ColumnGap;
-				bool InfoBelow = (InfoColumnX + InfoColumnWidth + EdgeMargin > (float)ChartImage->Width);
+				// The cells in the same row get the height of the highest one, so the borders line up
+				for (int c = 0; c < CellCount; c++) {
 
-				int FooterRows = System::Math::Max(ConfigLines->Count, InfoLines->Count) + 1;
-				if (InfoBelow == true) { FooterRows = ConfigLines->Count + InfoLines->Count + 2; }
-				int FooterHeight = FooterRows * RowHeight + 12;
+					for (int d = 0; d < CellCount; d++) {
+
+						if (CellY[d] == CellY[c]) { CellH[c] = System::Math::Max(CellH[c], CellH[d]); }
+
+					}
+
+				}
+
+				int FooterHeight = (int)System::Math::Ceiling((double)(TableTop + RowBottom)) + 10;
 
 				OutputImage = gcnew System::Drawing::Bitmap(ChartImage->Width, ChartImage->Height + StripHeight + FooterHeight);
 				System::Drawing::Graphics^ OutputGraphics = System::Drawing::Graphics::FromImage(OutputImage);
@@ -1547,7 +1708,7 @@ namespace IRCAMThermalViewer {
 
 					float PositionY = 4.0f + (float)(RowIndex * RowHeight);
 					System::Drawing::SolidBrush^ LineBrush = gcnew System::Drawing::SolidBrush(LineColors[i]);
-					OutputGraphics->FillRectangle(LineBrush, PositionX, PositionY + 5.0f, (float)SquareSize, (float)SquareSize);
+					OutputGraphics->FillRectangle(LineBrush, PositionX, PositionY + ((TextHeight - (float)SquareSize) / 2.0f), (float)SquareSize, (float)SquareSize);
 					OutputGraphics->DrawString(LineNames[i], NameFont, LineBrush, PositionX + (float)SquareSize + 6.0f, PositionY);
 					delete LineBrush;
 
@@ -1568,30 +1729,49 @@ namespace IRCAMThermalViewer {
 
 				OutputGraphics->DrawImage(ChartImage, 0, StripHeight, ChartImage->Width, ChartImage->Height);
 
-				// The thermal camera configuration list below the graph, and the information for later reference on its right
+				// The table below the graph
 				System::Drawing::SolidBrush^ ConfigBrush = gcnew System::Drawing::SolidBrush(System::Drawing::Color::FromArgb(220, 220, 220));
-				float ConfigTop = (float)(StripHeight + ChartImage->Height) + 8.0f;
+				System::Drawing::SolidBrush^ HeadingBackBrush = gcnew System::Drawing::SolidBrush(System::Drawing::Color::FromArgb(60, 60, 60));
+				System::Drawing::Pen^ TablePen = gcnew System::Drawing::Pen(System::Drawing::Color::FromArgb(120, 120, 120), 1.0f);
+				float TableOriginY = (float)(StripHeight + ChartImage->Height) + TableTop;
+				float TextOffsetY = ((float)RowHeight - TextHeight) / 2.0f;
 
-				OutputGraphics->DrawString("Thermal Camera Configuration:", HeadingFont, ConfigBrush, EdgeMargin, ConfigTop);
+				for (int c = 0; c < CellCount; c++) {
 
-				for (int i = 0; i < ConfigLines->Count; i++) {
+					float X = CellX[c];
+					float Y = TableOriginY + CellY[c];
 
-					OutputGraphics->DrawString(gcnew System::String("-  ") + ConfigLines[i], NameFont, ConfigBrush, EdgeMargin + 6.0f, ConfigTop + (float)((i + 1) * RowHeight));
+					OutputGraphics->FillRectangle(HeadingBackBrush, X, Y, CellW[c], (float)RowHeight);
+					OutputGraphics->DrawRectangle(TablePen, X, Y, CellW[c], CellH[c]);
+					OutputGraphics->DrawLine(TablePen, X, Y + (float)RowHeight, X + CellW[c], Y + (float)RowHeight);
+					OutputGraphics->DrawString(CellHeadings[c], HeadingFont, ConfigBrush, X + CellPad, Y + TextOffsetY);
+
+					if (c < 3) {
+
+						for (int i = 0; i < CellLists[c]->Count; i++) {
+
+							System::String^ LabelText = nullptr;
+							System::String^ ValueText = nullptr;
+							this->SplitInfoLine(CellLists[c][i], LabelText, ValueText);
+
+							float LineY = Y + (float)((i + 1) * RowHeight) + 4.0f + TextOffsetY;
+							OutputGraphics->DrawString(LabelText, NameFont, ConfigBrush, X + CellPad, LineY);
+							OutputGraphics->DrawString(ValueText, NameFont, ConfigBrush, X + CellPad + CellLabelW[c] + LabelGap, LineY);
+
+						}
+
+					}
+					else {
+
+						System::Drawing::RectangleF NotesRectangle = System::Drawing::RectangleF(X + CellPad, Y + (float)RowHeight + 6.0f, CellW[c] - (2.0f * CellPad), CellH[c] - (float)RowHeight - 6.0f);
+						OutputGraphics->DrawString(NotesText, NameFont, ConfigBrush, NotesRectangle);
+
+					}
 
 				}
 
-				float InfoX = InfoColumnX;
-				float InfoTop = ConfigTop;
-				if (InfoBelow == true) { InfoX = EdgeMargin; InfoTop = ConfigTop + (float)((ConfigLines->Count + 1) * RowHeight); }
-
-				OutputGraphics->DrawString("Export Information:", HeadingFont, ConfigBrush, InfoX, InfoTop);
-
-				for (int i = 0; i < InfoLines->Count; i++) {
-
-					OutputGraphics->DrawString(gcnew System::String("-  ") + InfoLines[i], NameFont, ConfigBrush, InfoX + 6.0f, InfoTop + (float)((i + 1) * RowHeight));
-
-				}
-
+				delete TablePen;
+				delete HeadingBackBrush;
 				delete ConfigBrush;
 				delete HeadingFont;
 				delete OutputGraphics;
@@ -1638,50 +1818,63 @@ namespace IRCAMThermalViewer {
 
 		}
 
-		System::Void GetExportInfoLines(System::Collections::Generic::List<System::String^>^ Lines) {
+		System::Void SplitInfoLine(System::String^ Line, System::String^% LabelText, System::String^% ValueText) {
 
-			// Information for later reference, written next to the camera configuration list in an exported graph image: date and time of the export, camera model,
-			// temperature range of the camera, calibration settings and the data logging session. All values are the ones at the moment of the export.
+			// Splits a "Label: value" line of the tables of an exported image at the first ": " (the label keeps the colon)
+			int Position = Line->IndexOf(": ");
+
+			if (Position < 0) { LabelText = Line; ValueText = System::String::Empty; }
+			else { LabelText = Line->Substring(0, Position + 1); ValueText = Line->Substring(Position + 2); }
+
+		}
+
+		System::Void GetExportInfoLines(System::Collections::Generic::List<System::String^>^ ExportLines, System::Collections::Generic::List<System::String^>^ OtherLines) {
+
+			// Information for later reference, written in two tables below the graph in an exported image. All values are the ones at the moment of the export.
+			// ExportLines: date and time of the export, the logged time and the settings / size of the data logging session.
+			// OtherLines: log file, camera model and temperature range, calibration settings and the temperature unit.
 			System::DateTime NowTime = System::DateTime::Now;
-			Lines->Add(gcnew System::String("Date: ") + NowTime.ToString("dd MMM yyyy", System::Globalization::CultureInfo::InvariantCulture));
-			Lines->Add(gcnew System::String("Time: ") + NowTime.ToString("HH:mm:ss", System::Globalization::CultureInfo::InvariantCulture));
+			ExportLines->Add(gcnew System::String("Date: ") + NowTime.ToString("dd MMM yyyy", System::Globalization::CultureInfo::InvariantCulture));
+			ExportLines->Add(gcnew System::String("Time: ") + NowTime.ToString("HH:mm:ss", System::Globalization::CultureInfo::InvariantCulture));
+			ExportLines->Add(gcnew System::String("Logged Time: ") + this->FormatDuration(this->LastElapsedMilliSec));
+			ExportLines->Add(gcnew System::String("Session Duration Setting: ") + this->FormatDuration((double)DataLoggingSessionDurationMilliSec));
+
+			double IntervalSeconds = (double)DataLoggingIntervalMilliSec / 1000.0;
+			ExportLines->Add(gcnew System::String("Sample Interval: ") + IntervalSeconds.ToString("0.0##") + gcnew System::String(" s"));
+			ExportLines->Add(gcnew System::String("Samples In Data Log: ") + System::Convert::ToString(this->ViewedSampleRows));
+
+			// Log file
+			System::String^ SessionFileName = GlobalVariables::DataLoggingSessionFileNameString;
+			if (SessionFileName != nullptr && SessionFileName->Length > 0) { OtherLines->Add(gcnew System::String("Log File: ") + System::IO::Path::GetFileName(SessionFileName)); }
+			else { OtherLines->Add(gcnew System::String("Log File: none")); }
 
 			// Camera model (the index is the camera macro index, which is also the index in the list of model names)
 			System::String^ ModelName = gcnew System::String("Unknown");
 			if ((size_t)IRCamera.SellectedCameraIndex < SupportedCamerasModelNames.size()) { ModelName = gcnew System::String(SupportedCamerasModelNames[IRCamera.SellectedCameraIndex].c_str()); }
-			Lines->Add(gcnew System::String("Camera Model: ") + ModelName);
+			OtherLines->Add(gcnew System::String("Camera Model: ") + ModelName);
 
-			if (IRCamera.CurrentIRTempRangeFlag == 2) { Lines->Add(gcnew System::String("Camera Temperature Range: High")); }
-			else { Lines->Add(gcnew System::String("Camera Temperature Range: Low")); }
+			if (IRCamera.CurrentIRTempRangeFlag == 2) { OtherLines->Add(gcnew System::String("Camera Temperature Range: High")); }
+			else { OtherLines->Add(gcnew System::String("Camera Temperature Range: Low")); }
 
 			// Periodic (auto) shutter calibration and the temperature-drift-based calibration
 			if (AutoShutterCalEnableFlag == true) {
 
 				double CalibrationPeriod = 0.0;
 				if (GlobalVariables::GlobalAutoCalPeriodUpDown != nullptr) { CalibrationPeriod = System::Decimal::ToDouble(GlobalVariables::GlobalAutoCalPeriodUpDown->Value); }
-				Lines->Add(gcnew System::String("Auto Calibration: On, every ") + CalibrationPeriod.ToString("0.#") + gcnew System::String(" s"));
+				OtherLines->Add(gcnew System::String("Auto Calibration: On, every ") + CalibrationPeriod.ToString("0.#") + gcnew System::String(" s"));
 
 			}
-			else { Lines->Add(gcnew System::String("Auto Calibration: Off")); }
+			else { OtherLines->Add(gcnew System::String("Auto Calibration: Off")); }
 
 			if (DriftBasedCalEnableFlag == true) {
 
 				double DriftThreshold = (double)TempDriftCalibrationSetValue;
-				Lines->Add(gcnew System::String("Drift-Based Calibration: On, at ") + DriftThreshold.ToString("0.0##") + gcnew System::String(" ") + GlobalVariables::DefaultTempUnitString);
+				OtherLines->Add(gcnew System::String("Drift-Based Calibration: On, at ") + DriftThreshold.ToString("0.0##") + gcnew System::String(" ") + GlobalVariables::DefaultTempUnitString);
 
 			}
-			else { Lines->Add(gcnew System::String("Drift-Based Calibration: Off")); }
+			else { OtherLines->Add(gcnew System::String("Drift-Based Calibration: Off")); }
 
-			// Data logging session: the file, the sample interval and duration set for the session, and what the graph holds
-			System::String^ SessionFileName = GlobalVariables::DataLoggingSessionFileNameString;
-			if (SessionFileName != nullptr && SessionFileName->Length > 0) { Lines->Add(gcnew System::String("Log File: ") + System::IO::Path::GetFileName(SessionFileName)); }
-
-			double IntervalSeconds = (double)DataLoggingIntervalMilliSec / 1000.0;
-			Lines->Add(gcnew System::String("Sample Interval: ") + IntervalSeconds.ToString("0.0##") + gcnew System::String(" s"));
-			Lines->Add(gcnew System::String("Session Duration Setting: ") + this->FormatDuration((double)DataLoggingSessionDurationMilliSec));
-			Lines->Add(gcnew System::String("Samples In Data Log: ") + System::Convert::ToString(this->ViewedSampleRows));
-			Lines->Add(gcnew System::String("Logged Time: ") + this->FormatDuration(this->LastElapsedMilliSec));
-			Lines->Add(gcnew System::String("Temperature Unit: ") + GlobalVariables::DefaultTempUnitString);
+			OtherLines->Add(gcnew System::String("Temperature Unit: ") + GlobalVariables::DefaultTempUnitString);
 
 		}
 
