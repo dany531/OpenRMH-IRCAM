@@ -419,6 +419,9 @@ namespace IRCAMThermalViewer {
 			// The labels of the time axis show the elapsed time (also when the log is longer than 24 hours)
 			this->LogChart->FormatNumber += gcnew System::EventHandler<System::Windows::Forms::DataVisualization::Charting::FormatNumberEventArgs^>(this, &DataLogGUI::LogChart_FormatNumber);
 
+			// The plot area has a fixed size (see UpdatePlotAreaLayout), so it is set again when the graph is resized
+			this->LogChart->SizeChanged += gcnew System::EventHandler(this, &DataLogGUI::LogChart_SizeChanged);
+
 			// Mouse cursor temperature label - switched on or off in the right click menu of the graph
 			this->CursorLabel = gcnew System::Windows::Forms::Label();
 			this->CursorLabel->AutoSize = true;
@@ -758,6 +761,9 @@ namespace IRCAMThermalViewer {
 
 			if (GraphTitle->Text->Length == 0) { GraphTitle->Text = "Title"; }
 			GraphTitle->Visible = this->ShowTitleCheckBox->Checked;
+
+			// The title takes room above the plot area
+			this->UpdatePlotAreaLayout();
 
 		}
 
@@ -1456,7 +1462,66 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		System::Void LogChart_SizeChanged(System::Object^ sender, System::EventArgs^ e) {
+
+			this->UpdatePlotAreaLayout();
+
+		}
+
+		System::Void UpdatePlotAreaLayout() {
+
+			// Gives the plot area (the part inside the axes) a fixed size, in pixels from each side of the graph, instead of the automatic layout of the chart.
+			// With the automatic layout the chart makes the plot area smaller or larger whenever the width of a label changes (a time label on the right end of the
+			// time axis that comes and goes while the log grows, a temperature label that gets another digit): the graph then jumps horizontally at every such change.
+			// While the graph is zoomed the automatic layout is used (the zoom scroll bars need room), the plot area does not change by itself then.
+			// Tune the margins below if a label or an axis title is cut off.
+			const double LeftMarginPixels = 75.0;		// Temperature axis title and labels
+			const double RightMarginPixels = 40.0;		// Room for half of the last time label
+			const double TopMarginPixels = 12.0;
+			const double BottomMarginPixels = 55.0;		// Time axis labels and title
+			const double TitleHeightPixels = 30.0;		// Height that the graph title takes when it is shown
+
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::ChartArea^ Area = this->LogChart->ChartAreas[0];
+				bool Zoomed = (Area->AxisX->ScaleView->IsZoomed == true || Area->AxisY->ScaleView->IsZoomed == true);
+
+				double ChartWidth = (double)this->LogChart->ClientSize.Width;
+				double ChartHeight = (double)this->LogChart->ClientSize.Height;
+
+				if (this->LogChart->Titles->Count > 0 && this->LogChart->Titles[0]->Visible == true) { ChartHeight = ChartHeight - TitleHeightPixels; }
+
+				if (Zoomed == true || ChartWidth < LeftMarginPixels + RightMarginPixels + 100.0 || ChartHeight < TopMarginPixels + BottomMarginPixels + 60.0) {
+
+					if (Area->InnerPlotPosition->Auto == false) { Area->InnerPlotPosition->Auto = true; }
+					return;
+
+				}
+
+				float WantedX = (float)(LeftMarginPixels / ChartWidth * 100.0);
+				float WantedY = (float)(TopMarginPixels / ChartHeight * 100.0);
+				float WantedWidth = (float)((ChartWidth - LeftMarginPixels - RightMarginPixels) / ChartWidth * 100.0);
+				float WantedHeight = (float)((ChartHeight - TopMarginPixels - BottomMarginPixels) / ChartHeight * 100.0);
+
+				// Only written when it changes, so the chart is not laid out again at every refresh
+				System::Windows::Forms::DataVisualization::Charting::ElementPosition^ Inner = Area->InnerPlotPosition;
+
+				if (Inner->Auto == true || System::Math::Abs(Inner->X - WantedX) > 0.05f || System::Math::Abs(Inner->Y - WantedY) > 0.05f ||
+					System::Math::Abs(Inner->Width - WantedWidth) > 0.05f || System::Math::Abs(Inner->Height - WantedHeight) > 0.05f) {
+
+					Area->InnerPlotPosition = gcnew System::Windows::Forms::DataVisualization::Charting::ElementPosition(WantedX, WantedY, WantedWidth, WantedHeight);
+
+				}
+
+			}
+			catch (System::Exception^) {}
+
+		}
+
 		System::Void ApplyAxisSettings() {
+
+			// The size of the plot area is fixed, whatever the tick settings are
+			this->UpdatePlotAreaLayout();
 
 			// Applies the number of ticks and the locked temperature range to the axes of the graph. With everything on automatic nothing is changed
 			// (and the automatic scaling of the graph is given back after a setting is switched to automatic).
@@ -1602,15 +1667,8 @@ namespace IRCAMThermalViewer {
 
 					}
 
-					// A fixed number of ticks puts a tick (and its label) exactly on the right end of the axis every time the data grows past a tick. A label on the
-					// edge sticks out of the plot area, so the chart's automatic layout shrinks the plot area while that label exists and gives the width back when
-					// it does not: the graph jumps horizontally. Not drawing the end label keeps the plot area the same size.
-					AxisX->LabelStyle->IsEndLabelVisible = false;
-
 				}
 				else if (this->XIntervalSetByProgram == true) {
-
-					AxisX->LabelStyle->IsEndLabelVisible = true;
 
 					AxisX->Interval = 0;
 					AxisX->IntervalType = System::Windows::Forms::DataVisualization::Charting::DateTimeIntervalType::Auto;
