@@ -5,11 +5,12 @@ the number counts builds of this repository.
 
 ## Unreleased
 
-- **Bug fix: with X-Axis Number Of Ticks other than Auto, the Data Log graph periodically changed its size and the last time value appeared and disappeared.** The
-  tick interval was calculated from the axis range while the chart rounded the end of the axis up to a multiple of the same interval, so the end switched between N and N + 1
-  intervals from one refresh to the next. With a number of ticks the time axis now runs from 0:00:00 to the newest point (the end is no longer rounded) and the interval is 0.1
-  millisecond shorter in total, so the last tick is always drawn. The axis `RecalculateAxesScale` call of this part is removed. **Auto**, a zoomed view and a locked X range are unchanged.
-  This bug was in earlier versions. Change in `DataLogGUI.h` (`ApplyAxisSettings`, new `GetDataEndTime`).
+- **Bug fix: with X-Axis Number Of Ticks other than Auto, the Data Log graph changed its size and the last time value appeared and disappeared at random moments.** The tick interval was
+  the range divided by the number of ticks (a different odd value at every refresh), written to the axis together with the range, so the chart laid the axis out again every second.
+  Now the interval is a round time step (1, 2, 3, 5, 10, 15, 20, 30 s, the same in minutes, 1, 2, 3, 6, 12 h, whole days; milliseconds for a deep zoom), the smallest one that gives at
+  most N intervals over the range (locked X range, zoomed view, or the log from 0:00:00 to the newest point). It is only written to the axis when it changes, and the time axis range is
+  left automatic. **The number of ticks is now a maximum** (the result is between about N / 2 and N, at round times), and the ticks are at round times. **Auto**, the zoom, a locked X
+  range and the Y ticks are unchanged. This bug was in earlier versions. Change in `DataLogGUI.h` (`ApplyAxisSettings`, new `GetRoundTickSeconds`, `GetDataEndTime`, `XIntervalSeconds`).
 
 - Data Log window: **new check box Show Graph Title**, before **Auto-scroll table to newest**, **not ticked** by default. Ticked shows the title above the graph and in the
   exported image (`Title` until a title is typed); not ticked hides it (the text is kept). **The title is edited directly: double-click it on the graph**, type, **Enter** (or click

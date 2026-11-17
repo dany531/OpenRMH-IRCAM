@@ -151,7 +151,7 @@ Before this change only the temperature axis zoomed, because the selection on th
 Right-click in the Data Log graph. The menu has the same items as the right-click menu of the Plots window, plus the cursor temperature:
 
 - **Temperature At The Cursor** - tick to show the temperature and time at the mouse cursor (see 1.8).
-- **X-Axis Number Of Ticks** - Auto, 5, 10, 20, 25 or 50 ticks on the time axis.
+- **X-Axis Number Of Ticks** - Auto, 5, 10, 20, 25 or 50 ticks on the time axis. This is the **maximum** number of intervals: the step is rounded up to a round time (see 1.31).
 - **Y-Axis Number Of Ticks** - Auto, 5, 10, 15, 20, 25 or 30 ticks on the temperature axis.
 - **X-Axis Range: Auto** (status line; shows **Locked h:mm:ss To h:mm:ss** when locked), **Set X-Axis Range And Lock...**, **Lock X-Axis At Current Range** and **Unlock X-Axis (Auto Range)** - the same four items as for the Y axis, for the time axis (see 1.14).
 - **Y-Axis Range: Auto** (status line; shows **Locked min To max** when locked).
@@ -391,18 +391,22 @@ The settings are macros at the top of `DataLogGUI.h`:
 | `_DataLogExport_UseVectorChart` | 1 | 1 = the graph as vector drawing (sharp); 0 = the graph as a picture of the screen size (to compare, or when 1 does not look right) |
 | `_DataLogExport_JpegQuality` | 95 | JPEG quality, 0 to 100 |
 
-### 1.31 Fix: X-axis number of ticks made the graph resize and the last time value come and go (bug fix)
+### 1.31 Fix: X-axis number of ticks made the graph resize and the last time value come and go (bug fix, round tick steps)
 
-With **X-Axis Number Of Ticks** set to anything other than **Auto**, the Data Log graph periodically changed its size and the last time value on the axis appeared and
-disappeared while logging. The tick interval was calculated from the range of the axis, and the chart rounded the end of the axis up to a multiple of that same interval; because of the
-rounding of the calculation the end of the axis switched between N and N + 1 intervals, so the last label and the plot area changed from one refresh to the next. This was in earlier versions too.
+With **X-Axis Number Of Ticks** set to anything other than **Auto**, the Data Log graph changed its size and the last time value on the axis appeared and disappeared at seemingly random
+moments while logging. This was in earlier versions too. The tick interval was the range divided by the number of ticks, a different odd value at every refresh (every second), written to the
+axis together with the range, so the chart laid out the axis again every second and small differences decided whether the last label fitted.
 
-Now, with a number of ticks, the time axis runs from **0:00:00 to the newest point** (like the temperature axis does with its ticks, 1.11), so the ticks are spread evenly over the data and the
-last tick is exactly at the end. The tick interval is also made 0.1 millisecond shorter in total, so the last tick can never fall just beyond the end of the axis. Consequences:
+Now the interval is a **round time step** that is only written to the axis when it changes, and nothing else of the time axis is set (the range is automatic, like with **Auto**):
 
-- With a number of ticks the graph ends exactly at the newest point (with **Auto** there is some space after it). The axis grows with the data every refresh.
-- A zoomed view and a locked X range (1.14) work as before; the zoomed ticks are spread over the zoomed view.
-- **Auto** is unchanged.
+- The step is the **smallest round step that gives at most N intervals** over the range: 1, 2, 3, 5, 10, 15, 20, 30 seconds, then the same in minutes, then 1, 2, 3, 6, 12 hours and whole days (for a deep zoom
+  also 1 to 500 milliseconds). The ticks are at round times (for example every 10 minutes: 0:10:00, 0:20:00, ...), not at odd times.
+- So **N is a maximum**: with 10 ticks and a 1 hour log the step is 10 minutes (6 intervals); the number you get is between about N / 2 and N. A higher N gives smaller steps.
+- While logging the step stays the same until the log has grown into the next step (for example from 10 to 15 minutes), so the axis only changes then, like with **Auto**.
+- The range for the step is the locked X range (1.14), the zoomed view, or the whole log (from 0:00:00 to the newest point). Zooming gives a smaller step.
+- **Auto** is unchanged. The temperature ticks (Y) are not changed.
+
+If the graph still changes its size when the number of the labels is high (for example 25 or 50), the labels may be turned or skipped by the automatic fitting of the chart; tell me the tick number and what changes.
 
 ---
 
@@ -531,7 +535,7 @@ Fallbacks: Build #7 (commit `7b355e8`, branch `fix-t2s-v2-temperature`) and the 
 | Show Graph Title check box (before Auto-scroll): not ticked at the start; ticked shows `Title`; unticked hides it, text kept; the right-click menu has no Set Graph Title...; Export Graph asks for the title when it is hidden (new title shows it, empty hides it, same text keeps it) | Not tested yet |
 | Exported image resolution: 3 x the pixels; lines and text sharp when zoomed in a viewer (PNG, JPEG, BMP); compare `_DataLogExport_UseVectorChart` 1 and 0; the graph looks the same as on the screen (colors, lines, frame, zoom, locked range) | Not tested yet |
 | Export Graph on a big window / long log: no out-of-memory or very slow export at 3 x resolution | Not tested yet |
-| X-Axis Number Of Ticks 5 / 10 / 20 / 25 / 50 while logging (not zoomed): the graph does not change its size, the last time value stays, ticks are evenly spaced from 0:00:00 to the newest point; also zoomed, with a locked X range, and back to Auto | Not tested yet |
+| X-Axis Number Of Ticks 5 / 10 / 20 / 25 / 50 while logging (not zoomed): the graph does not change its size and the last time value stays; ticks at round times (e.g. every 10 minutes); the step only changes when the log grows into the next step; also zoomed, with a locked X range, and back to Auto | Not tested yet |
 | Scroll bar colors, table, notes, text size, zoom reset and unit fix: build compiles (MSVC, /clr) | Not tested yet |
 
 ---
