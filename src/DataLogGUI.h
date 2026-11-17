@@ -28,14 +28,11 @@ namespace IRCAMThermalViewer {
 	// Colors of the scroll bars of the zoomed graph (time axis and temperature axis): the track, the buttons (arrows, Reset Zoom button and the sliding
 	// part of the bar) and the lines / symbols drawn on the buttons. Light gray buttons with dark symbols so they stand out against the dark graph.
 	// Exported image (Export Graph):
-	// - _DataLogExport_TextScale: the text around the graph (names of the lines, axis ranges, table), the title of the graph and the titles of the axes are this
-	//   much bigger than the values on the axes (1.2 = 20 % bigger).
 	// - _DataLogExport_ResolutionScale: the image has this many times more pixels in width and in height than the graph on the screen (3 = 3 x 3 = 9 times the
 	//   pixels). 1 = the size of the graph on the screen.
 	// - _DataLogExport_UseVectorChart: 1 = the graph is taken as a vector drawing (EMF+) and drawn at the high resolution, so lines and text stay sharp.
 	//   0 = the graph is taken as a picture of the screen size (it is only stretched at a higher resolution; use it to compare or when 1 does not look right).
 	// - _DataLogExport_JpegQuality: quality (0 - 100) of a JPEG image.
-	#define _DataLogExport_TextScale 1.2f
 	#define _DataLogExport_ResolutionScale 3
 	#define _DataLogExport_UseVectorChart 1
 	#define _DataLogExport_JpegQuality 95
@@ -102,7 +99,6 @@ namespace IRCAMThermalViewer {
 		// Right click menu of the graph, and its settings
 		System::Windows::Forms::ContextMenuStrip^ ChartContextMenu;
 		System::Windows::Forms::ToolStripMenuItem^ CursorTempMenuItem;
-		System::Windows::Forms::ToolStripMenuItem^ GraphTitleMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ XTicksMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ YTicksMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ YRangeStatusMenuItem;
@@ -134,6 +130,8 @@ namespace IRCAMThermalViewer {
 		System::Windows::Forms::Button^ ClearViewButton;
 		System::Windows::Forms::CheckBox^ AutoScrollCheckBox;
 		System::Windows::Forms::CheckBox^ ShowTitleCheckBox;     // Shows / hides the graph title on the graph and in an exported image (the title text is kept)
+		System::Windows::Forms::TextBox^ TitleEditBox;           // Text box on the title of the graph for editing the title directly (double-click on the title)
+		System::Windows::Forms::ToolTip^ HintToolTip;
 		System::Windows::Forms::Timer^ RefreshTimer;
 
 		// State of the data that is shown
@@ -227,12 +225,15 @@ namespace IRCAMThermalViewer {
 
 			this->ShowTitleCheckBox = gcnew System::Windows::Forms::CheckBox();
 			this->ShowTitleCheckBox->Text = "Show Graph Title";
-			this->ShowTitleCheckBox->Checked = true;
+			this->ShowTitleCheckBox->Checked = false;
 			this->ShowTitleCheckBox->AutoSize = true;
 			this->ShowTitleCheckBox->Location = System::Drawing::Point(818, 43);
 			this->ShowTitleCheckBox->ForeColor = System::Drawing::Color::White;
 			this->ShowTitleCheckBox->CheckedChanged += gcnew System::EventHandler(this, &DataLogGUI::ShowTitleCheckBox_CheckedChanged);
 			TopPanel->Controls->Add(this->ShowTitleCheckBox);
+
+			this->HintToolTip = gcnew System::Windows::Forms::ToolTip();
+			this->HintToolTip->SetToolTip(this->ShowTitleCheckBox, "Shows the title above the graph and in an exported image. Double-click the title on the graph to edit it.");
 
 			this->AutoScrollCheckBox = gcnew System::Windows::Forms::CheckBox();
 			this->AutoScrollCheckBox->Text = "Auto-scroll table to newest";
@@ -403,7 +404,7 @@ namespace IRCAMThermalViewer {
 			// Title of the graph (top center, above the graph) - empty and hidden until a title is set in the right-click menu. It is part of an exported image.
 			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = gcnew System::Windows::Forms::DataVisualization::Charting::Title();
 			GraphTitle->Name = "GraphTitle";
-			GraphTitle->Text = "";
+			GraphTitle->Text = "Title";		// Shown when the Show Graph Title check box is ticked and no other title is set
 			GraphTitle->Docking = System::Windows::Forms::DataVisualization::Charting::Docking::Top;
 			GraphTitle->Alignment = System::Drawing::ContentAlignment::TopCenter;
 			GraphTitle->Font = gcnew System::Drawing::Font("Arial", 12, System::Drawing::FontStyle::Bold);
@@ -427,6 +428,20 @@ namespace IRCAMThermalViewer {
 			this->LogChart->Controls->Add(this->CursorLabel);
 
 			this->LogChart->MouseMove += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseMove);
+			this->LogChart->MouseDoubleClick += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseDoubleClick);
+
+			// Text box for editing the title directly on the graph (hidden until the title is double-clicked)
+			this->TitleEditBox = gcnew System::Windows::Forms::TextBox();
+			this->TitleEditBox->Visible = false;
+			this->TitleEditBox->MaxLength = 200;
+			this->TitleEditBox->BorderStyle = System::Windows::Forms::BorderStyle::FixedSingle;
+			this->TitleEditBox->TextAlign = System::Windows::Forms::HorizontalAlignment::Center;
+			this->TitleEditBox->Font = gcnew System::Drawing::Font("Arial", 12, System::Drawing::FontStyle::Bold);
+			this->TitleEditBox->BackColor = System::Drawing::Color::FromArgb(60, 60, 60);
+			this->TitleEditBox->ForeColor = System::Drawing::Color::White;
+			this->TitleEditBox->KeyDown += gcnew System::Windows::Forms::KeyEventHandler(this, &DataLogGUI::TitleEditBox_KeyDown);
+			this->TitleEditBox->Leave += gcnew System::EventHandler(this, &DataLogGUI::TitleEditBox_Leave);
+			this->LogChart->Controls->Add(this->TitleEditBox);
 			this->LogChart->MouseLeave += gcnew System::EventHandler(this, &DataLogGUI::LogChart_MouseLeave);
 
 			// Update the tick intervals when the graph is zoomed
@@ -617,10 +632,6 @@ namespace IRCAMThermalViewer {
 			this->CursorTempMenuItem->CheckOnClick = true;
 			this->CursorTempMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::CursorTempMenuItem_Click);
 
-			this->GraphTitleMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
-			this->StyleMenuItem(this->GraphTitleMenuItem, "Set Graph Title...");
-			this->GraphTitleMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::GraphTitleMenuItem_Click);
-
 			this->XTicksMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
 			this->StyleMenuItem(this->XTicksMenuItem, "X-Axis Number Of Ticks");
 			this->AddTickItems(this->XTicksMenuItem, gcnew cli::array<int>{ 5, 10, 20, 25, 50 });
@@ -665,7 +676,6 @@ namespace IRCAMThermalViewer {
 			System::Windows::Forms::ToolStripSeparator^ Separator2 = gcnew System::Windows::Forms::ToolStripSeparator();
 
 			this->ChartContextMenu->Items->Add(this->CursorTempMenuItem);
-			this->ChartContextMenu->Items->Add(this->GraphTitleMenuItem);
 			this->ChartContextMenu->Items->Add(Separator1);
 			this->ChartContextMenu->Items->Add(this->XTicksMenuItem);
 			this->ChartContextMenu->Items->Add(this->YTicksMenuItem);
@@ -732,12 +742,6 @@ namespace IRCAMThermalViewer {
 
 		}
 
-		System::Void GraphTitleMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
-
-			this->ShowGraphTitleWindow();
-
-		}
-
 		System::Void ShowTitleCheckBox_CheckedChanged(System::Object^ sender, System::EventArgs^ e) {
 
 			this->UpdateGraphTitleVisibility();
@@ -746,18 +750,100 @@ namespace IRCAMThermalViewer {
 
 		System::Void UpdateGraphTitleVisibility() {
 
-			// The title is shown when the Show Graph Title check box is ticked and there is a title text
+			// The title is shown when the Show Graph Title check box is ticked. A title without text gets the text "Title" (the text shown until a title is typed).
 			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
 			if (GraphTitle == nullptr) { return; }
 
-			GraphTitle->Visible = (this->ShowTitleCheckBox->Checked == true && GraphTitle->Text->Length > 0);
+			if (GraphTitle->Text->Length == 0) { GraphTitle->Text = "Title"; }
+			GraphTitle->Visible = this->ShowTitleCheckBox->Checked;
+
+		}
+
+		System::Void ApplyGraphTitleText(System::String^ NewTitle) {
+
+			// A new title (typed in the graph or in the Graph Title window) is shown: it ticks the Show Graph Title check box. An empty text hides the title
+			// (the check box is unticked and the text goes back to "Title"). A title that was not changed leaves the check box as it is.
+			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
+			if (GraphTitle == nullptr) { return; }
+
+			NewTitle = NewTitle->Trim();
+
+			if (NewTitle->Length == 0) {
+
+				GraphTitle->Text = "Title";
+				this->ShowTitleCheckBox->Checked = false;
+
+			}
+			else {
+
+				bool TitleChanged = !NewTitle->Equals(GraphTitle->Text);
+				GraphTitle->Text = NewTitle;
+				if (TitleChanged == true) { this->ShowTitleCheckBox->Checked = true; }
+
+			}
+
+			this->UpdateGraphTitleVisibility();
+
+		}
+
+		System::Void LogChart_MouseDoubleClick(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
+
+			// A double-click on the title of the graph edits the title directly on the graph
+			System::Windows::Forms::DataVisualization::Charting::HitTestResult^ HitResult = this->LogChart->HitTest(e->X, e->Y);
+
+			if (HitResult != nullptr && HitResult->ChartElementType == System::Windows::Forms::DataVisualization::Charting::ChartElementType::Title) { this->BeginTitleEdit(); }
+
+		}
+
+		System::Void BeginTitleEdit() {
+
+			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
+			if (GraphTitle == nullptr || GraphTitle->Visible == false) { return; }
+
+			// The text box covers the title: at the top center of the graph, 60 % of the width of the graph (at least 240 pixels)
+			int BoxWidth = System::Math::Max(240, (this->LogChart->Width * 6) / 10);
+			BoxWidth = System::Math::Min(BoxWidth, this->LogChart->Width - 20);
+
+			this->TitleEditBox->Text = GraphTitle->Text;
+			this->TitleEditBox->Width = BoxWidth;
+			this->TitleEditBox->Location = System::Drawing::Point((this->LogChart->Width - BoxWidth) / 2, 4);
+			this->TitleEditBox->Visible = true;
+			this->TitleEditBox->BringToFront();
+			this->TitleEditBox->Focus();
+			this->TitleEditBox->SelectAll();
+
+		}
+
+		System::Void EndTitleEdit(bool KeepText) {
+
+			// Enter or leaving the text box keeps the typed title, Escape throws it away
+			if (this->TitleEditBox->Visible == false) { return; }
+
+			System::String^ TypedTitle = this->TitleEditBox->Text;
+			this->TitleEditBox->Visible = false;
+
+			if (KeepText == true) { this->ApplyGraphTitleText(TypedTitle); }
+
+		}
+
+		System::Void TitleEditBox_KeyDown(System::Object^ sender, System::Windows::Forms::KeyEventArgs^ e) {
+
+			if (e->KeyCode == System::Windows::Forms::Keys::Enter) { e->SuppressKeyPress = true; this->EndTitleEdit(true); }
+			else if (e->KeyCode == System::Windows::Forms::Keys::Escape) { e->SuppressKeyPress = true; this->EndTitleEdit(false); }
+
+		}
+
+		System::Void TitleEditBox_Leave(System::Object^ sender, System::EventArgs^ e) {
+
+			this->EndTitleEdit(true);
 
 		}
 
 		bool ShowGraphTitleWindow() {
 
-			// Shows a window for entering the title of the graph (it starts with the title that is set now). An empty text removes the title.
-			// Returns true when the window was closed with Set Title, false when it was cancelled.
+			// Shows a window for entering the title of the graph (it starts with the title that is set now). It opens when the graph is exported, also when the
+			// title is hidden. A new title is shown, an empty text hides the title (see ApplyGraphTitleText). Returns true when the window was closed with
+			// Set Title, false when it was cancelled.
 			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
 			if (GraphTitle == nullptr) { return false; }
 
@@ -787,7 +873,8 @@ namespace IRCAMThermalViewer {
 			TitleWindow->Controls->Add(TitleBox);
 
 			System::Windows::Forms::Label^ NoteLabel = gcnew System::Windows::Forms::Label();
-			NoteLabel->Text = "Leave the text empty to remove the title.";
+			if (this->ShowTitleCheckBox->Checked == true) { NoteLabel->Text = "Leave the text empty to hide the title."; }
+			else { NoteLabel->Text = "The title is hidden now (Show Graph Title). A new title shows it."; }
 			NoteLabel->AutoSize = false;
 			NoteLabel->Location = System::Drawing::Point(20, 74);
 			NoteLabel->Size = System::Drawing::Size(420, 22);
@@ -811,12 +898,7 @@ namespace IRCAMThermalViewer {
 
 			if (TitleWindow->ShowDialog(this) == System::Windows::Forms::DialogResult::OK) {
 
-				System::String^ NewTitle = TitleBox->Text->Trim();
-				GraphTitle->Text = NewTitle;
-
-				// A new title is shown: it ticks the Show Graph Title check box (an empty text leaves the check box as it is)
-				if (NewTitle->Length > 0) { this->ShowTitleCheckBox->Checked = true; }
-				this->UpdateGraphTitleVisibility();
+				this->ApplyGraphTitleText(TitleBox->Text);
 				return true;
 
 			}
@@ -1527,8 +1609,8 @@ namespace IRCAMThermalViewer {
 			}
 
 			// First the window for the title of the graph (it shows the title that is set now - keep it or change it). Cancel cancels the export.
-			// When Show Graph Title is not ticked the image has no title, so the window is skipped (tick the check box, or use Set Graph Title..., to add one).
-			if (this->ShowTitleCheckBox->Checked == true) { if (this->ShowGraphTitleWindow() == false) { return; } }
+			// The window opens also when the title is hidden (Show Graph Title not ticked): a new title shows it, an empty text hides it, the same text keeps it as it is.
+			if (this->ShowGraphTitleWindow() == false) { return; }
 
 			// Then the window for the notes (it shows the notes that are set now - keep them, change them or empty the text). Cancel cancels the export.
 			if (this->ShowGraphNotesWindow() == false) { return; }
@@ -1575,19 +1657,22 @@ namespace IRCAMThermalViewer {
 			System::Drawing::Font^ SavedXTitleFont = nullptr;
 			System::Drawing::Font^ SavedYTitleFont = nullptr;
 
+			// All the text of the image apart from the values on the axes is 20 % bigger than those values
+			const float TextScale = 1.2f;
+
 			try {
 
 				if (TitleObject != nullptr) {
 
 					SavedTitleFont = TitleObject->Font;
-					TitleObject->Font = gcnew System::Drawing::Font(SavedTitleFont->FontFamily, SavedTitleFont->Size * _DataLogExport_TextScale, SavedTitleFont->Style, SavedTitleFont->Unit);
+					TitleObject->Font = gcnew System::Drawing::Font(SavedTitleFont->FontFamily, SavedTitleFont->Size * TextScale, SavedTitleFont->Style, SavedTitleFont->Unit);
 
 				}
 
 				SavedXTitleFont = this->LogChart->ChartAreas[0]->AxisX->TitleFont;
-				this->LogChart->ChartAreas[0]->AxisX->TitleFont = gcnew System::Drawing::Font(SavedXTitleFont->FontFamily, SavedXTitleFont->Size * _DataLogExport_TextScale, SavedXTitleFont->Style, SavedXTitleFont->Unit);
+				this->LogChart->ChartAreas[0]->AxisX->TitleFont = gcnew System::Drawing::Font(SavedXTitleFont->FontFamily, SavedXTitleFont->Size * TextScale, SavedXTitleFont->Style, SavedXTitleFont->Unit);
 				SavedYTitleFont = this->LogChart->ChartAreas[0]->AxisY->TitleFont;
-				this->LogChart->ChartAreas[0]->AxisY->TitleFont = gcnew System::Drawing::Font(SavedYTitleFont->FontFamily, SavedYTitleFont->Size * _DataLogExport_TextScale, SavedYTitleFont->Style, SavedYTitleFont->Unit);
+				this->LogChart->ChartAreas[0]->AxisY->TitleFont = gcnew System::Drawing::Font(SavedYTitleFont->FontFamily, SavedYTitleFont->Size * TextScale, SavedYTitleFont->Style, SavedYTitleFont->Unit);
 
 				ChartStream = gcnew System::IO::MemoryStream();
 				this->LogChart->SaveImage(ChartStream, System::Windows::Forms::DataVisualization::Charting::ChartImageFormat::Png);
@@ -1626,10 +1711,10 @@ namespace IRCAMThermalViewer {
 				}
 
 				// All the text around the graph (names of the lines, axis ranges, table) has the font of the values on the axes (for example 20.0 and 0:00:00),
-				// _DataLogExport_TextScale times bigger (20 % bigger). The title of the graph and the titles of the axes are bigger by the same factor.
+				// 20 % bigger. The title of the graph and the titles of the axes are bigger by the same factor.
 				// The values on the axes are not changed.
 				System::Drawing::Font^ AxisFont = this->LogChart->ChartAreas[0]->AxisY->LabelStyle->Font;
-				System::Drawing::Font^ NameFont = gcnew System::Drawing::Font(AxisFont->FontFamily, AxisFont->Size * _DataLogExport_TextScale, System::Drawing::FontStyle::Regular, AxisFont->Unit);
+				System::Drawing::Font^ NameFont = gcnew System::Drawing::Font(AxisFont->FontFamily, AxisFont->Size * TextScale, System::Drawing::FontStyle::Regular, AxisFont->Unit);
 				float TextHeight = NameFont->GetHeight(96.0f);
 				int RowHeight = (int)System::Math::Ceiling((double)TextHeight) + 7;
 				int SquareSize = (int)(TextHeight * 0.7f);
