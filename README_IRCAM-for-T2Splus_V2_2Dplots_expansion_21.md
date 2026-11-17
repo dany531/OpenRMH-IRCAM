@@ -151,7 +151,6 @@ Before this change only the temperature axis zoomed, because the selection on th
 Right-click in the Data Log graph. The menu has the same items as the right-click menu of the Plots window, plus the cursor temperature:
 
 - **Temperature At The Cursor** - tick to show the temperature and time at the mouse cursor (see 1.8).
-- **Set Graph Title...** - type a title for the graph (see 1.15).
 - **X-Axis Number Of Ticks** - Auto, 5, 10, 20, 25 or 50 ticks on the time axis.
 - **Y-Axis Number Of Ticks** - Auto, 5, 10, 15, 20, 25 or 30 ticks on the temperature axis.
 - **X-Axis Range: Auto** (status line; shows **Locked h:mm:ss To h:mm:ss** when locked), **Set X-Axis Range And Lock...**, **Lock X-Axis At Current Range** and **Unlock X-Axis (Auto Range)** - the same four items as for the Y axis, for the time axis (see 1.14).
@@ -175,7 +174,7 @@ Y range and the Y tick / range settings only use the lines that are shown.
 ### 1.13 Export Graph as an image (new)
 
 The **Export Graph** button, next to Start Logging, Stop Logging, Show Log File, Clear Graph, Reset Zoom and Add Notes, saves the Data Log graph as an image.
-First (when **Show Graph Title** is ticked, see 1.29) the **Graph Title** window opens (the same window as **Set Graph Title...**, see 1.15). It shows the title that is set now, so you can keep it, edit it or replace it (an empty text removes the title); **Set Title** continues, **Cancel** cancels the export. Then the **Graph Notes** window opens (the same window as the **Add Notes** button, see 1.27) with the same behavior: it shows the notes that are set now, **Set Notes** continues, **Cancel** cancels the export. Then a save window opens (file types **PNG**, **JPEG** and **BMP**; the format follows the extension you type, PNG by default) with the session file
+First the **Graph Title** window opens (also when the title is hidden with **Show Graph Title**, see 1.29) (see 1.15). It shows the title that is set now, so you can keep it, edit it or replace it (an empty text removes the title); **Set Title** continues, **Cancel** cancels the export. Then the **Graph Notes** window opens (the same window as the **Add Notes** button, see 1.27) with the same behavior: it shows the notes that are set now, **Set Notes** continues, **Cancel** cancels the export. Then a save window opens (file types **PNG**, **JPEG** and **BMP**; the format follows the extension you type, PNG by default) with the session file
 name plus `_graph` as the suggested name (or `DataLogGraph_` and the date and time when there is no session file name).
 
 - The image is the graph **as it is shown now**: zoom, number of ticks and locked Y range are included; lines you hid with the check boxes (1.12) are not.
@@ -184,7 +183,7 @@ name plus `_graph` as the suggested name (or `DataLogGraph_` and the date and ti
 - Below the graph the image has a table with the thermal camera configuration, the export information, other information and the notes (see 1.24 and 1.27).
 - All text apart from the values on the axes (line names, axis ranges, table, title of the graph, titles of the axes) is 20 % bigger than those values (see 1.28).
 - The image has 3 times more pixels in width and height than the graph on the screen, so lines and text stay sharp (see 1.30).
-- When **Show Graph Title** (1.29) is not ticked the image has no title and the **Graph Title** window is skipped.
+- The image only has the title when **Show Graph Title** (1.29) is ticked; the **Graph Title** window opens in both cases.
 - The mouse cursor temperature label (1.8) is not part of the image.
 - If there is no graph yet, or saving fails, a message window says so.
 
@@ -207,10 +206,15 @@ you fix the exact window of the graph before using **Export Graph** (1.13).
 
 ### 1.15 Graph title (new)
 
-Right-click in the Data Log graph and choose **Set Graph Title...**. Type a title (up to 200 characters) and press **Set Title**. The title
-appears in bold at the **top center above the graph** and is part of the image saved with **Export Graph** (1.13), so you can see later
-what the graph was about. Choose the item again to change the title; an empty text removes it. The same window also opens when you press **Export Graph** (1.13), with the current title filled in. The title stays when you use Clear Graph or start a new
-session, but it is not saved: it is empty again when the program is restarted.
+Tick **Show Graph Title** (above the graph, 1.29): the title appears in bold at the **top center above the graph** and is part of the image saved with **Export Graph** (1.13), so
+you can see later what the graph was about. Until you type one, the title is the text `Title`.
+
+**Edit the title directly on the graph:** double-click the title. A text box opens on it: type the title (up to 200 characters) and press **Enter** (or click somewhere else) to keep it,
+**Esc** to throw the change away. A new title is shown (it ticks **Show Graph Title** if needed). An **empty** text hides the title (the check box is unticked and the text goes back to `Title`).
+
+The same window as before (**Graph Title**, with the current title filled in) opens when you press **Export Graph** (1.13), **also when the title is hidden**: type a new title to show it, empty the text to
+hide it, or press **Set Title** with the text as it is to keep the title as it is (shown or hidden). **Cancel** cancels the export. The right-click menu item **Set Graph Title...** is removed, because the
+title is edited directly. The title stays when you use Clear Graph or start a new session, but it is not saved: it is `Title` and hidden again when the program is restarted.
 
 ### 1.16 Colored Start / Stop Logging button borders and Data Log menu item fix (new)
 
@@ -360,18 +364,17 @@ starts a new line) and press **Set Notes**; **Cancel** keeps the notes as they w
 
 In the exported image all text **apart from the values on the axes** (for example `20.0` and `0:00:00`) is **20 % bigger** than those values: the names of the lines, the first / last
 axis values, the table, the title of the graph and the titles of the axes (**Time (h:mm:ss)** and **Temperature**). The size is read from the graph itself, so it follows the axes. The values on
-the axes keep their size. The rows of the table and the colored squares in front of the line names follow the text size. The factor is the macro
-`_DataLogExport_TextScale` (1.2) at the top of `DataLogGUI.h`; change it for a different size (for example 1.3 for 30 %). The title and the axis titles on the screen keep their
+the axes keep their size. The rows of the table and the colored squares in front of the line names follow the text size. The factor is fixed (1.2, the constant `TextScale` in `ExportGraphButton_Click`). The title and the axis titles on the screen keep their
 size: they are only made bigger while the image is made.
 
 ### 1.29 Show Graph Title check box (new)
 
-A new check box **Show Graph Title** sits before **Auto-scroll table to newest**, at the top right of the Data Log window. It is ticked by default.
+A new check box **Show Graph Title** sits before **Auto-scroll table to newest**, at the top right of the Data Log window. It is **not ticked** by default.
 
-- **Ticked:** the title is shown above the graph and in an exported image (when a title text is set, see 1.15). **Export Graph** opens the **Graph Title** window as before.
-- **Not ticked:** the title is hidden on the graph and in the exported image, but the **text is kept**. **Export Graph** skips the **Graph Title** window (the **Graph Notes** window still opens).
-- Setting a title with **Set Graph Title...** (right-click menu) or in the export window **ticks the check box again**, so a new title is always shown. An empty title leaves the check box as it is.
-- The check box is not saved between program runs: it is ticked again when the program starts.
+- **Ticked:** the title is shown above the graph and in an exported image. When no title was typed yet, it shows `Title`. Double-click the title to edit it (1.15).
+- **Not ticked:** the title is hidden on the graph and in the exported image, but the **text is kept**.
+- **Export Graph** opens the **Graph Title** window **in both cases** (1.13, 1.15). Typing a new title there shows it (ticks the check box), an empty text hides it (unticks it), and the same text keeps it as it is.
+- Hover the check box to see a hint. The check box is not saved between program runs: it is not ticked when the program starts.
 
 ### 1.30 Higher resolution of the exported image (new)
 
@@ -387,7 +390,6 @@ The settings are macros at the top of `DataLogGUI.h`:
 | `_DataLogExport_ResolutionScale` | 3 | Times more pixels in width and height (1 = the size of the graph on the screen, 4 = even sharper and bigger files) |
 | `_DataLogExport_UseVectorChart` | 1 | 1 = the graph as vector drawing (sharp); 0 = the graph as a picture of the screen size (to compare, or when 1 does not look right) |
 | `_DataLogExport_JpegQuality` | 95 | JPEG quality, 0 to 100 |
-| `_DataLogExport_TextScale` | 1.2f | Text size factor, see 1.28 |
 
 ---
 
@@ -411,7 +413,7 @@ The settings are macros at the top of `DataLogGUI.h`:
 | `RMH_Application_ThermalViewer.cpp` | Start-up routines (select camera and connect, enable periodic calibration), applying the plot data set settings, temporary data log file, save / discard question (`RMH_ThermalViewer_FinishDataLoggingSession`), 50 ms stop check of the logging thread, readable log file name, warning window for sessions with many samples; `RMH_FreezeValueDuringCalibration` (holds the last good value during a camera calibration) used by the 2D plot feed and the data logging thread |
 | `RMH_Application_ThermalViewer.h` | Start-up settings and declarations (incl. `RMH_ThermalViewer_FinishDataLoggingSession`); Data Log window limits (`_DataLogView_MaxRows`, `_DataLogView_MaxPlotPoints`); `AskUserAboutSampleLimit` parameter of `RMH_ThermalViewer_StartDataLogging` |
 | `MainGUI.h` | Question when closing the application during data logging (`MainGUI_FormClosing`); start-up timer (switch to the stream window, press Q), the three information windows, applying the plot settings, and the Data Log menu item (column widths, padding and text copied from the Plots item so the text shows under the image) |
-| `DataLogGUI.h` (new) | The Data Log window (table and graph that follow the data logging file); light gray scroll bars, arrows and Reset Zoom buttons on both axes (`StyleAxisScrollBar`, `_DataLogScrollBar_...` macros); table below the exported graph (`GetCameraConfigLines`, `GetExportInfoLines`, `SplitInfoLine`), Add Notes button and Graph Notes window (`ShowGraphNotesWindow`, `GraphNotes`), Show Graph Title check box (`ShowTitleCheckBox`, `UpdateGraphTitleVisibility`), text size and high resolution of the exported image (`_DataLogExport_...` macros); zoom reset when a new session starts (`ResetView`); frame around the plot area (secondary axes with only the line shown); first / last axis values in the strip of an exported image (`GetAxisRangeTexts`, `FormatAxisTime`); Clear Graph button; orange Reset Zoom border while zoomed (`UpdateZoomIndicator`); Yes / No questions for Stop Logging and Clear Graph; follows the session file to the saved location; mouse cursor temperature label in the graph (right-click menu); note about many samples in the opening notice; zoom rectangle on both axes; right-click menu of the graph (cursor temperature, number of ticks, Y-axis range set / lock at current / unlock); check box per graph line; Export Graph button (graph saved as image); X-axis range items (set / lock at current / unlock); graph title; dark green / dark red Start / Stop Logging button borders; scroll steps of the zoomed graph (`UpdateScrollSteps`) |
+| `DataLogGUI.h` (new) | The Data Log window (table and graph that follow the data logging file); light gray scroll bars, arrows and Reset Zoom buttons on both axes (`StyleAxisScrollBar`, `_DataLogScrollBar_...` macros); table below the exported graph (`GetCameraConfigLines`, `GetExportInfoLines`, `SplitInfoLine`), Add Notes button and Graph Notes window (`ShowGraphNotesWindow`, `GraphNotes`), Show Graph Title check box (`ShowTitleCheckBox`, `UpdateGraphTitleVisibility`), text size and high resolution of the exported image (`_DataLogExport_...` macros, direct title editing `LogChart_MouseDoubleClick` / `TitleEditBox`); zoom reset when a new session starts (`ResetView`); frame around the plot area (secondary axes with only the line shown); first / last axis values in the strip of an exported image (`GetAxisRangeTexts`, `FormatAxisTime`); Clear Graph button; orange Reset Zoom border while zoomed (`UpdateZoomIndicator`); Yes / No questions for Stop Logging and Clear Graph; follows the session file to the saved location; mouse cursor temperature label in the graph (right-click menu); note about many samples in the opening notice; zoom rectangle on both axes; right-click menu of the graph (cursor temperature, number of ticks, Y-axis range set / lock at current / unlock); check box per graph line; Export Graph button (graph saved as image); X-axis range items (set / lock at current / unlock); graph title; dark green / dark red Start / Stop Logging button borders; scroll steps of the zoomed graph (`UpdateScrollSteps`) |
 | `RMH_Application_ThermalViewer.cpp` (also, in this branch) | Fix: Ambient / Reflected temperature boxes of the configuration panel were swapped when the temperature unit changed (see 1.26) |
 | `GlobalObjectsAndVariables.h/.cpp` | Flags for the Data Log window; `DataLoggingSessionFolderString` (folder of the current session file); calibration freeze (`CalibrationActiveFlag`, `CalibrationSettleUntilTick`, `RMH_IsCalibrationFreezeActive`) |
 | `RMH_SupportedIRCameras_Resources.h` | New setting `_CalibrationFreezeSettleTimeMs` |
@@ -486,8 +488,8 @@ Fallbacks: Build #7 (commit `7b355e8`, branch `fix-t2s-v2-temperature`) and the 
 | Data Log graph: Set Y-Axis Range And Lock, Lock Y-Axis At Current Range, Unlock Y-Axis | Not tested yet |
 | Data Log graph: check box per line shows / hides the line; all ticked at the start | Not tested yet |
 | Data Log graph: Set X-Axis Range And Lock (valid and invalid times), Lock X-Axis At Current Range, Unlock X-Axis; zoom and ticks inside a locked range | Not tested yet |
-| Data Log graph: Set Graph Title shows a bold title at the top center; empty text removes it; the title is in the exported image | Not tested yet |
-| Data Log graph: Export Graph first shows the title window with the current title; Set Title continues, Cancel cancels the export | Not tested yet |
+| Data Log graph: tick Show Graph Title: bold `Title` at the top center; double-click it, type, Enter keeps it, Esc cancels, empty text hides it; the title is in the exported image | Not tested yet |
+| Data Log graph: Export Graph first shows the title window with the current title (also when the title is hidden); Set Title continues, Cancel cancels the export | Not tested yet |
 | Data Log graph: Export Graph saves PNG / JPEG / BMP with the shown lines named above the graph | Not tested yet |
 | Data Log graph: left-drag rectangle zooms both X and Y; Reset Zoom works | Not tested yet |
 | Warning window for more than 100000 samples: Start starts, Cancel does not start; no window for alarm / trigger starts | Not tested yet |
@@ -513,7 +515,7 @@ Fallbacks: Build #7 (commit `7b355e8`, branch `fix-t2s-v2-temperature`) and the 
 | Exported image: table with 3 cells (no notes) or 4 cells (with notes) in the order Configuration, Export Information, Other Information, Notes; borders line up | Not tested yet |
 | Exported image: long notes (several lines, 2000 characters) wrap inside the Notes cell; a narrow graph moves cells to a next row | Not tested yet |
 | Exported image: line names, axis ranges, table, graph title and axis titles are about 20 % bigger than the axis values (20.0, 0:00:00); the axis values and the graph on the screen are unchanged after the export | Not tested yet |
-| Show Graph Title check box (before Auto-scroll): unticked hides the title on the graph and in the image, text is kept, export skips the Graph Title window; Set Graph Title... ticks it again | Not tested yet |
+| Show Graph Title check box (before Auto-scroll): not ticked at the start; ticked shows `Title`; unticked hides it, text kept; the right-click menu has no Set Graph Title...; Export Graph asks for the title when it is hidden (new title shows it, empty hides it, same text keeps it) | Not tested yet |
 | Exported image resolution: 3 x the pixels; lines and text sharp when zoomed in a viewer (PNG, JPEG, BMP); compare `_DataLogExport_UseVectorChart` 1 and 0; the graph looks the same as on the screen (colors, lines, frame, zoom, locked range) | Not tested yet |
 | Export Graph on a big window / long log: no out-of-memory or very slow export at 3 x resolution | Not tested yet |
 | Scroll bar colors, table, notes, text size, zoom reset and unit fix: build compiles (MSVC, /clr) | Not tested yet |

@@ -5,10 +5,15 @@ the number counts builds of this repository.
 
 ## Unreleased
 
-- Data Log window: **new check box Show Graph Title**, before **Auto-scroll table to newest** (ticked by default). Not ticked = the title is hidden on the graph and in the
-  exported image (the text is kept) and **Export Graph** skips the Graph Title window. Setting a title (right-click menu **Set Graph Title...** or the export window) ticks the
-  check box again. The separate Data Log window is 1130 px wide (was 1000) and Auto-scroll moved right. Change in `DataLogGUI.h` (`ShowTitleCheckBox`,
-  `UpdateGraphTitleVisibility`, `ShowGraphTitleWindow`, `BuildLayout`).
+- Data Log window: **new check box Show Graph Title**, before **Auto-scroll table to newest**, **not ticked** by default. Ticked shows the title above the graph and in the
+  exported image (`Title` until a title is typed); not ticked hides it (the text is kept). **The title is edited directly: double-click it on the graph**, type, **Enter** (or click
+  elsewhere) keeps, **Esc** cancels; a new title ticks the check box, an empty text hides the title (unticks it, text back to `Title`). **Export Graph** opens the Graph Title window also
+  when the title is hidden (new title shows it, empty text hides it, same text keeps it as it is). **The right-click menu item Set Graph Title... is removed.** The separate Data Log
+  window is 1130 px wide (was 1000) and Auto-scroll moved right. Change in `DataLogGUI.h` (`ShowTitleCheckBox`, `UpdateGraphTitleVisibility`, `ApplyGraphTitleText`,
+  `LogChart_MouseDoubleClick`, `BeginTitleEdit`, `EndTitleEdit`, `TitleEditBox`, `ShowGraphTitleWindow`, `BuildLayout`, `BuildChart`).
+
+- Data Log window: the factor of the bigger text in the exported image is now fixed (1.2, constant `TextScale` in `ExportGraphButton_Click`); the macro `_DataLogExport_TextScale`
+  is removed. Change in `DataLogGUI.h`.
 
 - Data Log window: **higher resolution of the exported image**. The image has 3 times more pixels in width and height. The graph is taken as a vector drawing (EMF+) and
   drawn at the high resolution (falls back to the stretched picture when that fails); the strip and the table are drawn at the high resolution too. JPEG images are saved
@@ -32,7 +37,7 @@ the number counts builds of this repository.
 
 - Data Log window: **text in the exported image is 20 % bigger than the axis values**. All text apart from the values on the axes (line names, first / last axis
   values, table, title of the graph, titles of the axes) has the font of the axis values (for example `20.0`, `0:00:00`, read from the graph itself) at 1.2 times the
-  size; the axis values keep their size. The title and axis titles on the screen are only made bigger while the image is made. Macro `_DataLogExport_TextScale` (1.2).
+  size; the axis values keep their size. The title and axis titles on the screen are only made bigger while the image is made.
   Change in `DataLogGUI.h` (`ExportGraphButton_Click`).
 
 - Data Log window graph: **thermal camera configuration list in an exported image**. **Export Graph** now adds a list **below the graph** with the heading
