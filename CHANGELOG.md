@@ -5,6 +5,19 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- **New: the data logging duration and the Temperature Plot Data Set Settings can be changed while a session runs** (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_23`, not tested yet).
+  Before, these settings were read once when **Start Logging** was pressed. **Duration:** a new Hours / Minutes / Seconds value is used at once and is the total length of the session,
+  counted from the start (1 minute changed to 1 hour after 20 seconds keeps logging until 1 hour after the start); a value shorter than the time already logged ends the session with the
+  next sample; a status line tells the change. The duration is now calculated in `unsigned long` (the hours box goes up to 719 and the milliseconds overflowed a signed 32 bit integer).
+  The sample interval is still read at the start. **Plot data sets:** a changed **source** of a data set that is part of the session is logged from the next sample on (the last value of the
+  old source is not reused), a `#<column>=<name>` note line is written in the file and the Data Log window renames the table header, graph legend and line check box; an **unchecked** data
+  set keeps its column and logs `NaN` (a gap in the graph) until it is checked again; a data set that was not part of the session at the start is not added (status message, logged from the
+  next session) because the columns of the session file are fixed. The notice of the Data Log window about the duration is updated. Change in `RMH_Application_ThermalViewer.cpp` / `.h`
+  (`RMH_ThermalViewer_ReadSessionDurationMilliSec`, `RMH_ThermalViewer_UpdateDataLoggingSessionDuration`, `RMH_ThermalViewer_ApplyLiveDataLoggingDataSetChange`,
+  `RMH_ThermalViewer_StartDataLogging`, `RMH_ThermalViewer_DataLoggingThreadProcess`), `ThermalCameraGUI.h` (`DataLoggingDurationUpDown_ValueChanged` and the data set callbacks),
+  `GlobalObjectsAndVariables.h/.cpp` (`DataLoggingColumnDataSetIndex`, `DataLoggingColumnEnabled`, `DataLoggingColumnSourceChangedFlag`, `DataLoggingColumnSourceNames`) and `DataLogGUI.h`
+  (`ApplySourceChangeNote`, `ProcessNewText`).
+
 - **Bug fix: the Data Log graph jumped horizontally (the right edge moved) while logging, with X-Axis Number Of Ticks on a fixed number and also on Auto.** The graph used the
   automatic layout of the chart, which makes the plot area (the part inside the axes) smaller or larger whenever the width of an axis label changes, for example a time label on the
   right end of the time axis that comes and goes while the log grows. The round tick steps (next entry) were not enough. Now the plot area has a **fixed size**, set in pixels from each side
