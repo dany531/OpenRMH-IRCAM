@@ -2357,6 +2357,24 @@ namespace IRCAMThermalViewer {
 
 		// ---------------------------------- Reading the log file ---------------------------------- //
 
+		System::Void ApplySourceChangeNote(System::String^ Line) {
+
+			// Note line of the session file: #<column number>=<new name> - the column (table header, graph line and its check box) gets the new name
+			int EqualsPos = Line->IndexOf(L'=');
+			if (EqualsPos < 2) { return; }
+
+			int Column = 0;
+			if (System::Int32::TryParse(Line->Substring(1, EqualsPos - 1)->Trim(), Column) == false) { return; }
+
+			System::String^ NewName = Line->Substring(EqualsPos + 1)->Trim();
+			if (Column < 2 || Column >= this->LogGrid->Columns->Count) { return; }
+
+			this->LogGrid->Columns[Column]->HeaderText = NewName;
+			if ((Column - 2) < this->LogChart->Series->Count) { this->LogChart->Series[Column - 2]->LegendText = NewName; }
+			if ((Column - 2) < this->LineChecksPanel->Controls->Count) { this->LineChecksPanel->Controls[Column - 2]->Text = NewName; }
+
+		}
+
 		System::Void ProcessNewText(System::String^ NewText) {
 
 			// Adds the complete lines of the newly read text to the table and to the graph
@@ -2430,6 +2448,9 @@ namespace IRCAMThermalViewer {
 
 				System::String^ Line = Lines[i]->TrimEnd(gcnew cli::array<wchar_t>{ L'\r' });
 				if (Line->Length == 0) { continue; }
+
+				// A note line (#column=name): the source of a column was changed while the session runs - show the new name, it is no sample
+				if (Line->StartsWith("#")) { this->ApplySourceChangeNote(Line); continue; }
 
 				cli::array<System::String^>^ Parts = Line->Split(Delimiters, System::StringSplitOptions::None);
 
@@ -2624,7 +2645,7 @@ namespace IRCAMThermalViewer {
 				NoticeText->Append("A running session stops by itself when this duration is over.");
 				NoticeText->Append(System::Environment::NewLine);
 				NoticeText->Append(System::Environment::NewLine);
-				NoticeText->Append("To change the duration or the sample interval, open Settings, go to 'Data Logging Session Settings', and change the values. The new values are used the next time you press Start Logging.");
+				NoticeText->Append("To change the duration, open Settings, go to 'Data Logging Session Settings', and change the values. While a session runs, a new duration is used at once - it is the total length of the session, counted from the moment the session was started. The sample interval is used the next time you press Start Logging.");
 
 				System::Windows::Forms::Form^ NoticeWindow = gcnew System::Windows::Forms::Form();
 				NoticeWindow->Text = "Data Log";

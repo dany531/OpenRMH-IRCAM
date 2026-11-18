@@ -866,6 +866,18 @@ static bool RMH_ThermalViewer_ConfirmDataLoggingSampleLimit(double ExpectedSampl
 
 }
 
+static unsigned long RMH_ThermalViewer_ReadSessionDurationMilliSec() {
+
+	// Reads the data logging session duration (hours, minutes, seconds) from the 'Data Logging Session Settings' and returns it in milliseconds
+	// (calculated in unsigned long - the hours value goes up to 719, which is more than a signed 32 bit integer can hold in milliseconds)
+	unsigned long Hours = (unsigned long)System::Decimal::ToInt32(GlobalVariables::GlobalDataLoggingDurationHourUpDown->Value);
+	unsigned long Minutes = (unsigned long)System::Decimal::ToInt32(GlobalVariables::GlobalDataLoggingDurationMinuteUpDown->Value);
+	unsigned long Seconds = (unsigned long)System::Decimal::ToInt32(GlobalVariables::GlobalDataLoggingDurationSecondsUpDown->Value);
+
+	return (Hours * 3600000UL) + (Minutes * 60000UL) + (Seconds * 1000UL);
+
+}
+
 void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit) {
 
 	// This routine configures the data logging session and starts data logging
@@ -873,9 +885,6 @@ void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit) {
 	// Local variables
 	unsigned int SelectedSourceIndex = 0;
 	unsigned char DataLoggingDataSetIndex = 0;
-	unsigned short DataLoggingDurationHoursValue = 0;
-	unsigned short DataLoggingDurationMinutesValue = 0;
-	unsigned short DataLoggingDurationSedundsValue = 0;
 	std::vector<std::string> CSVFileHeaderStrings = { "Sample", "Time(ms)", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A" };
 
 	// The previous session is still finishing (waiting for the save / discard answer)
@@ -924,13 +933,19 @@ void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit) {
 		// Reset the number of active data logging sets
 		DataLoggingNumberOfActiveSets = 0;
 
-		// Read the duration parameters of the data logging session
-		DataLoggingDurationHoursValue = System::Decimal::ToInt16(GlobalVariables::GlobalDataLoggingDurationHourUpDown->Value);
-		DataLoggingDurationMinutesValue = System::Decimal::ToInt16(GlobalVariables::GlobalDataLoggingDurationMinuteUpDown->Value);
-		DataLoggingDurationSedundsValue = System::Decimal::ToInt16(GlobalVariables::GlobalDataLoggingDurationSecondsUpDown->Value);
+		// Reset the live data logging column state (column source names, enable state and source changed flags)
+		GlobalVariables::DataLoggingColumnSourceNames = gcnew cli::array<System::String^>(_2DPlotMaxNumberOfDataSets);
+		for (unsigned int i = 0; i < _2DPlotMaxNumberOfDataSets; i++) {
 
-		// Calculate the length of the data logging session in milliseconds
-		DataLoggingSessionDurationMilliSec = (DataLoggingDurationHoursValue * 3600000) + (DataLoggingDurationMinutesValue * 60000) + (DataLoggingDurationSedundsValue * 1000);
+			DataLoggingColumnDataSetIndex[i] = (unsigned char)i;
+			DataLoggingColumnEnabled[i] = true;
+			DataLoggingColumnSourceChangedFlag[i] = false;
+			GlobalVariables::DataLoggingColumnSourceNames[i] = "";
+
+		}
+
+		// Read the duration of the data logging session in milliseconds (the duration can be changed again while the session runs - see RMH_ThermalViewer_UpdateDataLoggingSessionDuration)
+		DataLoggingSessionDurationMilliSec = RMH_ThermalViewer_ReadSessionDurationMilliSec();
 
 		// Set the execution interval variable of the data logging thread
 		DataLoggingIntervalMilliSec = (unsigned long)(System::Decimal::ToDouble(GlobalVariables::GlobalDataLoggingIntervalUpDown->Value) * 1000.0);
@@ -951,6 +966,10 @@ void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit) {
 
 				// Store the data set source description in the CSV header string array
 				CSVFileHeaderStrings[DataLoggingDataSetIndex + 2] = RMH_Conversion_SystemStringToStdString(GlobalVariables::Plot2DDataSetComboBoxs[i]->Text);
+
+				// Remember which plot data set feeds this data logging column - used when the plot data set settings are changed while the session runs
+				DataLoggingColumnDataSetIndex[DataLoggingDataSetIndex] = (unsigned char)i;
+				GlobalVariables::DataLoggingColumnSourceNames[DataLoggingDataSetIndex] = GlobalVariables::Plot2DDataSetComboBoxs[i]->Text;
 
 				// Increment the data logging data set index variable
 				DataLoggingDataSetIndex = DataLoggingDataSetIndex + 1;
@@ -999,6 +1018,100 @@ void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit) {
 
 		// Write GUI status message
 		RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Is Already Running!", _StatusMessageType_Warning);
+
+	}
+
+}
+
+void RMH_ThermalViewer_UpdateDataLoggingSessionDuration() {
+
+	// This routine is called (GUI thread) when the duration of the 'Data Logging Session Settings' is changed.
+	// While a session runs, the new duration is used at once. It is the total length of the session, counted from the moment the session was started:
+	// 1 minute changed to 1 hour after 20 seconds -> the session keeps logging until 1 hour after the start (not 1 hour after the change).
+	// When the new duration is shorter than the time already logged, the session ends with the next sample.
+
+	// Nothing to do when no session runs - the duration is read when the next session starts
+	if (DataLoggingIsRunningFlag == false) { return; }
+
+	unsigned long NewDurationMilliSec = RMH_ThermalViewer_ReadSessionDurationMilliSec();
+
+	// The logging thread reads this variable once per sample (a 32 bit write is atomic)
+	DataLoggingSessionDurationMilliSec = NewDurationMilliSec;
+
+	System::TimeSpan NewDuration = System::TimeSpan::FromMilliseconds((double)NewDurationMilliSec);
+	System::String^ DurationText = System::Convert::ToString((int)NewDuration.TotalHours) + ":" + NewDuration.Minutes.ToString("00") + ":" + NewDuration.Seconds.ToString("00");
+
+	if (DataLoggingDurationTimerMilliSec >= NewDurationMilliSec) {
+
+		RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Session Duration Changed To " + RMH_Conversion_SystemStringToStdString(DurationText) + " - Already Reached, The Session Ends With The Next Sample.", _StatusMessageType_Warning);
+
+	}
+	else {
+
+		RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Session Duration Changed To " + RMH_Conversion_SystemStringToStdString(DurationText) + " (Counted From The Start Of The Session).", _StatusMessageType_Normal);
+
+	}
+
+}
+
+void RMH_ThermalViewer_ApplyLiveDataLoggingDataSetChange(System::Object^ sender, bool IsSourceChange) {
+
+	// This routine is called (GUI thread) when a setting of the 'Temperature Plot Data Set Settings' is changed (data set CheckBox or data source ComboBox).
+	// While a session runs the change is also applied to the data logging. The columns of the session file are fixed when the session starts (a file with a
+	// changing number of columns could not be read), so:
+	//   - Source changed:    the column is logged from the new source from the next sample on (a note line in the file tells the Data Log window the new name)
+	//   - CheckBox unchecked: the column stays in the file and NaN is logged (a gap in the graph) until the CheckBox is checked again
+	//   - A data set that was not part of the session when it started is logged from the next session on
+
+	// Nothing to do when no session runs - the settings are read when the next session starts
+	if (DataLoggingIsRunningFlag == false) { return; }
+
+	System::Windows::Forms::Control^ SenderControl = (System::Windows::Forms::Control^)sender;
+	unsigned int DataSetIndex = (unsigned int)Convert::ToInt16(SenderControl->Tag);
+
+	// Find the data logging column of this plot data set
+	int Column = -1;
+	for (unsigned int c = 0; c < DataLoggingNumberOfActiveSets; c++) {
+
+		if (DataLoggingColumnDataSetIndex[c] == DataSetIndex) { Column = (int)c; break; }
+
+	}
+
+	std::string DataSetName = "Plot Data Set " + std::to_string(DataSetIndex + 1);
+
+	if (Column < 0) {
+
+		// Only a message when the data set would have been logged (checked)
+		if (GlobalVariables::Plot2DDataSetCheckBoxs[DataSetIndex]->Checked == true) {
+
+			RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, DataSetName + " Was Not Part Of The Running Data Logging Session - It Is Logged From The Next Session.", _StatusMessageType_Warning);
+
+		}
+
+		return;
+
+	}
+
+	if (IsSourceChange == true) {
+
+		System::Windows::Forms::ComboBox^ SourceComboBox = (System::Windows::Forms::ComboBox^)sender;
+		if (SourceComboBox->SelectedIndex < 0) { return; }
+
+		// Name first, then the pointer, then the flag - the logging thread reads them in the opposite order
+		GlobalVariables::DataLoggingColumnSourceNames[Column] = SourceComboBox->GetItemText(SourceComboBox->SelectedItem);
+		RMH_ThermalViewer_ChangeDataLoggingDataSetSource((unsigned char)Column, (unsigned char)SourceComboBox->SelectedIndex);
+		DataLoggingColumnSourceChangedFlag[Column] = true;
+
+		RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging: " + DataSetName + " Source Changed To '" + RMH_Conversion_SystemStringToStdString(GlobalVariables::DataLoggingColumnSourceNames[Column]) + "' From The Next Sample.", _StatusMessageType_Normal);
+
+	}
+	else {
+
+		System::Windows::Forms::CheckBox^ EnableCheckBox = (System::Windows::Forms::CheckBox^)sender;
+		DataLoggingColumnEnabled[Column] = EnableCheckBox->Checked;
+
+		if (EnableCheckBox->Checked == true) { RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging: " + DataSetName + " Is Logged Again.", _StatusMessageType_Normal); }
+		else { RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging: " + DataSetName + " Is Paused (NaN Is Logged In Its Column).", _StatusMessageType_Normal); }
 
 	}
 
@@ -1161,8 +1274,31 @@ void RMH_ThermalViewer_DataLoggingThreadProcess() {
 		// Load the data logging source data into the data array
 		for (unsigned int i = 0; i < DataLoggingNumberOfActiveSets; i++) {
 
-			// Load the data into the source data array
-			DataLoggingSourceDataArray[i] = RMH_FreezeValueDuringCalibration(RMH_ThermalViewer_GetDataLoggingSourcePointerFromIndex(i), &DataLoggingLastGoodValues[i]);
+			// The source of this column was changed while the session runs: write a note line (#column=name) for the Data Log window, and do not reuse the last value of the old source
+			if (DataLoggingColumnSourceChangedFlag[i] == true) {
+
+				DataLoggingColumnSourceChangedFlag[i] = false;
+				DataLoggingLastGoodValues[i] = std::numeric_limits<double>::quiet_NaN();
+
+				System::String^ NewName = GlobalVariables::DataLoggingColumnSourceNames[i];
+				std::vector<std::string> NoteLine = { "#" + std::to_string(i + 2) + "=" + RMH_Conversion_SystemStringToStdString(NewName) };
+
+				RMH_Winforms_WriteHeaderStringsToCSVFile(RMH_Conversion_SystemStringToStdString(GlobalVariables::DataLoggingSessionFolderString),
+					RMH_Conversion_SystemStringToStdString(GlobalVariables::DataLoggingSessionFileNameString), NoteLine, 1, GlobalVariables::DataLoggingCSVDelimiterString);
+
+			}
+
+			// Load the data into the source data array (a plot data set that is unchecked while the session runs logs NaN - the column stays in the file)
+			if (DataLoggingColumnEnabled[i] == true) {
+
+				DataLoggingSourceDataArray[i] = RMH_FreezeValueDuringCalibration(RMH_ThermalViewer_GetDataLoggingSourcePointerFromIndex(i), &DataLoggingLastGoodValues[i]);
+
+			}
+			else {
+
+				DataLoggingSourceDataArray[i] = std::numeric_limits<double>::quiet_NaN();
+
+			}
 
 		}
 

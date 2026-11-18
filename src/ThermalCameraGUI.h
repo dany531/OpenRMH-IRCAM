@@ -4391,6 +4391,9 @@ namespace IRCAMThermalViewer {
 			this->DurationHourUpDown->Size = System::Drawing::Size(70, 20);
 			this->DurationHourUpDown->TabIndex = 35;
 			this->DurationHourUpDown->Tag = L"7";
+			this->DurationHourUpDown->ValueChanged += gcnew System::EventHandler(this, &ThermalCameraGUI::DataLoggingDurationUpDown_ValueChanged);
+			this->DurationMinuteUpDown->ValueChanged += gcnew System::EventHandler(this, &ThermalCameraGUI::DataLoggingDurationUpDown_ValueChanged);
+			this->DurationSecondsUpDown->ValueChanged += gcnew System::EventHandler(this, &ThermalCameraGUI::DataLoggingDurationUpDown_ValueChanged);
 			this->DurationHourUpDown->TextAlign = System::Windows::Forms::HorizontalAlignment::Center;
 			// 
 			// label43
@@ -8280,6 +8283,14 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		// Data logging session duration (hours / minutes / seconds) value changed callback routine - also while a session runs ->
+		private: System::Void DataLoggingDurationUpDown_ValueChanged(System::Object^ sender, System::EventArgs^ e) {
+
+			// Use the new duration for a running data logging session (counted from the start of the session)
+			RMH_ThermalViewer_UpdateDataLoggingSessionDuration();
+
+		}
+
 		// ------------ Temp Plot Data Set Settings Menu And Configuration Callbacks ------------ //
 
 		// Plot data set enable CheckBox callback routine ->
@@ -8287,6 +8298,9 @@ namespace IRCAMThermalViewer {
 
 			// Enable the 2D plot data set for plotting
 			RMH_ThermalViewer_Enable2DPlotDataSet(sender);
+
+			// Apply the change to a running data logging session as well
+			RMH_ThermalViewer_ApplyLiveDataLoggingDataSetChange(sender, false);
 
 			// Update the 2D plot legend
 			RMH_ThermalViewer_Update2DPlotLegendLabels();
@@ -8317,6 +8331,9 @@ namespace IRCAMThermalViewer {
 
 			// Set the 2D plot data set source to the selected ComboBox index
 			RMH_ThermalViewer_Change2DPlotDataSetSource(sender);
+
+			// Apply the change to a running data logging session as well
+			RMH_ThermalViewer_ApplyLiveDataLoggingDataSetChange(sender, true);
 
 			// Update the 2D plot legend only when TempMeasGUI is loaded
 			if (TempMeasGUIReadyFlag == true) {
