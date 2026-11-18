@@ -5,6 +5,26 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- **New (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_25`, not tested yet): the data logging sample interval can be changed while a session runs.** The new interval is used at once (a new `ValueChanged` event of
+  the interval box): the logging thread reads the interval again in every 50 ms step of its wait, so the sample that is being waited for comes when the new interval is over (a shorter interval that is
+  already over gives the sample at once). The session timer and the `Time(ms)` column now add the **time that was really waited** per sample (was: the interval; the same when it does not change), and the end of the
+  session uses the last wait. The interval is rounded to a whole millisecond when it is read (0.29 s could become 289 ms) and is never below 40 ms. A change of the duration or the interval that makes the session
+  have more samples than the Data Log window shows gives a status line (no window). Change in `RMH_Application_ThermalViewer.cpp` / `.h` (`RMH_ThermalViewer_UpdateDataLoggingSampleInterval`,
+  `RMH_ThermalViewer_ReadSessionIntervalMilliSec`, `RMH_ThermalViewer_WarnLiveSampleLimit`, `RMH_ThermalViewer_DataLoggingThreadProcess`, `RMH_ThermalViewer_StartDataLogging`), `ThermalCameraGUI.h`
+  (`DataLoggingIntervalUpDown_ValueChanged`) and `DataLogGUI.h` (notice text).
+
+- **Change (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_24`, not tested yet): live data logging settings extended; this replaces the behavior described in the entry below for the plot data sets and for a too short duration.**
+  **Duration:** a new duration that is not longer than the time already logged is **no longer accepted**: the session is **not** ended, a warning window explains it, the Hours / Minutes / Seconds boxes are set back to
+  the duration of the running session and the session keeps running (a longer duration is still used at once, counted from the start of the session). **Plot data sets:** a data set that is **enabled during a session and was not
+  part of it is now added as a new column**, logged from the next sample on (a note line `#<column>=<name>` is written in the file; the rows before it are shorter) and **the new line and table column appear in the Data Log
+  window** from that moment. Unchecking a data set that is part of the session still logs `NaN` in its column (gap in the graph), and a changed source is still used from the next sample (note line renames the column).
+  **Line color and line width** changed in the plot data set settings during a session now also change the **line in the Data Log graph** (and its check box color); the lines of the Data Log graph use the color and line width of
+  their plot data set (before: a fixed color list by column number, line width 1; the same with the default settings). The logging thread reads the number of columns once per sample. Change in
+  `RMH_Application_ThermalViewer.cpp` (`RMH_ThermalViewer_UpdateDataLoggingSessionDuration`, `RMH_ThermalViewer_ApplyLiveDataLoggingDataSetChange`, `RMH_ThermalViewer_DataLoggingThreadProcess`,
+  `RMH_ThermalViewer_Change2DPlotDataSetAndSettingsPanelColor`, `RMH_ThermalViewer_Change2DPlotDataSetLineWidth`, `RMH_ThermalViewer_StartDataLogging`), `GlobalObjectsAndVariables.h/.cpp`
+  (`DataLoggingStyleChangedFlag`, `Plot2DDataSetLineWidthUpDowns`), `ThermalCameraGUI.h` (new array of the line width boxes) and `DataLogGUI.h` (`AddLogColumn`, `GetColumnColor`, `GetColumnLineWidth`,
+  `ApplyLiveStyleChanges`, `ApplySourceChangeNote`; the creation of the columns of the header line moved into `AddLogColumn`).
+
 - **New: the data logging duration and the Temperature Plot Data Set Settings can be changed while a session runs** (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_23`, not tested yet).
   Before, these settings were read once when **Start Logging** was pressed. **Duration:** a new Hours / Minutes / Seconds value is used at once and is the total length of the session,
   counted from the start (1 minute changed to 1 hour after 20 seconds keeps logging until 1 hour after the start); a value shorter than the time already logged ends the session with the
