@@ -201,7 +201,8 @@ extern unsigned long DataLoggingSessionDurationMilliSec;
 // Live data logging settings: the column layout of a running session is fixed, but the source and the enable state of its columns can change while it runs
 extern unsigned char DataLoggingColumnDataSetIndex[_2DPlotMaxNumberOfDataSets];			// Plot data set (settings menu) that feeds each data logging column
 extern volatile bool DataLoggingColumnEnabled[_2DPlotMaxNumberOfDataSets];				// False: the column is kept in the file, but NaN is logged (plot data set unchecked)
-extern volatile bool DataLoggingColumnSourceChangedFlag[_2DPlotMaxNumberOfDataSets];	// True: the source of the column changed, the logging thread writes a note to the file
+extern volatile bool DataLoggingColumnSourceChangedFlag[_2DPlotMaxNumberOfDataSets];	// True: the source of the column changed or the column is new, the logging thread writes a note (#column=name) to the file
+extern bool DataLoggingStyleChangedFlag[_2DPlotMaxNumberOfDataSets];					// True: line color / width of a plot data set changed during a session (GUI thread only) - the Data Log window follows it
 extern double DataLoggingSourceDataArray[_2DPlotMaxNumberOfDataSets];
 extern double* DataLoggingDataSet1SourcePointer;
 extern double* DataLoggingDataSet2SourcePointer;
@@ -363,6 +364,7 @@ ref struct GlobalVariables {
 	static cli::array<System::Windows::Forms::Panel^>^ Plot2DDataSetColorPanels = nullptr;
 	static cli::array<System::Windows::Forms::CheckBox^>^ Plot2DDataSetCheckBoxs = nullptr;
 	static cli::array<System::String^>^ DataLoggingColumnSourceNames = nullptr;
+	static cli::array<System::Windows::Forms::NumericUpDown^>^ Plot2DDataSetLineWidthUpDowns = nullptr;
 	static cli::array<System::Windows::Forms::Label^>^ CameraConfigLabels = nullptr;
 	static cli::array<System::Windows::Forms::Label^>^ TempAlarmsStatusLabels = nullptr;
 	static cli::array<System::Windows::Forms::ComboBox^>^ GlobalPeriodicEventnComboBox = nullptr;

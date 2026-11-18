@@ -78,6 +78,7 @@ void RMH_ThermalViewer_UpdateDataLoggingDefaultSaveFilePath(System::Windows::For
 void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit = true);
 void RMH_ThermalViewer_StopDataLogging();
 void RMH_ThermalViewer_UpdateDataLoggingSessionDuration();
+void RMH_ThermalViewer_UpdateDataLoggingSampleInterval();
 void RMH_ThermalViewer_ApplyLiveDataLoggingDataSetChange(System::Object^ sender, bool IsSourceChange);
 void RMH_ThermalViewer_FinishDataLoggingSession();
 void RMH_ThermalViewer_UpdateDataLoggingCSVDataDelimiter();

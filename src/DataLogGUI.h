@@ -2357,9 +2357,123 @@ namespace IRCAMThermalViewer {
 
 		// ---------------------------------- Reading the log file ---------------------------------- //
 
+		System::Drawing::Color GetColumnColor(int Column) {
+
+			// Line color of a log column: the color of the plot data set that feeds the column (Temperature Plot Data Set Settings), so the graph and the 2D plot have the same colors.
+			// The colors of the standard order are used when the column has no plot data set.
+			int SetColumn = Column - 2;
+
+			if (SetColumn >= 0 && SetColumn < (int)DataLoggingNumberOfActiveSets && GlobalVariables::Plot2DDataSetColorPanels != nullptr) {
+
+				int DataSet = DataLoggingColumnDataSetIndex[SetColumn];
+
+				if (DataSet < GlobalVariables::Plot2DDataSetColorPanels->Length) {
+
+					System::Drawing::Color PanelColor = GlobalVariables::Plot2DDataSetColorPanels[DataSet]->BackColor;
+					return System::Drawing::Color::FromArgb(255, PanelColor.R, PanelColor.G, PanelColor.B);
+
+				}
+
+			}
+
+			return this->GetSeriesColor(SetColumn);
+
+		}
+
+		int GetColumnLineWidth(int Column) {
+
+			// Line width of a log column: the line width of the plot data set that feeds the column (1 when there is none)
+			int SetColumn = Column - 2;
+
+			if (SetColumn >= 0 && SetColumn < (int)DataLoggingNumberOfActiveSets && GlobalVariables::Plot2DDataSetLineWidthUpDowns != nullptr) {
+
+				int DataSet = DataLoggingColumnDataSetIndex[SetColumn];
+
+				if (DataSet < GlobalVariables::Plot2DDataSetLineWidthUpDowns->Length) {
+
+					int Width = (int)System::Math::Round(System::Decimal::ToDouble(GlobalVariables::Plot2DDataSetLineWidthUpDowns[DataSet]->Value));
+					if (Width < 1) { Width = 1; }
+					return Width;
+
+				}
+
+			}
+
+			return 1;
+
+		}
+
+		System::Void AddLogColumn(int c, System::String^ HeaderText) {
+
+			// Adds a column to the table and, for a data column, a line to the graph and its check box. Used for the header line of the file and for a data set
+			// that is enabled while the session runs (note line #column=name).
+			this->LogGrid->Columns->Add(System::Convert::ToString(c), HeaderText);
+			this->LogGrid->Columns[c]->SortMode = System::Windows::Forms::DataGridViewColumnSortMode::NotSortable;
+
+			// The data columns (after the sample number and the time) are the lines of the graph
+			if (c >= 2) {
+
+				System::Windows::Forms::DataVisualization::Charting::Series^ LineSeries = gcnew System::Windows::Forms::DataVisualization::Charting::Series(gcnew System::String("S") + System::Convert::ToString(c));
+				LineSeries->ChartType = System::Windows::Forms::DataVisualization::Charting::SeriesChartType::FastLine;
+				LineSeries->XValueType = System::Windows::Forms::DataVisualization::Charting::ChartValueType::DateTime;
+				LineSeries->YValueType = System::Windows::Forms::DataVisualization::Charting::ChartValueType::Double;
+				LineSeries->ChartArea = "Main";
+				LineSeries->LegendText = HeaderText;
+				LineSeries->Color = this->GetColumnColor(c);
+				LineSeries->BorderWidth = this->GetColumnLineWidth(c);
+				LineSeries->ToolTip = "#LEGENDTEXT: #VALY{F2}  (#VALX{HH:mm:ss})";
+				this->LogChart->Series->Add(LineSeries);
+
+				// Check box of the line (all lines are shown at first)
+				System::Windows::Forms::CheckBox^ LineCheck = gcnew System::Windows::Forms::CheckBox();
+				LineCheck->Text = HeaderText;
+				LineCheck->AutoSize = true;
+				LineCheck->Checked = true;
+				LineCheck->ForeColor = this->GetColumnColor(c);
+				LineCheck->Tag = System::Convert::ToString(c - 2);
+				LineCheck->Margin = System::Windows::Forms::Padding(4, 2, 10, 2);
+				LineCheck->CheckedChanged += gcnew System::EventHandler(this, &DataLogGUI::LineCheck_CheckedChanged);
+				this->LineChecksPanel->Controls->Add(LineCheck);
+
+			}
+
+		}
+
+		System::Void ApplyLiveStyleChanges() {
+
+			// The line color / line width of a plot data set was changed while the session runs - the line of that data set in the graph follows it
+			for (int DataSet = 0; DataSet < _2DPlotMaxNumberOfDataSets; DataSet++) {
+
+				if (DataLoggingStyleChangedFlag[DataSet] == false) { continue; }
+
+				int Column = -1;
+				for (int c = 0; c < (int)DataLoggingNumberOfActiveSets; c++) {
+
+					if (DataLoggingColumnDataSetIndex[c] == DataSet) { Column = c + 2; break; }
+
+				}
+
+				// Not a column of the session (a column that is added later reads the color and width when it is created)
+				if (Column < 0) { DataLoggingStyleChangedFlag[DataSet] = false; continue; }
+
+				// The column is not in the window yet - the next refresh tries again
+				if ((Column - 2) >= this->LogChart->Series->Count || (Column - 2) >= this->LineChecksPanel->Controls->Count) { continue; }
+
+				this->LogChart->Series[Column - 2]->Color = this->GetColumnColor(Column);
+				this->LogChart->Series[Column - 2]->BorderWidth = this->GetColumnLineWidth(Column);
+				this->LineChecksPanel->Controls[Column - 2]->ForeColor = this->GetColumnColor(Column);
+
+				DataLoggingStyleChangedFlag[DataSet] = false;
+
+			}
+
+		}
+
 		System::Void ApplySourceChangeNote(System::String^ Line) {
 
-			// Note line of the session file: #<column number>=<new name> - the column (table header, graph line and its check box) gets the new name
+			// Note line of the session file: #<column number>=<name>
+			//   - the column exists: the source of the column was changed while the session runs - the column gets the new name (table header, graph line, check box)
+			//   - the column is the next new one: a plot data set was enabled while the session runs - the column is added (the rows before have no value in it)
 			int EqualsPos = Line->IndexOf(L'=');
 			if (EqualsPos < 2) { return; }
 
@@ -2367,7 +2481,10 @@ namespace IRCAMThermalViewer {
 			if (System::Int32::TryParse(Line->Substring(1, EqualsPos - 1)->Trim(), Column) == false) { return; }
 
 			System::String^ NewName = Line->Substring(EqualsPos + 1)->Trim();
-			if (Column < 2 || Column >= this->LogGrid->Columns->Count) { return; }
+			if (Column < 2) { return; }
+
+			if (Column == this->LogGrid->Columns->Count) { this->AddLogColumn(Column, NewName); return; }
+			if (Column > this->LogGrid->Columns->Count) { return; }
 
 			this->LogGrid->Columns[Column]->HeaderText = NewName;
 			if ((Column - 2) < this->LogChart->Series->Count) { this->LogChart->Series[Column - 2]->LegendText = NewName; }
@@ -2402,35 +2519,7 @@ namespace IRCAMThermalViewer {
 
 					System::String^ HeaderText = HeaderParts[c]->Trim();
 					if (c == 1) { HeaderText = "Elapsed (h:mm:ss)"; }
-					this->LogGrid->Columns->Add(System::Convert::ToString(c), HeaderText);
-					this->LogGrid->Columns[c]->SortMode = System::Windows::Forms::DataGridViewColumnSortMode::NotSortable;
-
-					// The data columns (after the sample number and the time) are the lines of the graph
-					if (c >= 2) {
-
-						System::Windows::Forms::DataVisualization::Charting::Series^ LineSeries = gcnew System::Windows::Forms::DataVisualization::Charting::Series(gcnew System::String("S") + System::Convert::ToString(c));
-						LineSeries->ChartType = System::Windows::Forms::DataVisualization::Charting::SeriesChartType::FastLine;
-						LineSeries->XValueType = System::Windows::Forms::DataVisualization::Charting::ChartValueType::DateTime;
-						LineSeries->YValueType = System::Windows::Forms::DataVisualization::Charting::ChartValueType::Double;
-						LineSeries->ChartArea = "Main";
-						LineSeries->LegendText = HeaderText;
-						LineSeries->Color = this->GetSeriesColor(c - 2);
-						LineSeries->BorderWidth = 1;
-						LineSeries->ToolTip = "#LEGENDTEXT: #VALY{F2}  (#VALX{HH:mm:ss})";
-						this->LogChart->Series->Add(LineSeries);
-
-						// Check box of the line (all lines are shown at first)
-						System::Windows::Forms::CheckBox^ LineCheck = gcnew System::Windows::Forms::CheckBox();
-						LineCheck->Text = HeaderText;
-						LineCheck->AutoSize = true;
-						LineCheck->Checked = true;
-						LineCheck->ForeColor = this->GetSeriesColor(c - 2);
-						LineCheck->Tag = System::Convert::ToString(c - 2);
-						LineCheck->Margin = System::Windows::Forms::Padding(4, 2, 10, 2);
-						LineCheck->CheckedChanged += gcnew System::EventHandler(this, &DataLogGUI::LineCheck_CheckedChanged);
-						this->LineChecksPanel->Controls->Add(LineCheck);
-
-					}
+					this->AddLogColumn(c, HeaderText);
 
 				}
 
@@ -2585,6 +2674,7 @@ namespace IRCAMThermalViewer {
 
 			}
 
+			this->ApplyLiveStyleChanges();
 			this->UpdateAxisTitles();
 			this->ApplyAxisSettings();
 			this->UpdateStatusText();
@@ -2645,7 +2735,7 @@ namespace IRCAMThermalViewer {
 				NoticeText->Append("A running session stops by itself when this duration is over.");
 				NoticeText->Append(System::Environment::NewLine);
 				NoticeText->Append(System::Environment::NewLine);
-				NoticeText->Append("To change the duration, open Settings, go to 'Data Logging Session Settings', and change the values. While a session runs, a new duration is used at once - it is the total length of the session, counted from the moment the session was started. The sample interval is used the next time you press Start Logging.");
+				NoticeText->Append("To change the duration, open Settings, go to 'Data Logging Session Settings', and change the values. While a session runs, a new duration is used at once - it is the total length of the session, counted from the moment the session was started, and it must be longer than the time already logged. The sample interval can be changed while a session runs as well and is used from the next sample.");
 
 				System::Windows::Forms::Form^ NoticeWindow = gcnew System::Windows::Forms::Form();
 				NoticeWindow->Text = "Data Log";

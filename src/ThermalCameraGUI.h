@@ -156,6 +156,19 @@ namespace IRCAMThermalViewer {
 				this->DataSet10CheckBox
 
 			};
+			GlobalVariables::Plot2DDataSetLineWidthUpDowns = gcnew cli::array<System::Windows::Forms::NumericUpDown^>(10) {
+				this->DataSet1UpDown,
+				this->DataSet2UpDown,
+				this->DataSet3UpDown,
+				this->DataSet4UpDown,
+				this->DataSet5UpDown,
+				this->DataSet6UpDown,
+				this->DataSet7UpDown,
+				this->DataSet8UpDown,
+				this->DataSet9UpDown,
+				this->DataSet10UpDown
+
+			};
 			GlobalVariables::CameraConfigLabels = gcnew cli::array<System::Windows::Forms::Label^>(3) {
 				this->TempCorrLabel,
 				this->AmbientTempLabel,
@@ -4238,6 +4251,7 @@ namespace IRCAMThermalViewer {
 			this->LogIntervalUpDown->Size = System::Drawing::Size(101, 20);
 			this->LogIntervalUpDown->TabIndex = 20;
 			this->LogIntervalUpDown->Tag = L"7";
+			this->LogIntervalUpDown->ValueChanged += gcnew System::EventHandler(this, &ThermalCameraGUI::DataLoggingIntervalUpDown_ValueChanged);
 			this->LogIntervalUpDown->TextAlign = System::Windows::Forms::HorizontalAlignment::Center;
 			this->LogIntervalUpDown->Value = System::Decimal(gcnew cli::array< System::Int32 >(4) { 40, 0, 0, 196608 });
 			// 
@@ -8280,6 +8294,14 @@ namespace IRCAMThermalViewer {
 
 			// Toggle recording of a RAW data file
 			RMH_ThermalViewer_ToggleRecordingOfRAWDataForPostAnalysis();
+
+		}
+
+		// Data logging sample interval value changed callback routine - also while a session runs ->
+		private: System::Void DataLoggingIntervalUpDown_ValueChanged(System::Object^ sender, System::EventArgs^ e) {
+
+			// Use the new sample interval for a running data logging session
+			RMH_ThermalViewer_UpdateDataLoggingSampleInterval();
 
 		}
 

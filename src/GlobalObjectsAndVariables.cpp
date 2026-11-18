@@ -234,6 +234,7 @@ unsigned long DataLoggingSessionDurationMilliSec = 0;
 unsigned char DataLoggingColumnDataSetIndex[_2DPlotMaxNumberOfDataSets];
 volatile bool DataLoggingColumnEnabled[_2DPlotMaxNumberOfDataSets];
 volatile bool DataLoggingColumnSourceChangedFlag[_2DPlotMaxNumberOfDataSets];
+bool DataLoggingStyleChangedFlag[_2DPlotMaxNumberOfDataSets];
 double DataLoggingSourceDataArray[_2DPlotMaxNumberOfDataSets];
 double* DataLoggingDataSet1SourcePointer = &MaximumTemperature;
 double* DataLoggingDataSet2SourcePointer = &MinimumTemperature;
