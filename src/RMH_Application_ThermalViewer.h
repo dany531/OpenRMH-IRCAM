@@ -81,6 +81,10 @@ void RMH_ThermalViewer_UpdateDataLoggingSessionDuration();
 void RMH_ThermalViewer_UpdateDataLoggingSampleInterval();
 void RMH_ThermalViewer_ApplyLiveDataLoggingDataSetChange(System::Object^ sender, bool IsSourceChange);
 void RMH_ThermalViewer_FinishDataLoggingSession();
+// Crash recovery: at start-up, looks for data logging session files that were left in the temporary folder (crash, power loss, killed process) and shows the
+// "Unsaved Data Logging Sessions Found" window (save / open / delete / decide later). Returns true when the user chose to open a file in the Data Log window:
+// OpenFilePath is then the full path of the file and OpenDelimiter its data delimiter (nothing is changed in the program settings).
+bool RMH_ThermalViewer_CheckForUnsavedDataLoggingSessions(System::Windows::Forms::IWin32Window^ OwnerWindow, System::String^% OpenFilePath, System::String^% OpenDelimiter);
 void RMH_ThermalViewer_UpdateDataLoggingCSVDataDelimiter();
 void RMH_ThermalViewer_DataLoggingThreadProcess();
 

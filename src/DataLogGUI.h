@@ -59,6 +59,9 @@ namespace IRCAMThermalViewer {
 			this->SplitDistanceSet = false;
 			this->NoticeShowing = false;
 			this->HideDurationNotice = false;
+			this->SuppressNoticeOnce = false;
+			this->ViewDelimiter = nullptr;
+			this->ViewDelimiterFilePath = nullptr;
 			this->CursorLabelEnabled = false;
 			this->XTickCount = 0;
 			this->YTickCount = 0;
@@ -75,6 +78,26 @@ namespace IRCAMThermalViewer {
 			this->YIntervalSetByProgram = false;
 
 			this->BuildLayout();
+
+		}
+
+		// Crash recovery: shows a session file that was left in the temporary folder by a crash, a power loss or a killed program (see
+		// RMH_ThermalViewer_CheckForUnsavedDataLoggingSessions). The window follows the "current session file", so that file is set here. The data delimiter of that
+		// file (found in its header line) is only used for showing this file - the delimiter setting of the program is not changed, so the next session is still
+		// written with the delimiter that is set. The file stays where it is (it is not saved or deleted by this).
+		System::Void OpenRecoveredSession(System::String^ FullPath, System::String^ Delimiter) {
+
+			// The window follows the running session while one is logged
+			if (DataLoggingIsRunningFlag == true || FullPath == nullptr || FullPath->Length == 0) { return; }
+
+			GlobalVariables::DataLoggingSessionFolderString = System::IO::Path::GetDirectoryName(FullPath);
+			GlobalVariables::DataLoggingSessionFileNameString = System::IO::Path::GetFileName(FullPath);
+
+			this->ViewDelimiter = Delimiter;
+			this->ViewDelimiterFilePath = FullPath;
+
+			// The notice about the duration of the next data logging session is not shown when the window opens this time
+			this->SuppressNoticeOnce = true;
 
 		}
 
@@ -126,6 +149,9 @@ namespace IRCAMThermalViewer {
 		bool YIntervalSetByProgram;
 		bool NoticeShowing;
 		bool HideDurationNotice;
+		bool SuppressNoticeOnce;                     // True: the notice about the session duration is not shown the next time the window opens (a recovered session file is opened)
+		System::String^ ViewDelimiter;               // Data delimiter of the viewed file when it differs from the setting of the program (recovered session file), else nullptr
+		System::String^ ViewDelimiterFilePath;       // The file that ViewDelimiter belongs to
 		System::Windows::Forms::Button^ StartLoggingButton;
 		System::Windows::Forms::Button^ StopLoggingButton;
 		System::Windows::Forms::Button^ OpenFolderButton;
@@ -2492,6 +2518,20 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		System::String^ GetViewDelimiter() {
+
+			// The data delimiter of the viewed file: the delimiter found in a recovered session file, else the delimiter setting of the program
+			if (this->ViewDelimiter != nullptr && this->ViewDelimiterFilePath != nullptr && this->ViewedFilePath != nullptr &&
+				this->ViewedFilePath->Equals(this->ViewDelimiterFilePath, System::StringComparison::OrdinalIgnoreCase)) {
+
+				return this->ViewDelimiter;
+
+			}
+
+			return GlobalVariables::DataLoggingCSVDelimiterString;
+
+		}
+
 		System::Void ProcessNewText(System::String^ NewText) {
 
 			// Adds the complete lines of the newly read text to the table and to the graph
@@ -2504,7 +2544,7 @@ namespace IRCAMThermalViewer {
 			int CompleteLines = Lines->Length - 1;
 			if (CompleteLines < 1) { return; }
 
-			cli::array<System::String^>^ Delimiters = gcnew cli::array<System::String^>{ GlobalVariables::DataLoggingCSVDelimiterString };
+			cli::array<System::String^>^ Delimiters = gcnew cli::array<System::String^>{ this->GetViewDelimiter() };
 
 			this->LogGrid->SuspendLayout();
 
@@ -2815,8 +2855,11 @@ namespace IRCAMThermalViewer {
 
 			if (this->Visible == true) { this->RefreshLogView(); }
 
+			// A recovered session file was opened (crash recovery): the notice about the duration of the next data logging session is not shown this time
+			if (this->Visible == true && this->SuppressNoticeOnce == true) { this->SuppressNoticeOnce = false; }
+
 			// Show the notice about the data logging session duration when the window is opened (after the window is shown)
-			if (this->Visible == true && this->HideDurationNotice == false && this->NoticeShowing == false) {
+			else if (this->Visible == true && this->HideDurationNotice == false && this->NoticeShowing == false) {
 
 				this->NoticeShowing = true;
 

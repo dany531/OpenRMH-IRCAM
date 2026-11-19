@@ -16,6 +16,7 @@
 #include "RMH_AnalysisMode_Routines.h"
 #include "RMH_OpenGL_Winforms.h"
 #include "VideoPlayBackTools.h"
+#include "CrashRecoveryDialog.h"
 
 // Included resources
 #include "GlobalObjectsAndVariables.h"
@@ -891,6 +892,78 @@ static unsigned long RMH_ThermalViewer_ReadSessionIntervalMilliSec() {
 
 }
 
+// ----------------------- Data Logging Temporary Session File Handling (crash recovery) ----------------------- //
+
+static System::String^ RMH_ThermalViewer_GetDataLoggingTempFolder() {
+
+	// Returns the folder where a data logging session is written while it runs (and where unsaved sessions are looked for at start-up)
+	// (The TEMP environment variable is used because "GetTempPath" is renamed to "GetTempPathW" by the Windows headers)
+	System::String^ TempBase = System::Environment::GetEnvironmentVariable("TEMP");
+	if (TempBase == nullptr || TempBase->Length == 0) { TempBase = System::Environment::GetFolderPath(System::Environment::SpecialFolder::LocalApplicationData); }
+
+	return System::IO::Path::Combine(TempBase, "IRCAMThermalViewer_DataLogging");
+
+}
+
+static void RMH_ThermalViewer_ReleaseDataLoggingSessionLock() {
+
+	// Closes the lock file of the session (the file is deleted by Windows when it is closed). Does nothing when there is no lock.
+	System::IO::FileStream^ LockStream = GlobalVariables::DataLoggingSessionLockStream;
+	GlobalVariables::DataLoggingSessionLockStream = nullptr;
+
+	if (LockStream != nullptr) {
+
+		try { LockStream->Close(); }
+		catch (System::Exception^) {}
+
+	}
+
+}
+
+static void RMH_ThermalViewer_AcquireDataLoggingSessionLock(System::String^ SessionFilePath) {
+
+	// While a session runs, a small lock file "<session file name>.lock" is kept open next to the temporary session file. It tells another instance of the
+	// program (crash recovery at its start-up) that the session file is in use. Windows closes and deletes the lock file when this program ends, also after a
+	// crash or when the process is killed - then the lock is gone and the session file is offered for recovery. After a power loss the lock file stays, but nothing
+	// holds it open, so it counts as not in use. A lock file that cannot be created is not an error: the session is logged without it.
+	RMH_ThermalViewer_ReleaseDataLoggingSessionLock();
+
+	try {
+
+		GlobalVariables::DataLoggingSessionLockStream = gcnew System::IO::FileStream(SessionFilePath + ".lock", System::IO::FileMode::Create, System::IO::FileAccess::Write,
+			System::IO::FileShare::Read, 1, System::IO::FileOptions::DeleteOnClose);
+
+	}
+	catch (System::Exception^) {
+
+		GlobalVariables::DataLoggingSessionLockStream = nullptr;
+
+	}
+
+}
+
+static bool RMH_ThermalViewer_SessionFileIsInUse(System::String^ SessionFilePath) {
+
+	// True when another running instance of the program holds the lock file of this session (it is then logging to the session file right now)
+	System::String^ LockPath = SessionFilePath + ".lock";
+
+	if (System::IO::File::Exists(LockPath) == false) { return false; }
+
+	try {
+
+		// Opening for writing is refused while the lock is held (the holder shares the file for reading only)
+		System::IO::FileStream^ Probe = gcnew System::IO::FileStream(LockPath, System::IO::FileMode::Open, System::IO::FileAccess::Write, System::IO::FileShare::ReadWrite);
+		Probe->Close();
+
+		// The lock file is there, but nothing holds it (left behind by a power loss)
+		return false;
+
+	}
+	catch (System::IO::FileNotFoundException^) { return false; }
+	catch (System::Exception^) { return true; }
+
+}
+
 void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit) {
 
 	// This routine configures the data logging session and starts data logging
@@ -1005,12 +1078,13 @@ void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit) {
 		GlobalVariables::DataLoggingSessionFileNameString = "DataLogSession_" + FileName + ".txt";
 
 		// The session is first written to a temporary file - the user decides when the session stops whether it is saved
-		// (The TEMP environment variable is used because "GetTempPath" is renamed to "GetTempPathW" by the Windows headers)
-		System::String^ TempBase = System::Environment::GetEnvironmentVariable("TEMP");
-		if (TempBase == nullptr || TempBase->Length == 0) { TempBase = System::Environment::GetFolderPath(System::Environment::SpecialFolder::LocalApplicationData); }
-		System::String^ TempFolder = System::IO::Path::Combine(TempBase, "IRCAMThermalViewer_DataLogging");
+		// (if the program stops unexpectedly, the file is offered for recovery at the next start-up - see RMH_ThermalViewer_CheckForUnsavedDataLoggingSessions)
+		System::String^ TempFolder = RMH_ThermalViewer_GetDataLoggingTempFolder();
 		System::IO::Directory::CreateDirectory(TempFolder);
 		GlobalVariables::DataLoggingSessionFolderString = TempFolder;
+
+		// Mark the session file as in use (held until the session is finished - see RMH_ThermalViewer_FinishDataLoggingSession)
+		RMH_ThermalViewer_AcquireDataLoggingSessionLock(System::IO::Path::Combine(TempFolder, GlobalVariables::DataLoggingSessionFileNameString));
 
 		// Generate the data logging CSV file with the associated file header
 		RMH_Winforms_WriteHeaderStringsToCSVFile(RMH_Conversion_SystemStringToStdString(GlobalVariables::DataLoggingSessionFolderString), 
@@ -1260,10 +1334,9 @@ void RMH_ThermalViewer_StopDataLogging() {
 	
 }
 
-void RMH_ThermalViewer_FinishDataLoggingSession() {
+static void RMH_ThermalViewer_AskToSaveDataLoggingSession() {
 
-	// This routine is called (on the GUI thread) when the data logging thread has finished - manual stop, alarm / trigger stop or end of the session duration.
-	// It asks whether the session is saved. Yes: the temporary file is moved to the default save path. No: the temporary file is deleted.
+	// Asks whether the session is saved. Yes: the temporary file is moved to the default save path. No: the temporary file is deleted.
 
 	System::String^ FileName = GlobalVariables::DataLoggingSessionFileNameString;
 	System::String^ TempFolder = GlobalVariables::DataLoggingSessionFolderString;
@@ -1315,6 +1388,142 @@ void RMH_ThermalViewer_FinishDataLoggingSession() {
 		catch (System::Exception^) {}
 
 		RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Session Was Not Saved (Temporary File Deleted).", _StatusMessageType_Normal);
+
+	}
+
+}
+
+void RMH_ThermalViewer_FinishDataLoggingSession() {
+
+	// This routine is called (on the GUI thread) when the data logging thread has finished - manual stop, alarm / trigger stop or end of the session duration.
+	// It asks whether the session is saved (Yes: the temporary file is moved to the default save path, No: it is deleted) and then releases the lock of the
+	// session file (the session file is then either saved, deleted or - when saving failed - kept for crash recovery at the next start-up).
+	RMH_ThermalViewer_AskToSaveDataLoggingSession();
+
+	RMH_ThermalViewer_ReleaseDataLoggingSessionLock();
+
+}
+
+bool RMH_ThermalViewer_CheckForUnsavedDataLoggingSessions(System::Windows::Forms::IWin32Window^ OwnerWindow, System::String^% OpenFilePath, System::String^% OpenDelimiter) {
+
+	// This routine is called once at start-up (MainGUI_Shown). A data logging session is written to a temporary file while it runs; after a crash, a power loss or a
+	// killed process the save / delete question is never asked and the file stays in the temporary folder. The routine
+	//   - skips session files that another running instance of the program is logging to (lock file held open, see RMH_ThermalViewer_AcquireDataLoggingSessionLock)
+	//   - deletes session files without a sample (only the header line, or empty) - there is nothing to recover in them
+	//   - shows the "Unsaved Data Logging Sessions Found" window for the other files (newest first): Save, Open, Delete or Decide Later
+	// It never stops the start-up: an error only gives a status message. Returns true when the user chose to open a file in the Data Log window.
+
+	OpenFilePath = nullptr;
+	OpenDelimiter = nullptr;
+
+	try {
+
+		System::String^ TempFolder = RMH_ThermalViewer_GetDataLoggingTempFolder();
+
+		if (System::IO::Directory::Exists(TempFolder) == false) { return false; }
+
+		// The default save path is the temporary folder itself: the files in it are saved sessions (see RMH_ThermalViewer_AskToSaveDataLoggingSession), not unsaved ones
+		if (GlobalVariables::LoggingCSVDefaultPath != nullptr) {
+
+			System::String^ SaveFolderFull = System::IO::Path::GetFullPath(GlobalVariables::LoggingCSVDefaultPath)->TrimEnd(gcnew cli::array<wchar_t>{ L'\\', L'/' });
+			System::String^ TempFolderFull = System::IO::Path::GetFullPath(TempFolder)->TrimEnd(gcnew cli::array<wchar_t>{ L'\\', L'/' });
+
+			if (SaveFolderFull->Equals(TempFolderFull, System::StringComparison::OrdinalIgnoreCase)) { return false; }
+
+		}
+
+		System::Collections::Generic::List<IRCAMThermalViewer::RecoveredSessionInfo^>^ Sessions = gcnew System::Collections::Generic::List<IRCAMThermalViewer::RecoveredSessionInfo^>();
+		int EmptyDeletedCount = 0;
+
+		// Look at every session file in the folder
+		cli::array<System::String^>^ SessionFiles = System::IO::Directory::GetFiles(TempFolder, "DataLogSession_*.txt");
+
+		for (int i = 0; i < SessionFiles->Length; i++) {
+
+			System::String^ FilePath = SessionFiles[i];
+
+			// Only ".txt" files (a search pattern with a 3 character extension can also find longer extensions)
+			if (FilePath->EndsWith(".txt", System::StringComparison::OrdinalIgnoreCase) == false) { continue; }
+
+			// Another running instance of the program is logging to this file
+			if (RMH_ThermalViewer_SessionFileIsInUse(FilePath) == true) { continue; }
+
+			IRCAMThermalViewer::RecoveredSessionInfo^ Info = IRCAMThermalViewer::RecoveredSessionInfo::Analyse(FilePath, GlobalVariables::DataLoggingCSVDelimiterString);
+
+			// A file that was read, and has no sample: nothing to recover
+			if (Info->ReadFailed == false && Info->SampleCount == 0) {
+
+				try {
+
+					System::IO::File::Delete(FilePath);
+					System::IO::File::Delete(FilePath + ".lock");
+					EmptyDeletedCount = EmptyDeletedCount + 1;
+
+				}
+				catch (System::Exception^) {}
+
+				continue;
+
+			}
+
+			// Newest file first
+			int Position = 0;
+			while (Position < Sessions->Count && System::DateTime::Compare(Sessions[Position]->LastWriteTime, Info->LastWriteTime) >= 0) { Position = Position + 1; }
+			Sessions->Insert(Position, Info);
+
+		}
+
+		// Lock files of sessions that do not exist any more (a power loss, or a file that was deleted by hand)
+		cli::array<System::String^>^ LockFiles = System::IO::Directory::GetFiles(TempFolder, "DataLogSession_*.lock");
+
+		for (int i = 0; i < LockFiles->Length; i++) {
+
+			System::String^ LockPath = LockFiles[i];
+
+			if (LockPath->EndsWith(".txt.lock", System::StringComparison::OrdinalIgnoreCase) == false) { continue; }
+
+			System::String^ SessionPath = LockPath->Substring(0, LockPath->Length - 5);
+
+			if (System::IO::File::Exists(SessionPath) == false && RMH_ThermalViewer_SessionFileIsInUse(SessionPath) == false) {
+
+				try { System::IO::File::Delete(LockPath); }
+				catch (System::Exception^) {}
+
+			}
+
+		}
+
+		if (EmptyDeletedCount > 0) {
+
+			RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Removed " + std::to_string(EmptyDeletedCount) + " Unsaved Data Logging Session File(s) Without Samples.", _StatusMessageType_Normal);
+
+		}
+
+		if (Sessions->Count == 0) { return false; }
+
+		RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Found " + std::to_string(Sessions->Count) + " Unsaved Data Logging Session File(s) From A Previous Run (Crash Recovery).", _StatusMessageType_Warning);
+
+		// The window: Save, Open, Delete or Decide Later
+		IRCAMThermalViewer::CrashRecoveryDialog^ Dialog = gcnew IRCAMThermalViewer::CrashRecoveryDialog(Sessions, GlobalVariables::LoggingCSVDefaultPath);
+		Dialog->ShowDialog(OwnerWindow);
+
+		if (Dialog->SessionToOpen != nullptr) {
+
+			OpenFilePath = Dialog->SessionToOpen->FullPath;
+			OpenDelimiter = Dialog->SessionToOpen->Delimiter;
+
+		}
+
+		delete Dialog;
+
+		return (OpenFilePath != nullptr);
+
+	}
+	catch (System::Exception^ Ex) {
+
+		RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Crash Recovery Check Of The Data Logging Session Files Failed: " + RMH_Conversion_SystemStringToStdString(Ex->Message), _StatusMessageType_Warning);
+
+		return false;
 
 	}
 

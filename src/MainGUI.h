@@ -991,6 +991,26 @@ namespace IRCAMThermalViewer {
 
 			RMH_Winforms_RichTextBox_WriteLine(this->GUIInfoTextArea, "Sellect A Thermal Camera Or Mode, In The Settings Menu, & Press The 'Connect' or 'Open File' Button.", _StatusMessageType_Normal);
 
+			// Crash recovery: look for data logging session files that were left in the temporary folder by a crash, a power loss or a killed process.
+			// The window (save / open / delete / decide later) is shown before the automatic start-up sequence below, so that it does not appear over the "please wait" window.
+			try {
+
+				System::String^ RecoveredFilePath = nullptr;
+				System::String^ RecoveredDelimiter = nullptr;
+
+				if (RMH_ThermalViewer_CheckForUnsavedDataLoggingSessions(this, RecoveredFilePath, RecoveredDelimiter) == true) {
+
+					// Open: show the file in the Data Log window. The window is opened as a separate window (undocked), so the automatic start-up sequence
+					// (which switches the main view to the stream window) does not replace it.
+					ManagedLocals::DataLogGUIForm->OpenRecoveredSession(RecoveredFilePath, RecoveredDelimiter);
+
+					HandleFormsOpeningDockingAndUndocking(ManagedLocals::DataLogGUIForm, this->MainViewTopPanel, &isDataLogFormOpen, &isDataLogFormDocked, &isDataLogFormUndocked, _FormDockingState_UndockForm);
+
+				}
+
+			}
+			catch (System::Exception^) {}
+
 			// Start the automatic start-up sequence (select camera, connect, calibrate, enable periodic calibration)
 #if _AutoStart_Enabled
 #if _AutoStart_ShowPopupWindows
