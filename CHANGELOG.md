@@ -5,6 +5,25 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- **New (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_26`, not tested yet, not compiled yet): crash recovery of unsaved data logging sessions at start-up.** A data logging session is written to a temporary file in
+  `%TEMP%\IRCAMThermalViewer_DataLogging` while it runs, and the save / delete question is asked when it ends. After a crash, a power loss or a killed process that question was never asked and the file stayed
+  in the temporary folder unnoticed. Now the program looks in that folder when it starts (after the main window is shown, **before** the automatic start-up sequence, so the window does not appear over the
+  "please wait" window) and, when it finds session files, shows the **Unsaved Data Logging Sessions Found** window: a list (file name, last written, samples, logged time, size; newest first) and four buttons.
+  **Save** moves the selected file(s) to the default save path (never overwrites: `_recovered`, `_recovered2`, ... is added to the name; the temporary file is only deleted when the copy has the same size; on an error
+  the file is kept). **Open** shows the file in the Data Log window, opened as a separate window so the automatic start-up does not replace it; the file stays in the temporary folder, so it is offered again at the next
+  start-up until it is saved or deleted. **Delete** asks first (default No) and deletes the selected file(s) permanently. **Decide Later** keeps everything. The window closes by itself when no file is left.
+  Details: files **without a sample** (only the header line, or empty) are deleted without a question and a status line says so; the **data delimiter** of every file is read from its header line (it is not stored
+  elsewhere), so a file written with another delimiter than the current setting is still shown correctly - the delimiter setting of the program is **not** changed by Open; a file that cannot be read is still
+  listed (never deleted without a question). **A second instance of the program does not offer the session of the first one:** while a session runs a small lock file `<session file>.lock` is held open
+  (`FileOptions::DeleteOnClose`); Windows removes it when the process ends, also after a crash, and a lock file left by a power loss is recognised as not held. It is released in
+  `RMH_ThermalViewer_FinishDataLoggingSession` after the save / delete question. If the default save path is the temporary folder itself nothing is offered. The scan never stops the start-up (an error gives a status
+  line). Data Log window: the notice about the session duration is not shown when the window is opened for a recovered file. Change in new `CrashRecoveryDialog.h` (`RecoveredSessionInfo`, `CrashRecoveryDialog`),
+  `RMH_Application_ThermalViewer.cpp` / `.h` (`RMH_ThermalViewer_CheckForUnsavedDataLoggingSessions`, `RMH_ThermalViewer_GetDataLoggingTempFolder`, `RMH_ThermalViewer_AcquireDataLoggingSessionLock`,
+  `RMH_ThermalViewer_ReleaseDataLoggingSessionLock`, `RMH_ThermalViewer_SessionFileIsInUse`, `RMH_ThermalViewer_AskToSaveDataLoggingSession` (the former body of
+  `RMH_ThermalViewer_FinishDataLoggingSession`), the start code in `RMH_ThermalViewer_StartDataLogging`), `MainGUI.h` (`MainGUI_Shown`), `DataLogGUI.h` (`OpenRecoveredSession`, `GetViewDelimiter`,
+  `SuppressNoticeOnce`) and `GlobalObjectsAndVariables.h` (`GlobalVariables::DataLoggingSessionLockStream`). Note: `RMH_Application_ThermalViewer.cpp` uses an older Windows text encoding; upload it as a file on
+  GitHub (do not copy-paste it). The new `CrashRecoveryDialog.h` is UTF-8 with an SPDX header.
+
 - **New (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_25`, not tested yet): the data logging sample interval can be changed while a session runs.** The new interval is used at once (a new `ValueChanged` event of
   the interval box): the logging thread reads the interval again in every 50 ms step of its wait, so the sample that is being waited for comes when the new interval is over (a shorter interval that is
   already over gives the sample at once). The session timer and the `Time(ms)` column now add the **time that was really waited** per sample (was: the interval; the same when it does not change), and the end of the
