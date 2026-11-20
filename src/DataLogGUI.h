@@ -20,7 +20,8 @@ namespace IRCAMThermalViewer {
 	using namespace System::Drawing;
 
 	// Maximum number of rows kept in the table (_DataLogView_MaxRows) and of points kept per line in the graph
-	// (_DataLogView_MaxPlotPoints) of this window are defined in RMH_Application_ThermalViewer.h
+	// (_DataLogView_MaxPlotPoints) of this window are defined in RMH_Application_ThermalViewer.h, with the way the oldest points of a long
+	// session are thinned out (_DataLogView_ThinOldPoints) and the size of the blocks in which the log file is read (_DataLogView_ReadBlockBytes)
 	// (the complete data is always in the CSV file)
 	// Old rows and points are removed in blocks of this size (removing them one at a time from a long list is slow)
 	#define _DataLogView_TrimBlockSize 1000
@@ -43,6 +44,162 @@ namespace IRCAMThermalViewer {
 	#define _DataLogScrollBar_ButtonColor System::Drawing::Color::FromArgb(200, 200, 200)
 	#define _DataLogScrollBar_LineColor   System::Drawing::Color::FromArgb(40, 40, 40)
 
+	// The points of one line of the graph. The graph shows these points. When a line has more than _DataLogView_MaxPlotPoints points the oldest ones are
+	// thinned out (min / max decimation) or removed, see _DataLogView_ThinOldPoints. The lists are filled while the log file is read (also when the
+	// file is long); the chart line is brought up to date from them afterwards (SyncChartSeries of the window).
+	ref class LogSeriesBuffer {
+
+	public:
+
+		System::Collections::Generic::List<double>^ XValues;     // Time of the points (days, the unit of the time axis)
+		System::Collections::Generic::List<double>^ YValues;     // Value of the points
+		int SyncedCount;        // How many points (from the start of the lists) the chart line holds now
+		int RemovedFront;       // How many points were removed from the start of the lists that the chart line still holds
+		bool NeedsRebuild;      // The chart line must be filled again from the lists (the points were thinned out)
+
+		LogSeriesBuffer() {
+
+			this->XValues = gcnew System::Collections::Generic::List<double>();
+			this->YValues = gcnew System::Collections::Generic::List<double>();
+			this->SyncedCount = 0;
+			this->RemovedFront = 0;
+			this->NeedsRebuild = false;
+
+		}
+
+		System::Void Clear() {
+
+			this->XValues->Clear();
+			this->YValues->Clear();
+			this->SyncedCount = 0;
+			this->RemovedFront = 0;
+			this->NeedsRebuild = false;
+
+		}
+
+		System::Void Add(double XValue, double YValue) {
+
+			this->XValues->Add(XValue);
+			this->YValues->Add(YValue);
+
+		}
+
+		System::Void LimitPoints(int MaxPoints) {
+
+			// Called after points were added: keeps the number of points near MaxPoints. It works in steps (not after every sample).
+			int Count = this->YValues->Count;
+
+#if _DataLogView_ThinOldPoints == 1
+
+			if (Count <= MaxPoints) { return; }
+
+			// Min / max decimation of the older half of the points: of every 4 neighbouring points the lowest and the highest are kept (they are real points,
+			// with their own time, in time order), so a peak or a dip is never lost. A group with a NaN (gap in the line) also keeps its first NaN, so the gap stays.
+			// The first point of the line is always kept. The newer half is not changed. Points that were thinned out before are thinned out again, so the older the data the coarser it is.
+			int GroupCount = (Count / 2) / 4;
+			if (GroupCount < 1) { return; }
+			int OldEnd = GroupCount * 4;
+
+			System::Collections::Generic::List<double>^ NewX = gcnew System::Collections::Generic::List<double>(Count);
+			System::Collections::Generic::List<double>^ NewY = gcnew System::Collections::Generic::List<double>(Count);
+
+			for (int g = 0; g < GroupCount; g++) {
+
+				int First = g * 4;
+				int MinIndex = -1;
+				int MaxIndex = -1;
+				int NaNIndex = -1;
+
+				for (int k = First; k < First + 4; k++) {
+
+					double Value = this->YValues[k];
+
+					if (System::Double::IsNaN(Value)) {
+
+						if (NaNIndex < 0) { NaNIndex = k; }
+						continue;
+
+					}
+
+					if (MinIndex < 0 || Value < this->YValues[MinIndex]) { MinIndex = k; }
+					if (MaxIndex < 0 || Value > this->YValues[MaxIndex]) { MaxIndex = k; }
+
+				}
+
+				int Kept[4];
+				int KeptCount = 0;
+
+				if (MinIndex >= 0) { Kept[KeptCount] = MinIndex; KeptCount++; }
+				if (MaxIndex >= 0 && MaxIndex != MinIndex) { Kept[KeptCount] = MaxIndex; KeptCount++; }
+				if (NaNIndex >= 0) { Kept[KeptCount] = NaNIndex; KeptCount++; }
+
+				// The very first point of the line is always kept, so the left end of the graph stays at the start of the session
+				if (g == 0 && MinIndex != First && MaxIndex != First && NaNIndex != First) { Kept[KeptCount] = First; KeptCount++; }
+
+				// Time order (insertion sort of at most four indexes)
+				for (int a = 1; a < KeptCount; a++) {
+
+					int Key = Kept[a];
+					int b = a - 1;
+
+					while (b >= 0 && Kept[b] > Key) { Kept[b + 1] = Kept[b]; b--; }
+
+					Kept[b + 1] = Key;
+
+				}
+
+				for (int a = 0; a < KeptCount; a++) {
+
+					NewX->Add(this->XValues[Kept[a]]);
+					NewY->Add(this->YValues[Kept[a]]);
+
+				}
+
+			}
+
+			for (int k = OldEnd; k < Count; k++) {
+
+				NewX->Add(this->XValues[k]);
+				NewY->Add(this->YValues[k]);
+
+			}
+
+			this->XValues = NewX;
+			this->YValues = NewY;
+			this->NeedsRebuild = true;
+
+			// Safety: never more than MaxPoints (cannot happen with the steps above, a very small MaxPoints could)
+			if (this->YValues->Count > MaxPoints) {
+
+				int Surplus = this->YValues->Count - MaxPoints;
+				this->XValues->RemoveRange(0, Surplus);
+				this->YValues->RemoveRange(0, Surplus);
+
+			}
+
+#else
+
+			// The oldest points are removed in blocks (removing them one at a time from a long list is slow)
+			if (Count <= MaxPoints + _DataLogView_TrimBlockSize) { return; }
+
+			int Surplus = Count - MaxPoints;
+			this->XValues->RemoveRange(0, Surplus);
+			this->YValues->RemoveRange(0, Surplus);
+
+			if (this->NeedsRebuild == false && this->SyncedCount >= Surplus) {
+
+				this->RemovedFront = this->RemovedFront + Surplus;
+				this->SyncedCount = this->SyncedCount - Surplus;
+
+			}
+			else { this->NeedsRebuild = true; }
+
+#endif
+
+		}
+
+	};
+
 	public ref class DataLogGUI : public System::Windows::Forms::Form {
 
 	public:
@@ -55,6 +212,14 @@ namespace IRCAMThermalViewer {
 			this->PartialLine = "";
 			this->ViewedSampleRows = 0;
 			this->LastElapsedMilliSec = 0.0;
+			this->SeriesBuffers = gcnew System::Collections::Generic::List<LogSeriesBuffer^>();
+			this->PendingLines = gcnew System::Collections::Generic::Queue<System::String^>();
+			this->ViewDecoder = System::Text::Encoding::UTF8->GetDecoder();
+			this->ReadBuffer = nullptr;
+			this->CharBuffer = nullptr;
+			this->LoadingBehind = false;
+			this->LoadTargetLength = 0;
+			this->ViewHasNewData = false;
 			this->ChartStartTime = System::DateTime(2000, 1, 1, 0, 0, 0);   // The time axis of the graph starts at 0:00:00 (elapsed time)
 			this->SplitDistanceSet = false;
 			this->NoticeShowing = false;
@@ -168,6 +333,16 @@ namespace IRCAMThermalViewer {
 		System::String^ PartialLine;
 		int ViewedSampleRows;
 		double LastElapsedMilliSec;
+
+		// Reading of the log file in blocks (see RefreshLogView, ProcessNewText, ShowPendingData)
+		System::Collections::Generic::List<LogSeriesBuffer^>^ SeriesBuffers;     // The points of the graph lines (one per line of the graph)
+		System::Collections::Generic::Queue<System::String^>^ PendingLines;     // The newest lines of the file (at most _DataLogView_MaxRows) that are not in the table yet
+		System::Text::Decoder^ ViewDecoder;                                     // Keeps a character that is split over two blocks together
+		cli::array<System::Byte>^ ReadBuffer;                                   // One block of the file
+		cli::array<wchar_t>^ CharBuffer;                                        // The text of one block
+		bool LoadingBehind;                                                     // The view has not read the whole file yet (a long file is read over several refreshes)
+		long long LoadTargetLength;                                             // File length that is being read up to (for the percentage in the status line)
+		bool ViewHasNewData;                                                    // Lines were read since the table and the graph were brought up to date
 
 		// ---------------------------------- Window layout ---------------------------------- //
 
@@ -1734,6 +1909,7 @@ namespace IRCAMThermalViewer {
 
 			// Removes the points from all lines of the graph
 			for (int i = 0; i < this->LogChart->Series->Count; i++) { this->LogChart->Series[i]->Points->Clear(); }
+			for (int i = 0; i < this->SeriesBuffers->Count; i++) { this->SeriesBuffers[i]->Clear(); }
 
 		}
 
@@ -2346,6 +2522,15 @@ namespace IRCAMThermalViewer {
 
 				}
 
+				// A long file is read over several refreshes of the window
+				if (this->LoadingBehind == true && this->LoadTargetLength > 0) {
+
+					StatusBuilder->Append("   |   Reading the log file: ");
+					StatusBuilder->Append(System::Convert::ToString((int)((this->ViewedFilePosition * 100) / this->LoadTargetLength)));
+					StatusBuilder->Append(" %");
+
+				}
+
 				if (DataLoggingIntervalMilliSec > 0) {
 
 					StatusBuilder->Append("   |   Interval: ");
@@ -2371,6 +2556,11 @@ namespace IRCAMThermalViewer {
 			this->PartialLine = "";
 			this->ViewedSampleRows = 0;
 			this->LastElapsedMilliSec = 0.0;
+			this->SeriesBuffers->Clear();
+			this->PendingLines->Clear();
+			this->ViewDecoder->Reset();
+			this->LoadingBehind = false;
+			this->ViewHasNewData = false;
 
 			// A new session (or a restart of the view) starts with the whole graph: a zoomed view of the previous session would show a time range that the new
 			// data has not reached yet (an empty graph). A locked X / Y range is not zoom and stays.
@@ -2532,9 +2722,18 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		System::Void EnsureSeriesBuffers() {
+
+			// One list of points per line of the graph (a line is added when the header line is read, and when a data set is added while the session runs)
+			while (this->SeriesBuffers->Count < this->LogChart->Series->Count) { this->SeriesBuffers->Add(gcnew LogSeriesBuffer()); }
+
+		}
+
 		System::Void ProcessNewText(System::String^ NewText) {
 
-			// Adds the complete lines of the newly read text to the table and to the graph
+			// Reads the complete lines of the newly read text: the values go to the point lists of the graph lines (SeriesBuffers), the newest lines are kept in
+			// PendingLines for the table. Nothing is drawn here - ShowPendingData does that when the view has caught up with the file, so a long file is not drawn
+			// again and again while it is read.
 			System::String^ AllText = this->PartialLine + NewText;
 			cli::array<System::String^>^ Lines = AllText->Split(gcnew cli::array<wchar_t>{ L'\n' });
 
@@ -2545,15 +2744,14 @@ namespace IRCAMThermalViewer {
 			if (CompleteLines < 1) { return; }
 
 			cli::array<System::String^>^ Delimiters = gcnew cli::array<System::String^>{ this->GetViewDelimiter() };
-
-			this->LogGrid->SuspendLayout();
+			cli::array<wchar_t>^ TrimChars = gcnew cli::array<wchar_t>{ L'\r' };
 
 			int FirstIndex = 0;
 
 			// The first line of a log file is the header line - create the columns of the table and the lines of the graph
 			if (this->LogGrid->Columns->Count == 0) {
 
-				cli::array<System::String^>^ HeaderParts = Lines[0]->TrimEnd(gcnew cli::array<wchar_t>{ L'\r' })->Split(Delimiters, System::StringSplitOptions::None);
+				cli::array<System::String^>^ HeaderParts = Lines[0]->TrimEnd(TrimChars)->Split(Delimiters, System::StringSplitOptions::None);
 
 				for (int c = 0; c < HeaderParts->Length; c++) {
 
@@ -2567,15 +2765,9 @@ namespace IRCAMThermalViewer {
 
 			}
 
-			// Rows that would be removed again right away (a long log file that is opened) are skipped
-			int SkipTableUntil = FirstIndex;
-			if (CompleteLines - FirstIndex > _DataLogView_MaxRows) { SkipTableUntil = CompleteLines - _DataLogView_MaxRows; }
-			int SkipPlotUntil = FirstIndex;
-			if (CompleteLines - FirstIndex > _DataLogView_MaxPlotPoints) { SkipPlotUntil = CompleteLines - _DataLogView_MaxPlotPoints; }
-
 			for (int i = FirstIndex; i < CompleteLines; i++) {
 
-				System::String^ Line = Lines[i]->TrimEnd(gcnew cli::array<wchar_t>{ L'\r' });
+				System::String^ Line = Lines[i]->TrimEnd(TrimChars);
 				if (Line->Length == 0) { continue; }
 
 				// A note line (#column=name): the source of a column was changed while the session runs - show the new name, it is no sample
@@ -2584,6 +2776,7 @@ namespace IRCAMThermalViewer {
 				cli::array<System::String^>^ Parts = Line->Split(Delimiters, System::StringSplitOptions::None);
 
 				this->ViewedSampleRows++;
+				this->EnsureSeriesBuffers();
 
 				// The time of the sample (milliseconds in the file)
 				double MilliSeconds = 0.0;
@@ -2592,22 +2785,92 @@ namespace IRCAMThermalViewer {
 				if (Parts->Length > 1) { HasTime = this->ParseNumber(Parts[1]->Trim(), MilliSeconds); }
 				if (HasTime == true) { this->LastElapsedMilliSec = MilliSeconds; }
 
-				// Add the values to the lines of the graph
-				if (HasTime == true && i >= SkipPlotUntil) {
+				// Add the values to the point lists of the graph lines
+				if (HasTime == true) {
 
 					double PointTime = this->ChartStartTime.AddMilliseconds(MilliSeconds).ToOADate();
 
-					for (int c = 2; c < Parts->Length && (c - 2) < this->LogChart->Series->Count; c++) {
+					for (int c = 2; c < Parts->Length && (c - 2) < this->SeriesBuffers->Count; c++) {
 
 						double PointValue = 0.0;
-						if (this->ParseNumber(Parts[c]->Trim(), PointValue)) { this->LogChart->Series[c - 2]->Points->AddXY(PointTime, PointValue); }
+						if (this->ParseNumber(Parts[c]->Trim(), PointValue)) { this->SeriesBuffers[c - 2]->Add(PointTime, PointValue); }
 
 					}
 
 				}
 
-				// Add the row to the table
-				if (i >= SkipTableUntil) {
+				// Keep the line for the table - only the newest _DataLogView_MaxRows lines are kept (the row is made when the table is brought up to date)
+				this->PendingLines->Enqueue(Line);
+				if (this->PendingLines->Count > _DataLogView_MaxRows) { this->PendingLines->Dequeue(); }
+
+			}
+
+			// Keep the number of points of the graph lines limited (thin out, or remove, the oldest)
+			for (int s = 0; s < this->SeriesBuffers->Count; s++) { this->SeriesBuffers[s]->LimitPoints(_DataLogView_MaxPlotPoints); }
+
+			this->ViewHasNewData = true;
+
+		}
+
+		System::Void SyncChartSeries(int SeriesIndex) {
+
+			// Brings one line of the graph up to date with its point list: new points are added at the end; when the list was thinned out the line is filled again
+			if (SeriesIndex >= this->SeriesBuffers->Count || SeriesIndex >= this->LogChart->Series->Count) { return; }
+
+			LogSeriesBuffer^ Buffer = this->SeriesBuffers[SeriesIndex];
+			System::Windows::Forms::DataVisualization::Charting::Series^ LineSeries = this->LogChart->Series[SeriesIndex];
+			int Count = Buffer->YValues->Count;
+
+			if (Buffer->NeedsRebuild == true) {
+
+				LineSeries->Points->Clear();
+
+				for (int i = 0; i < Count; i++) { LineSeries->Points->AddXY(Buffer->XValues[i], Buffer->YValues[i]); }
+
+				Buffer->NeedsRebuild = false;
+				Buffer->RemovedFront = 0;
+				Buffer->SyncedCount = Count;
+				return;
+
+			}
+
+			// Oldest points that were removed from the list (_DataLogView_ThinOldPoints = 0)
+			while (Buffer->RemovedFront > 0 && LineSeries->Points->Count > 0) {
+
+				LineSeries->Points->RemoveAt(0);
+				Buffer->RemovedFront--;
+
+			}
+
+			Buffer->RemovedFront = 0;
+
+			for (int i = Buffer->SyncedCount; i < Count; i++) { LineSeries->Points->AddXY(Buffer->XValues[i], Buffer->YValues[i]); }
+
+			Buffer->SyncedCount = Count;
+
+		}
+
+		System::Void ShowPendingData() {
+
+			// Adds the collected newest lines to the table and brings the lines of the graph up to date (called when the view has caught up with the file)
+			if (this->ViewHasNewData == false) { return; }
+			this->ViewHasNewData = false;
+
+			if (this->PendingLines->Count > 0) {
+
+				cli::array<System::String^>^ Delimiters = gcnew cli::array<System::String^>{ this->GetViewDelimiter() };
+
+				this->LogGrid->SuspendLayout();
+
+				while (this->PendingLines->Count > 0) {
+
+					System::String^ Line = this->PendingLines->Dequeue();
+					cli::array<System::String^>^ Parts = Line->Split(Delimiters, System::StringSplitOptions::None);
+
+					double MilliSeconds = 0.0;
+					bool HasTime = false;
+
+					if (Parts->Length > 1) { HasTime = this->ParseNumber(Parts[1]->Trim(), MilliSeconds); }
 
 					cli::array<System::Object^>^ RowValues = gcnew cli::array<System::Object^>(this->LogGrid->Columns->Count);
 
@@ -2625,26 +2888,18 @@ namespace IRCAMThermalViewer {
 
 				}
 
-			}
+				// Keep the number of rows in the table limited
+				if (this->LogGrid->Rows->Count > _DataLogView_MaxRows + _DataLogView_TrimBlockSize) {
 
-			// Keep the number of rows in the table and of points in the graph limited
-			if (this->LogGrid->Rows->Count > _DataLogView_MaxRows + _DataLogView_TrimBlockSize) {
-
-				while (this->LogGrid->Rows->Count > _DataLogView_MaxRows) { this->LogGrid->Rows->RemoveAt(0); }
-
-			}
-
-			for (int i = 0; i < this->LogChart->Series->Count; i++) {
-
-				if (this->LogChart->Series[i]->Points->Count > _DataLogView_MaxPlotPoints + _DataLogView_TrimBlockSize) {
-
-					while (this->LogChart->Series[i]->Points->Count > _DataLogView_MaxPlotPoints) { this->LogChart->Series[i]->Points->RemoveAt(0); }
+					while (this->LogGrid->Rows->Count > _DataLogView_MaxRows) { this->LogGrid->Rows->RemoveAt(0); }
 
 				}
 
+				this->LogGrid->ResumeLayout();
+
 			}
 
-			this->LogGrid->ResumeLayout();
+			for (int s = 0; s < this->SeriesBuffers->Count; s++) { this->SyncChartSeries(s); }
 
 			// Time labels of the graph - with the day when the log is longer than about a day
 			if (this->LastElapsedMilliSec > 20.0 * 3600000.0) { this->LogChart->ChartAreas[0]->AxisX->LabelStyle->Format = "dd HH:mm"; }
@@ -2662,6 +2917,9 @@ namespace IRCAMThermalViewer {
 		System::Void RefreshLogView() {
 
 			System::String^ FileName = GlobalVariables::DataLoggingSessionFileNameString;
+
+			// Not behind unless the reading below finds that the file is longer than what it could read now
+			this->LoadingBehind = false;
 
 			if (FileName != nullptr && FileName->Length > 0) {
 
@@ -2687,18 +2945,43 @@ namespace IRCAMThermalViewer {
 							// The file is shorter than expected - start again from the beginning
 							if (Stream->Length < this->ViewedFilePosition) { this->ResetView(); }
 
-							long long Remaining = Stream->Length - this->ViewedFilePosition;
+							// The file is read in blocks (never the whole file at once: a very long log file would need several times its size in memory, and more than 2 GB
+							// does not fit in one array). At most _DataLogView_ReadTimeBudgetMs milliseconds are used per refresh - the rest is read at the next one.
+							long long FileLength = Stream->Length;
+							this->LoadTargetLength = FileLength;
 
-							if (Remaining > 0) {
+							if (FileLength > this->ViewedFilePosition) {
+
+								if (this->ReadBuffer == nullptr) {
+
+									this->ReadBuffer = gcnew cli::array<System::Byte>(_DataLogView_ReadBlockBytes);
+									this->CharBuffer = gcnew cli::array<wchar_t>(System::Text::Encoding::UTF8->GetMaxCharCount(_DataLogView_ReadBlockBytes));
+
+								}
 
 								Stream->Seek(this->ViewedFilePosition, System::IO::SeekOrigin::Begin);
-								cli::array<System::Byte>^ Buffer = gcnew cli::array<System::Byte>((int)Remaining);
-								int BytesRead = Stream->Read(Buffer, 0, (int)Remaining);
-								this->ViewedFilePosition = this->ViewedFilePosition + BytesRead;
+								System::Diagnostics::Stopwatch^ Watch = System::Diagnostics::Stopwatch::StartNew();
 
-								this->ProcessNewText(System::Text::Encoding::UTF8->GetString(Buffer, 0, BytesRead));
+								while (this->ViewedFilePosition < FileLength) {
+
+									long long Left = FileLength - this->ViewedFilePosition;
+									int ToRead = (Left > (long long)_DataLogView_ReadBlockBytes) ? _DataLogView_ReadBlockBytes : (int)Left;
+
+									int BytesRead = Stream->Read(this->ReadBuffer, 0, ToRead);
+									if (BytesRead <= 0) { break; }
+
+									this->ViewedFilePosition = this->ViewedFilePosition + BytesRead;
+
+									int CharCount = this->ViewDecoder->GetChars(this->ReadBuffer, 0, BytesRead, this->CharBuffer, 0);
+									this->ProcessNewText(gcnew System::String(this->CharBuffer, 0, CharCount));
+
+									if (Watch->ElapsedMilliseconds >= _DataLogView_ReadTimeBudgetMs) { break; }
+
+								}
 
 							}
+
+							this->LoadingBehind = (this->ViewedFilePosition < FileLength);
 
 						}
 						finally {
@@ -2708,16 +2991,27 @@ namespace IRCAMThermalViewer {
 						}
 
 					}
-					catch (System::Exception^) {}
+					catch (System::Exception^) { this->LoadingBehind = false; }
 
 				}
 
 			}
 
-			this->ApplyLiveStyleChanges();
-			this->UpdateAxisTitles();
-			this->ApplyAxisSettings();
+			// While the file is still being read, the table and the graph are not drawn (that is done once, when the view has caught up) and the window is
+			// refreshed again soon, so a long file is read in a few seconds without blocking the program
+			if (this->LoadingBehind == false) {
+
+				this->ShowPendingData();
+				this->ApplyLiveStyleChanges();
+				this->UpdateAxisTitles();
+				this->ApplyAxisSettings();
+
+			}
+
 			this->UpdateStatusText();
+
+			int WantedInterval = (this->LoadingBehind == true) ? 50 : 1000;
+			if (this->RefreshTimer->Interval != WantedInterval) { this->RefreshTimer->Interval = WantedInterval; }
 
 		}
 
@@ -2757,16 +3051,24 @@ namespace IRCAMThermalViewer {
 
 				NoticeText->Append(".");
 
-				// A session with more samples than the graph keeps - the oldest samples scroll off the screen (they stay in the file)
+				// A session with more samples than the graph keeps in full detail - the oldest part is thinned out (or scrolls off the screen), all samples stay in the file
 				if (IntervalSec > 0.0 && TotalSec / IntervalSec > (double)_DataLogView_MaxPlotPoints) {
 
 					NoticeText->Append(System::Environment::NewLine);
 					NoticeText->Append(System::Environment::NewLine);
+#if _DataLogView_ThinOldPoints == 1
+					NoticeText->Append("Note: this is more than the ");
+					NoticeText->Append(System::Convert::ToString(_DataLogView_MaxPlotPoints));
+					NoticeText->Append(" points per line that the graph keeps. The oldest part of the graph is thinned out (of every few neighbouring points the lowest and the highest are kept, so peaks and dips stay visible), so the whole session stays on the graph. The table shows the newest ");
+					NoticeText->Append(System::Convert::ToString(_DataLogView_MaxRows));
+					NoticeText->Append(" rows. Every sample is saved in the log file.");
+#else
 					NoticeText->Append("Note: this is more than the newest ");
 					NoticeText->Append(System::Convert::ToString(_DataLogView_MaxPlotPoints));
 					NoticeText->Append(" samples that the graph shows (the table shows the newest ");
 					NoticeText->Append(System::Convert::ToString(_DataLogView_MaxRows));
 					NoticeText->Append("). The oldest samples scroll off the left side of the graph, but every sample is saved in the log file.");
+#endif
 
 				}
 
@@ -2946,6 +3248,10 @@ namespace IRCAMThermalViewer {
 			// Clears the table and the graph - only data that is logged from now on is shown (the file is not changed)
 			this->LogGrid->Rows->Clear();
 			this->ClearChartData();
+			this->PendingLines->Clear();
+			this->ViewDecoder->Reset();
+			this->LoadingBehind = false;
+			this->ViewHasNewData = false;
 			this->ViewedSampleRows = 0;
 			this->PartialLine = "";
 

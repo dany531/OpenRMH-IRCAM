@@ -827,13 +827,23 @@ static bool RMH_ThermalViewer_ConfirmDataLoggingSampleLimit(double ExpectedSampl
 	int Minutes = (int)((TotalSec - (double)Hours * 3600.0) / 60.0);
 	int Seconds = (int)(TotalSec - (double)Hours * 3600.0 - (double)Minutes * 60.0);
 
+#if _DataLogView_ThinOldPoints == 1
+	System::String^ ViewLimitText =
+		"The Data Log window keeps at most " + System::Convert::ToString(_DataLogView_MaxPlotPoints) + " points per line in the graph and shows the newest " +
+		System::Convert::ToString(_DataLogView_MaxRows) + " rows in the table. When a session is longer than that, the oldest part of the graph is thinned out " +
+		"(of every few neighbouring points the lowest and the highest are kept, so peaks and dips stay visible) and the oldest rows leave the table.\n\n";
+#else
+	System::String^ ViewLimitText =
+		"The Data Log window shows at most the newest " + System::Convert::ToString(_DataLogView_MaxPlotPoints) + " samples in the graph and the newest " +
+		System::Convert::ToString(_DataLogView_MaxRows) + " rows in the table. When a session is longer than that, the oldest samples scroll off the left side " +
+		"of the graph and out of the table.\n\n";
+#endif
+
 	System::String^ MessageText =
 		"This data logging session is set to about " + System::Convert::ToString((long long)ExpectedSamples) + " samples (" +
 		System::Convert::ToString(Hours) + " hours, " + System::Convert::ToString(Minutes) + " minutes and " + System::Convert::ToString(Seconds) +
 		" seconds, one sample every " + System::Convert::ToString(IntervalSec) + " seconds).\n\n" +
-		"The Data Log window shows at most the newest " + System::Convert::ToString(_DataLogView_MaxPlotPoints) + " samples in the graph and the newest " +
-		System::Convert::ToString(_DataLogView_MaxRows) + " rows in the table. When a session is longer than that, the oldest samples scroll off the left side " +
-		"of the graph and out of the table.\n\n" +
+		ViewLimitText +
 		"No data is lost: every sample is saved in the log file.\n\n" +
 		"Press Start to start logging, or Cancel to change the sample interval or the duration first (Settings -> Data Logging Session Settings).";
 
@@ -1114,14 +1124,19 @@ void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit) {
 static void RMH_ThermalViewer_WarnLiveSampleLimit() {
 
 	// After a live change of the duration or the interval: status message (no window) when the session has more samples than the Data Log window shows
-	// (the oldest scroll off the screen, all samples are saved in the log file)
+	// (the oldest part is thinned out or scrolls off the screen, see _DataLogView_ThinOldPoints; all samples are saved in the log file)
 	double IntervalSec = (double)DataLoggingIntervalMilliSec / 1000.0;
 	double TotalSec = (double)DataLoggingSessionDurationMilliSec / 1000.0;
 
 	if (IntervalSec > 0.0 && (TotalSec / IntervalSec) > (double)_DataLogView_MaxPlotPoints) {
 
+#if _DataLogView_ThinOldPoints == 1
+		RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea,
+			"Data Logging Session Now Has About " + std::to_string((long long)(TotalSec / IntervalSec)) + " Samples - More Than The Data Log Window Shows In Full Detail (The Oldest Part Of The Graph Is Thinned Out, Peaks And Dips Are Kept). All Samples Are Saved In The Log File.", _StatusMessageType_Warning);
+#else
 		RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea,
 			"Data Logging Session Now Has About " + std::to_string((long long)(TotalSec / IntervalSec)) + " Samples - More Than The Data Log Window Shows (Oldest Scroll Off The Screen). All Samples Are Saved In The Log File.", _StatusMessageType_Warning);
+#endif
 
 	}
 

@@ -75,6 +75,15 @@ void RMH_ThermalViewer_UpdateDataLoggingDefaultSaveFilePath(System::Windows::For
 // gives a warning when it is started (AskUserAboutSampleLimit = false: status message only, for alarm / trigger starts)
 #define _DataLogView_MaxRows 20000
 #define _DataLogView_MaxPlotPoints 100000
+// What happens when a line of the graph has more than _DataLogView_MaxPlotPoints points:
+//   1 = the OLDEST points are thinned out (min / max decimation: of every 4 neighbouring points the lowest and the highest are kept, so peaks and dips
+//       stay visible) - the whole session stays on the graph, the newest points keep full detail
+//   0 = the oldest points are removed (they scroll off the left side of the graph) - the behavior before branch 27
+#define _DataLogView_ThinOldPoints 1
+// The log file is read in blocks of this many bytes (no memory spike, no 2 GB limit when a very long log file is opened), and at most this many
+// milliseconds per refresh of the window - the rest is read at the next refresh (50 ms later), so the window stays usable while a long file loads
+#define _DataLogView_ReadBlockBytes 524288
+#define _DataLogView_ReadTimeBudgetMs 200
 void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit = true);
 void RMH_ThermalViewer_StopDataLogging();
 void RMH_ThermalViewer_UpdateDataLoggingSessionDuration();
