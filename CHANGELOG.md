@@ -5,6 +5,29 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- **Change (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_27`, not tested yet, not compiled yet): the oldest part of a long Data Log graph is thinned out (min / max decimation) instead of scrolling off the left side.**
+  Before, a line of the graph kept the newest `_DataLogView_MaxPlotPoints` (100000) points and the oldest points were deleted, so in a long session (more than about 27.8 hours at 1 s, 66 minutes at 0.04 s) the start of the
+  session disappeared from the graph. Now, when a line has more than 100000 points, the **older half** of its points is thinned out: of every **4 neighbouring points the lowest and the highest are kept** (they are real points with
+  their own time, in time order), so a peak or a dip is never lost and the whole session stays on the graph. The newer half is not changed, so at least the newest 50000 samples always have full detail; points that were thinned out
+  are thinned out again the next time, so the older the data the coarser it is. The very first point of a line is always kept (the left end of the graph stays at the start of the session) and a group with a `NaN` also keeps its
+  first `NaN` (a gap stays a gap). The number of points never exceeds 100000. The graph line is filled again when points were thinned out (a short pause of the window, once per about 25000 new samples). Limits: zooming into an
+  old part shows only the kept points (every sample is in the CSV file), and the table is unchanged (newest `_DataLogView_MaxRows` (20000) rows). The new setting `_DataLogView_ThinOldPoints` (default 1) switches this off:
+  0 = the old behavior (oldest points removed, scroll off the left side). The texts about this (the warning window for sessions with many samples, the status line after a live change of the duration or the interval and the
+  notice of the Data Log window) follow the setting. Simulated outside the program (2 million samples with spikes and gaps): the lowest and highest value of the log are kept, the time stays in order, the left end stays at the
+  start, never more than 100000 points. Change in `DataLogGUI.h` (new class `LogSeriesBuffer` with `LimitPoints`; `EnsureSeriesBuffers`, `SyncChartSeries`, `ShowPendingData`, `ClearChartData`, `ResetView`), `RMH_Application_ThermalViewer.h`
+  (`_DataLogView_ThinOldPoints`) and `RMH_Application_ThermalViewer.cpp` (warning texts). Note: `RMH_Application_ThermalViewer.cpp` uses an older Windows text encoding; upload it as a file on GitHub (do not copy-paste it).
+
+- **Change (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_27`, not tested yet, not compiled yet): the log file is read in blocks, so a very long log file opens without a memory spike and without the 2 GB limit.**
+  The Data Log window read everything that was new in the file in one piece: one byte array of the whole new part (`(int)` of a 64 bit length: for more than 2 GB this is a wrong or negative size; an error was swallowed, so the
+  window stayed empty or showed wrong data), converted to one text (2 bytes per character) and split into one string per line - several times the size of the file in memory, and the window frozen meanwhile. Now the file is read in blocks of
+  `_DataLogView_ReadBlockBytes` (512 KB). **At most `_DataLogView_ReadTimeBudgetMs` (200 ms) are used per refresh**; when the file is not finished the window refreshes again after 50 ms (instead of 1000 ms) until it has caught up,
+  so the program stays usable while a long file loads, and the status line shows **Reading the log file: NN %**. The table and the graph are drawn **once**, when the view has caught up (not again and again while reading). The values
+  go to point lists (`LogSeriesBuffer`, see the entry above) and only the newest `_DataLogView_MaxRows` lines are kept for the table (their rows are made at the end), so a log with millions of lines does not create millions of
+  table rows or chart points. A character that is split over two blocks (UTF-8) is kept together with a `Decoder` (this also fixes the same split between two refreshes of a running session). A running session looks the same as
+  before. The clear-graph button and a restart of the view reset the new state. Change in `DataLogGUI.h` (`RefreshLogView`, `ProcessNewText`, new `ShowPendingData`, `SyncChartSeries`, `EnsureSeriesBuffers`, `UpdateStatusText`,
+  `ClearViewButton_Click`, new members `SeriesBuffers`, `PendingLines`, `ViewDecoder`, `ReadBuffer`, `CharBuffer`, `LoadingBehind`, `LoadTargetLength`, `ViewHasNewData`) and `RMH_Application_ThermalViewer.h`
+  (`_DataLogView_ReadBlockBytes`, `_DataLogView_ReadTimeBudgetMs`). The documentation file is now `README_IRCAM-for-T2Splus_V2_2Dplots_expansion_27.md` (the `_26` file is replaced by it).
+
 - **New (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_26`, not tested yet, not compiled yet): crash recovery of unsaved data logging sessions at start-up.** A data logging session is written to a temporary file in
   `%TEMP%\IRCAMThermalViewer_DataLogging` while it runs, and the save / delete question is asked when it ends. After a crash, a power loss or a killed process that question was never asked and the file stayed
   in the temporary folder unnoticed. Now the program looks in that folder when it starts (after the main window is shown, **before** the automatic start-up sequence, so the window does not appear over the
