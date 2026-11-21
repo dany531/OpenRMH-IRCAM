@@ -871,17 +871,50 @@ namespace IRCAMThermalViewer {
 
 		bool IsPointInPlotArea(int MouseX, int MouseY) {
 
-			// True when the point is inside the plot area of the graph (not on the axes, the scroll bars or outside the graph). A cursor line counts as plot area.
+			// True when the point is inside the plot area of the graph (not on the axes, the scroll bars or outside the graph). A cursor line of the two-cursor
+			// measurement counts as plot area. The test is by position (the pixel positions of the ends of the shown axis ranges), not by the chart's hit test:
+			// over an annotation (the cursor lines) the hit test reports an annotation without a chart area, so a hit test alone treated the lines as outside the graph.
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::Axis^ AxisX = this->LogChart->ChartAreas[0]->AxisX;
+				System::Windows::Forms::DataVisualization::Charting::Axis^ AxisY = this->LogChart->ChartAreas[0]->AxisY;
+
+				double XMinimum = (AxisX->ScaleView->IsZoomed == true) ? AxisX->ScaleView->ViewMinimum : AxisX->Minimum;
+				double XMaximum = (AxisX->ScaleView->IsZoomed == true) ? AxisX->ScaleView->ViewMaximum : AxisX->Maximum;
+				double YMinimum = (AxisY->ScaleView->IsZoomed == true) ? AxisY->ScaleView->ViewMinimum : AxisY->Minimum;
+				double YMaximum = (AxisY->ScaleView->IsZoomed == true) ? AxisY->ScaleView->ViewMaximum : AxisY->Maximum;
+
+				if (!System::Double::IsNaN(XMinimum) && !System::Double::IsNaN(XMaximum) && !System::Double::IsNaN(YMinimum) && !System::Double::IsNaN(YMaximum)) {
+
+					double PixelA = AxisX->ValueToPixelPosition(XMinimum);
+					double PixelB = AxisX->ValueToPixelPosition(XMaximum);
+					double PixelC = AxisY->ValueToPixelPosition(YMinimum);
+					double PixelD = AxisY->ValueToPixelPosition(YMaximum);
+
+					if (!System::Double::IsNaN(PixelA) && !System::Double::IsNaN(PixelB) && !System::Double::IsNaN(PixelC) && !System::Double::IsNaN(PixelD)) {
+
+						return ((double)MouseX >= System::Math::Min(PixelA, PixelB) && (double)MouseX <= System::Math::Max(PixelA, PixelB) &&
+							(double)MouseY >= System::Math::Min(PixelC, PixelD) && (double)MouseY <= System::Math::Max(PixelC, PixelD));
+
+					}
+
+				}
+
+			}
+			catch (System::Exception^) {}
+
+			// Fallback (axes not ready): the hit test of the chart
 			try {
 
 				System::Windows::Forms::DataVisualization::Charting::HitTestResult^ Hit = this->LogChart->HitTest(MouseX, MouseY);
 				System::Windows::Forms::DataVisualization::Charting::ChartElementType Element = Hit->ChartElementType;
 
+				if (Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::Annotation) { return true; }
+
 				return (Hit->ChartArea != nullptr && (Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::PlottingArea ||
 					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::DataPoint ||
 					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::Gridlines ||
-					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::StripLines ||
-					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::Annotation));
+					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::StripLines));
 
 			}
 			catch (System::Exception^) {}
