@@ -5125,6 +5125,9 @@ void RMH_ThermalViewer_ImageProcessingSequence() {
 		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(RMH_FreezeValueDuringCalibration(Plot2DDataSet9SourcePointer, &Plot2DLastGoodValues[8]), _2DPlotDataSet_9);
 		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddDataPointToPlotDataSet(RMH_FreezeValueDuringCalibration(Plot2DDataSet10SourcePointer, &Plot2DLastGoodValues[9]), _2DPlotDataSet_10);
 
+		// Scroll the event markers of the plot one sample to the left, together with the data
+		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AdvancePlotMarkers();
+
 		// Read the maximum and minimum values of all active data sets and set the Y-axis range variables of the plot
 		GlobalVariables::OpenGL2DPlot->RMH_OpenGL_ReadDataSetsMaxMinDataRangeValues();
 

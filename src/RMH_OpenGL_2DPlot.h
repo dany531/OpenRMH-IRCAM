@@ -13,6 +13,7 @@
 #include <GL/GLU.h>
 #include <GL/GL.h>
 #include <iostream>
+#include <msclr/lock.h>
 #include "RMH_Winforms_Library.h"
 #include "RMH_MathConversions_Library.h"
 #include "GlobalObjectsAndVariables.h"
@@ -63,6 +64,24 @@ struct PlotDataSet {
 
 };
 
+// 2D plot event marker configuration macros
+#define _2DPlotMaxNumberOfMarkers        32
+#define _2DPlotMarkerLabelMaxLength      48
+#define _2DPlotMarkerLineWidth           2
+#define _2DPlotMarkerLabelCharWidth      7
+#define _2DPlotMarkerLabelRowCount       3
+#define _2DPlotMarkerLabelRowHeight      14
+
+// 2D plot event marker structure format (a vertical line at a sample position, which scrolls with the data)
+struct PlotMarker {
+
+	int SamplePosition = 0;                              // Position on the X axis (0 to _2DPlotXAxesLength - 1)
+	unsigned int Serial = 0;                             // Unique marker number (used to edit/remove a given marker)
+	char TimeText[9] = { 0 };                            // Time of day the marker was added (HH:mm:ss)
+	char Label[_2DPlotMarkerLabelMaxLength + 1] = { 0 }; // User label
+
+};
+
 // Global static class objects and variables
 static bool EnabledPlotDataSets[_2DPlotMaxNumberOfDataSets];
 static PlotDataSet PlotDataSets[_2DPlotMaxNumberOfDataSets];
@@ -71,6 +90,9 @@ static unsigned char PlotDataSetLineColorG[_2DPlotMaxNumberOfDataSets];
 static unsigned char PlotDataSetLineColorB[_2DPlotMaxNumberOfDataSets];
 static GLfloat PlotDataSetLineWidth[_2DPlotMaxNumberOfDataSets];
 static unsigned char PlotDataSetRenderingOrder[_2DPlotMaxNumberOfDataSets];
+static PlotMarker PlotMarkers[_2DPlotMaxNumberOfMarkers];
+static unsigned int PlotMarkerCount = 0;
+static unsigned int PlotMarkerNextSerial = 1;
 static unsigned char DataLoggingDisplayStringChar[] = {'D','a','t','a',' ','L','o','g','g','i','n','g',' ', '-',' ','D','u','r','a','t','i','o','n',':',' ','0','0','0',':','0','0',':','0','0',':','0','0','0'};
 
 // OpenGL class definition
@@ -151,6 +173,7 @@ namespace OpenGL2DPlot {
 		private: unsigned int OpenGLWindowWidth;
 		private: unsigned int OpenGLWindowHeight;
 		private: bool OverlayPanelIsClick = false;
+		private: System::Object^ PlotMarkerLock = gcnew System::Object();
 		private: GLdouble CurrentTexturePanelWidth;
 		private: GLdouble CurrentTexturePanelHeight;
 		private: GLfloat TextureToPanelWidthOffset = 0.0;
@@ -211,6 +234,9 @@ namespace OpenGL2DPlot {
 		private: unsigned char PlotTitleColorR = 255;
 		private: unsigned char PlotTitleColorG = 255;
 		private: unsigned char PlotTitleColorB = 255;
+		private: unsigned char PlotMarkerColorR = 255;
+		private: unsigned char PlotMarkerColorG = 200;
+		private: unsigned char PlotMarkerColorB = 0;
 		private: unsigned char MouseCursorDataLabelColorR = 255;
 		private: unsigned char MouseCursorDataLabelColorG = 255;
 		private: unsigned char MouseCursorDataLabelColorB = 255;
@@ -1037,6 +1063,9 @@ namespace OpenGL2DPlot {
 
 			// This routine resets the data of the 2D plot and clears the 2D plot
 
+			// Remove all event markers from the plot
+			RMH_OpenGL_ClearPlotMarkers();
+
 			// Reset the Y-axis range variables of the 2D plot to start values
 			PlotYAxesMaximumRangeValue = _2DPlotYAxesMaximumRangeResetValue;
 			PlotYAxesMinimumRangeValue = _2DPlotYAxesMinimumRangeResetValue;
@@ -1167,6 +1196,180 @@ namespace OpenGL2DPlot {
 
 		}
 
+		// ------------------------- 2D Plot Event Marker Routines ------------------------- //
+
+		public: unsigned int RMH_OpenGL_AddPlotMarker(System::String^ LabelString) {
+
+			// This routine adds an event marker at the newest sample position of the plot (the current time).
+			// It returns the serial number of the marker, which can be used to edit or remove the marker.
+
+			msclr::lock MarkerLockGuard(PlotMarkerLock);
+
+			// If the marker list is full, the oldest marker is dropped
+			if (PlotMarkerCount >= _2DPlotMaxNumberOfMarkers) {
+
+				for (unsigned int i = 0; i < PlotMarkerCount - 1; i++) { PlotMarkers[i] = PlotMarkers[i + 1]; }
+				PlotMarkerCount = PlotMarkerCount - 1;
+
+			}
+
+			PlotMarker NewMarker;
+			NewMarker.SamplePosition = _2DPlotXAxesLength - 1;
+			NewMarker.Serial = PlotMarkerNextSerial;
+			PlotMarkerNextSerial = PlotMarkerNextSerial + 1;
+
+			// Store the time of day of the marker
+			std::string TimeString = RMH_Conversion_SystemStringToStdString(System::DateTime::Now.ToString("HH:mm:ss"));
+			strncpy_s(NewMarker.TimeText, sizeof(NewMarker.TimeText), TimeString.c_str(), _TRUNCATE);
+
+			PlotMarkers[PlotMarkerCount] = NewMarker;
+			PlotMarkerCount = PlotMarkerCount + 1;
+
+			// Set the marker label
+			unsigned int MarkerSerial = NewMarker.Serial;
+			RMH_OpenGL_SetPlotMarkerLabelUnlocked(MarkerSerial, LabelString);
+
+			return MarkerSerial;
+
+		}
+
+		private: GLvoid RMH_OpenGL_SetPlotMarkerLabelUnlocked(unsigned int MarkerSerial, System::String^ LabelString) {
+
+			// This routine sets the label of a marker (the caller holds the marker lock)
+
+			std::string LabelStdString = "";
+
+			if (LabelString != nullptr) { LabelStdString = RMH_Conversion_SystemStringToStdString(LabelString); }
+
+			// The plot font only supports the printable ASCII characters
+			for (unsigned int i = 0; i < LabelStdString.length(); i++) {
+
+				if ((unsigned char)LabelStdString[i] < 32 || (unsigned char)LabelStdString[i] > 126) { LabelStdString[i] = '?'; }
+
+			}
+
+			for (unsigned int i = 0; i < PlotMarkerCount; i++) {
+
+				if (PlotMarkers[i].Serial == MarkerSerial) {
+
+					strncpy_s(PlotMarkers[i].Label, sizeof(PlotMarkers[i].Label), LabelStdString.c_str(), _TRUNCATE);
+					break;
+
+				}
+
+			}
+
+		}
+
+		public: GLvoid RMH_OpenGL_SetPlotMarkerLabel(unsigned int MarkerSerial, System::String^ LabelString) {
+
+			// This routine changes the label of an existing marker
+
+			msclr::lock MarkerLockGuard(PlotMarkerLock);
+			RMH_OpenGL_SetPlotMarkerLabelUnlocked(MarkerSerial, LabelString);
+
+		}
+
+		public: GLvoid RMH_OpenGL_RemovePlotMarker(unsigned int MarkerSerial) {
+
+			// This routine removes a single marker
+
+			msclr::lock MarkerLockGuard(PlotMarkerLock);
+
+			for (unsigned int i = 0; i < PlotMarkerCount; i++) {
+
+				if (PlotMarkers[i].Serial == MarkerSerial) {
+
+					for (unsigned int j = i; j + 1 < PlotMarkerCount; j++) { PlotMarkers[j] = PlotMarkers[j + 1]; }
+					PlotMarkerCount = PlotMarkerCount - 1;
+					break;
+
+				}
+
+			}
+
+		}
+
+		public: GLvoid RMH_OpenGL_ClearPlotMarkers() {
+
+			// This routine removes all markers
+
+			msclr::lock MarkerLockGuard(PlotMarkerLock);
+			PlotMarkerCount = 0;
+
+		}
+
+		public: unsigned int RMH_OpenGL_GetPlotMarkerCount() {
+
+			return PlotMarkerCount;
+
+		}
+
+		public: GLvoid RMH_OpenGL_AdvancePlotMarkers() {
+
+			// This routine scrolls the markers one sample to the left. It must be called once for every
+			// new sample that is shifted into the plot data sets. Markers that leave the plot are removed.
+
+			msclr::lock MarkerLockGuard(PlotMarkerLock);
+
+			unsigned int KeptMarkers = 0;
+
+			for (unsigned int i = 0; i < PlotMarkerCount; i++) {
+
+				PlotMarkers[i].SamplePosition = PlotMarkers[i].SamplePosition - 1;
+
+				if (PlotMarkers[i].SamplePosition >= 0) {
+
+					if (KeptMarkers != i) { PlotMarkers[KeptMarkers] = PlotMarkers[i]; }
+					KeptMarkers = KeptMarkers + 1;
+
+				}
+
+			}
+
+			PlotMarkerCount = KeptMarkers;
+
+		}
+
+		private: GLvoid RMH_2DPlot_RenderPlotMarkers(unsigned int PlotPanelWidth, unsigned int PlotPanelHeight) {
+
+			// This routine renders the event markers as vertical lines with a time and label
+
+			msclr::lock MarkerLockGuard(PlotMarkerLock);
+
+			if (PlotMarkerCount == 0) { return; }
+
+			GLfloat PlotTopY = _2DPlotTopPixelPadding;
+			GLfloat PlotBottomY = (GLfloat)PlotPanelHeight - _2DPlotBottomPixelPadding;
+			GLfloat PlotRightX = (GLfloat)PlotPanelWidth - _2DPlotRightPixelPadding;
+
+			for (unsigned int i = 0; i < PlotMarkerCount; i++) {
+
+				// Convert the sample position to a pixel position (same scaling as the data lines)
+				GLfloat MarkerX = _2DPlotLeftPixelPadding + ((GLfloat)PlotMarkers[i].SamplePosition * XAxesLinePixelLength) / (GLfloat)_2DPlotXAxesLength;
+
+				// Render the marker line
+				RMH_OpenGL_RenderLine(MarkerX, PlotTopY, MarkerX, PlotBottomY, _2DPlotMarkerLineWidth, PlotMarkerColorR, PlotMarkerColorG, PlotMarkerColorB);
+
+				// Format the marker text
+				std::string MarkerText = PlotMarkers[i].TimeText;
+				if (PlotMarkers[i].Label[0] != 0) { MarkerText = MarkerText + " " + PlotMarkers[i].Label; }
+
+				// Place the text to the right of the line, or to the left of it if it would leave the plot
+				GLfloat TextWidth = (GLfloat)(MarkerText.length() * _2DPlotMarkerLabelCharWidth);
+				GLfloat TextX = MarkerX + 4.0f;
+				if (TextX + TextWidth > PlotRightX) { TextX = MarkerX - 4.0f - TextWidth; }
+				if (TextX < _2DPlotLeftPixelPadding) { TextX = _2DPlotLeftPixelPadding + 2.0f; }
+
+				// Stagger the text rows (by marker serial, so a marker keeps its row while it scrolls)
+				GLfloat TextY = PlotTopY + 14.0f + (GLfloat)((PlotMarkers[i].Serial % _2DPlotMarkerLabelRowCount) * _2DPlotMarkerLabelRowHeight);
+
+				RMH_OpenGL_RenderStringOnTexture(TextX, TextY, MarkerText, PlotMarkerColorR, PlotMarkerColorG, PlotMarkerColorB);
+
+			}
+
+		}
+
 		public: GLvoid RMH_OpenGL_Render2DPlot(unsigned int PlotPanelWidth, unsigned int PlotPanelHeight, System::String^ TempUnitString) {
 
 			// This routine renders a 2-dimensional X/Y plot from the given input data
@@ -1211,6 +1414,9 @@ namespace OpenGL2DPlot {
 
 			// Plot the enabled data sets
 			RMH_OpenGL_PlotDataSets();
+
+			// Render the event markers
+			RMH_2DPlot_RenderPlotMarkers(PlotPanelWidth, PlotPanelHeight);
 
 			// Render the data logging indicator label
 			RMH_OpenGL_RenderDataLoggingIndicatorLabelWithTimer(_2DPlotLeftPixelPadding, (_2DPlotTopPixelPadding / 2.0) + _2DPlotIndicatorLabelYOffset, LoggingTimerLabelMilliSecValue, DataLoggingFLag);

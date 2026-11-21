@@ -68,6 +68,9 @@ namespace IRCAMThermalViewer {
 			// Add the Y-axis range items to the 2D plot context menu
 			this->AddYAxisRangeMenuItems();
 
+			// Add the event marker items to the 2D plot context menu
+			this->AddMarkerMenuItems();
+
 			// Update the temp meas GUI ready flag
 			TempMeasGUIReadyFlag = true;
 
@@ -879,6 +882,140 @@ namespace IRCAMThermalViewer {
 
 			// Hide the grid lines of the 2D plot
 			GlobalVariables::OpenGL2DPlot->RMH_OpenGL_Enable2DPlotGridLines(false);
+
+		}
+
+		// ---------------------- Event marker items of the 2D plot context menu ---------------------- //
+
+		private: System::Windows::Forms::ToolStripSeparator^ MarkerSeparator;
+		private: System::Windows::Forms::ToolStripMenuItem^ AddMarkerMenuItem;
+		private: System::Windows::Forms::ToolStripMenuItem^ AddQuickMarkerMenuItem;
+		private: System::Windows::Forms::ToolStripMenuItem^ ClearMarkersMenuItem;
+		private: System::Collections::Generic::List<System::String^>^ MarkerLabelHistory;
+
+		private: System::Void AddMarkerMenuItems() {
+
+			// Creates the event marker items and inserts them in the 2D plot context menu, before the clear plot item
+			this->MarkerLabelHistory = gcnew System::Collections::Generic::List<System::String^>();
+			this->MarkerLabelHistory->Add("Power changed");
+			this->MarkerLabelHistory->Add("Door opened");
+			this->MarkerLabelHistory->Add("Door closed");
+
+			this->AddMarkerMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleYAxisRangeMenuItem(this->AddMarkerMenuItem, "Add Marker...");
+			this->AddMarkerMenuItem->Click += gcnew System::EventHandler(this, &TempMeasGUI::AddMarkerMenuItem_Click);
+
+			this->AddQuickMarkerMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleYAxisRangeMenuItem(this->AddQuickMarkerMenuItem, "Add Quick Marker (Time Only)");
+			this->AddQuickMarkerMenuItem->Click += gcnew System::EventHandler(this, &TempMeasGUI::AddQuickMarkerMenuItem_Click);
+
+			this->ClearMarkersMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleYAxisRangeMenuItem(this->ClearMarkersMenuItem, "Remove All Markers");
+			this->ClearMarkersMenuItem->Click += gcnew System::EventHandler(this, &TempMeasGUI::ClearMarkersMenuItem_Click);
+
+			this->MarkerSeparator = gcnew System::Windows::Forms::ToolStripSeparator();
+			this->MarkerSeparator->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+
+			int InsertIndex = this->TempMeasContextMenu->Items->IndexOf(this->clearPlotToolStripMenuItem);
+			if (InsertIndex < 0) { InsertIndex = this->TempMeasContextMenu->Items->Count; }
+
+			this->TempMeasContextMenu->Items->Insert(InsertIndex, this->AddMarkerMenuItem);
+			this->TempMeasContextMenu->Items->Insert(InsertIndex + 1, this->AddQuickMarkerMenuItem);
+			this->TempMeasContextMenu->Items->Insert(InsertIndex + 2, this->ClearMarkersMenuItem);
+			this->TempMeasContextMenu->Items->Insert(InsertIndex + 3, this->MarkerSeparator);
+
+			// Enable the remove item only when there are markers
+			this->TempMeasContextMenu->Opening += gcnew System::ComponentModel::CancelEventHandler(this, &TempMeasGUI::MarkerContextMenuOpening);
+
+		}
+
+		private: System::Void MarkerContextMenuOpening(System::Object^ sender, System::ComponentModel::CancelEventArgs^ e) {
+
+			this->ClearMarkersMenuItem->Enabled = (GlobalVariables::OpenGL2DPlot->RMH_OpenGL_GetPlotMarkerCount() > 0);
+
+		}
+
+		private: System::Void AddQuickMarkerMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Adds a marker with the current time and no text
+			GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddPlotMarker("");
+
+		}
+
+		private: System::Void ClearMarkersMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Removes all markers (the plot data is kept)
+			GlobalVariables::OpenGL2DPlot->RMH_OpenGL_ClearPlotMarkers();
+
+		}
+
+		private: System::Void AddMarkerMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// The marker is placed at once, so that it sits at the time of the click and not at the time the window is closed.
+			// The text is then entered, and the marker is removed again if the window is cancelled.
+			unsigned int MarkerSerial = GlobalVariables::OpenGL2DPlot->RMH_OpenGL_AddPlotMarker("");
+
+			System::Windows::Forms::Form^ MarkerWindow = gcnew System::Windows::Forms::Form();
+			MarkerWindow->Text = "Add Marker";
+			MarkerWindow->FormBorderStyle = System::Windows::Forms::FormBorderStyle::FixedDialog;
+			MarkerWindow->StartPosition = System::Windows::Forms::FormStartPosition::CenterParent;
+			MarkerWindow->MinimizeBox = false;
+			MarkerWindow->MaximizeBox = false;
+			MarkerWindow->ShowInTaskbar = false;
+			MarkerWindow->BackColor = System::Drawing::Color::White;
+			MarkerWindow->ClientSize = System::Drawing::Size(380, 120);
+
+			System::Windows::Forms::Label^ MarkerLabel = gcnew System::Windows::Forms::Label();
+			MarkerLabel->Text = "Marker text (type, or pick a previous one):";
+			MarkerLabel->AutoSize = false;
+			MarkerLabel->Location = System::Drawing::Point(20, 16);
+			MarkerLabel->Size = System::Drawing::Size(340, 22);
+			MarkerWindow->Controls->Add(MarkerLabel);
+
+			System::Windows::Forms::ComboBox^ MarkerTextBox = gcnew System::Windows::Forms::ComboBox();
+			MarkerTextBox->DropDownStyle = System::Windows::Forms::ComboBoxStyle::DropDown;
+			MarkerTextBox->MaxLength = _2DPlotMarkerLabelMaxLength;
+			for each (System::String ^ HistoryLabel in this->MarkerLabelHistory) { MarkerTextBox->Items->Add(HistoryLabel); }
+			MarkerTextBox->Location = System::Drawing::Point(20, 42);
+			MarkerTextBox->Size = System::Drawing::Size(340, 24);
+			MarkerWindow->Controls->Add(MarkerTextBox);
+
+			System::Windows::Forms::Button^ MarkerOkButton = gcnew System::Windows::Forms::Button();
+			MarkerOkButton->Text = "Add Marker";
+			MarkerOkButton->DialogResult = System::Windows::Forms::DialogResult::OK;
+			MarkerOkButton->Location = System::Drawing::Point(80, 78);
+			MarkerOkButton->Size = System::Drawing::Size(110, 30);
+			MarkerWindow->Controls->Add(MarkerOkButton);
+			MarkerWindow->AcceptButton = MarkerOkButton;
+
+			System::Windows::Forms::Button^ MarkerCancelButton = gcnew System::Windows::Forms::Button();
+			MarkerCancelButton->Text = "Cancel";
+			MarkerCancelButton->DialogResult = System::Windows::Forms::DialogResult::Cancel;
+			MarkerCancelButton->Location = System::Drawing::Point(200, 78);
+			MarkerCancelButton->Size = System::Drawing::Size(110, 30);
+			MarkerWindow->Controls->Add(MarkerCancelButton);
+			MarkerWindow->CancelButton = MarkerCancelButton;
+
+			if (MarkerWindow->ShowDialog(this) == System::Windows::Forms::DialogResult::OK) {
+
+				System::String^ MarkerText = MarkerTextBox->Text->Trim();
+
+				GlobalVariables::OpenGL2DPlot->RMH_OpenGL_SetPlotMarkerLabel(MarkerSerial, MarkerText);
+
+				// Remember new texts for the next markers (newest first, at most 10)
+				if (MarkerText->Length > 0 && this->MarkerLabelHistory->Contains(MarkerText) == false) {
+
+					this->MarkerLabelHistory->Insert(0, MarkerText);
+					if (this->MarkerLabelHistory->Count > 10) { this->MarkerLabelHistory->RemoveAt(this->MarkerLabelHistory->Count - 1); }
+
+				}
+
+			}
+			else {
+
+				GlobalVariables::OpenGL2DPlot->RMH_OpenGL_RemovePlotMarker(MarkerSerial);
+
+			}
 
 		}
 
