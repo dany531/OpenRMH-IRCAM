@@ -566,7 +566,7 @@ Details:
 - The cursors are annotations of the chart: they follow zoom and axis changes and are **part of an exported image (1.13)**. The **readout panel is also in the exported image**, on the graph, exactly as in the Data Log window:
   same position in the graph (so move it before exporting if it covers something), same size, dark background, border, text rows, fonts and colors. It is drawn as vector text, so it stays sharp at the export
   resolution. Nothing is drawn while no cursor is placed. The **Other Information** table is not changed by the measurement.
-- Cursors and panel are removed when the view is restarted (new session) and with **Clear Graph**. The mouse cursor temperature (1.8) can be used at the same time.
+- Cursors and panel are removed when the view is restarted (new session) and with **Clear Graph**. The mouse cursor temperature (1.8) can be used at the same time and also works while the mouse is on a cursor line (branch 29: before, it showed N/A there).
 - While **Measure With Two Cursors** is on, dragging a rectangle does not zoom (switch it off to zoom); the scroll bars of a zoomed graph keep working.
 - Only the time axis position is set by the mouse; the temperatures come from the data, not from the height of the click.
 
@@ -633,7 +633,7 @@ The program itself (C++/CLI) was **not compiled and not tested**. Check first: a
 | `RMH_Application_ThermalViewer.h` (also, branch 27) | New settings `_DataLogView_ThinOldPoints`, `_DataLogView_ReadBlockBytes`, `_DataLogView_ReadTimeBudgetMs` |
 | `RMH_Application_ThermalViewer.cpp` (also, branch 27) | Texts of the warning window for sessions with many samples and of the status line after a live change of the duration / interval follow `_DataLogView_ThinOldPoints` |
 | `DataLogGUI.h` (also, branch 28) | Two-cursor measurement (1.37): new class `MeasureRow`, `BuildMeasureObjects`, `LogChart_MouseDown` / `LogChart_MouseUp` (and the drag part of `LogChart_MouseMove`), `GetLineValueAt`, `GetMeasureTimeAtMouse`, `CollectMeasureRows`, `BuildMeasureTexts`, `DrawMeasurePanelOnExport`, `UpdateMeasurement`, `ApplyMeasureMode`, the two new items of the right-click menu, hooks in `LineCheck_CheckedChanged`, `ShowPendingData`, `ClearChartData`, `ResetView`, and in `ExportGraphButton_Click` (the panel is drawn on the exported graph) |
-| `DataLogGUI.h` (also, branch 29) | Typed cursor times (1.38): `SetCursorTimesMenuItem_Click`, `TryParseElapsedTime`, `RemoveMeasureCursor`, new item `Set Cursor Times...` in the right-click menu (`SetCursorTimesMenuItem`) |
+| `DataLogGUI.h` (also, branch 29) | Typed cursor times (1.38): `SetCursorTimesMenuItem_Click`, `TryParseElapsedTime`, `RemoveMeasureCursor`; `UpdateCursorLabel` now uses `IsPointInPlotArea` (label also on a cursor line); new item `Set Cursor Times...` in the right-click menu (`SetCursorTimesMenuItem`) |
 | `CHANGELOG.md`, this README | Notes (the README file is renamed for each branch) |
 
 Note: `RMH_Application_ThermalViewer.cpp` uses an older Windows text encoding. Upload it as a file on GitHub (do not copy-paste it).
