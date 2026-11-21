@@ -34,6 +34,9 @@ namespace IRCAMThermalViewer {
 	// - _DataLogExport_UseVectorChart: 1 = the graph is taken as a vector drawing (EMF+) and drawn at the high resolution, so lines and text stay sharp.
 	//   0 = the graph is taken as a picture of the screen size (it is only stretched at a higher resolution; use it to compare or when 1 does not look right).
 	// - _DataLogExport_JpegQuality: quality (0 - 100) of a JPEG image.
+	// Graph markers: the longest text of a marker (characters)
+	#define _DataLogMarker_MaxTextLength 60
+
 	#define _DataLogExport_ResolutionScale 3
 	#define _DataLogExport_UseVectorChart 1
 	#define _DataLogExport_JpegQuality 95
@@ -226,6 +229,29 @@ namespace IRCAMThermalViewer {
 
 	};
 
+	// A marker in the graph: a vertical line at a time, with a text (see the graph markers part of DataLogGUI)
+	ref class GraphMarker {
+
+	public:
+
+		double ElapsedMilliSec;                       // Time of the marker (elapsed time of the log session, as in the log file)
+		System::String^ Text;                         // Text of the marker, shown below its time
+		float PixelX;                                 // Position of the line in the graph at the last drawing (for picking it with the mouse)
+		System::Drawing::RectangleF LabelRect;        // Position of the text box at the last drawing
+		bool Drawn;                                   // False when the marker is outside the time range that is shown
+
+		GraphMarker() {
+
+			this->ElapsedMilliSec = 0.0;
+			this->Text = "";
+			this->PixelX = 0.0f;
+			this->LabelRect = System::Drawing::RectangleF(0.0f, 0.0f, 0.0f, 0.0f);
+			this->Drawn = false;
+
+		}
+
+	};
+
 	public ref class DataLogGUI : public System::Windows::Forms::Form {
 
 	public:
@@ -259,6 +285,13 @@ namespace IRCAMThermalViewer {
 			this->MeasureTimeB = System::Double::NaN;
 			this->MeasureDragging = -1;
 			this->MeasureRowLabels = gcnew System::Collections::Generic::List<System::Windows::Forms::Label^>();
+			this->GraphMarkers = gcnew System::Collections::Generic::List<GraphMarker^>();
+			this->MarkerDragging = -1;
+			this->MarkerHoverActive = false;
+			this->MarkerMenuTimeValid = false;
+			this->MarkerMenuTime = 0.0;
+			this->MarkerMenuTarget = nullptr;
+			this->MarkerFont = nullptr;
 			this->MeasurePanelPositioned = false;
 			this->MeasurePanelDragging = false;
 			this->XTickCount = 0;
@@ -336,6 +369,20 @@ namespace IRCAMThermalViewer {
 		System::Windows::Forms::ToolStripMenuItem^ MeasureMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ ClearCursorsMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ SetCursorTimesMenuItem;
+
+		// Graph markers (a vertical line with a time and a text; drawn on the chart, can be dragged with the mouse)
+		System::Collections::Generic::List<GraphMarker^>^ GraphMarkers;
+		int MarkerDragging;                          // -1 = no marker is being dragged, otherwise the index of the marker
+		bool MarkerHoverActive;                      // The mouse is on a marker (arrow cursor, zoom rectangle off)
+		System::Drawing::Font^ MarkerFont;
+		System::Windows::Forms::Button^ AddMarkerButton;
+		System::Windows::Forms::ToolStripMenuItem^ AddMarkerMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ DeleteMarkerMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ DeleteAllMarkersMenuItem;
+		System::Windows::Forms::ToolStripSeparator^ MarkerSeparator;
+		bool MarkerMenuTimeValid;                    // The graph was right clicked inside the plot area, over logged data
+		double MarkerMenuTime;                       // Time (days) where the graph was right clicked
+		GraphMarker^ MarkerMenuTarget;               // The marker that was right clicked (nullptr = none)
 
 		// Right click menu of the graph, and its settings
 		System::Windows::Forms::ContextMenuStrip^ ChartContextMenu;
@@ -473,8 +520,13 @@ namespace IRCAMThermalViewer {
 			this->AddNotesButton->Click += gcnew System::EventHandler(this, &DataLogGUI::AddNotesButton_Click);
 			TopPanel->Controls->Add(this->AddNotesButton);
 
+			this->AddMarkerButton = gcnew System::Windows::Forms::Button();
+			this->StyleButton(this->AddMarkerButton, "Add Marker", 695, 105);
+			this->AddMarkerButton->Click += gcnew System::EventHandler(this, &DataLogGUI::AddMarkerButton_Click);
+			TopPanel->Controls->Add(this->AddMarkerButton);
+
 			this->ExportGraphButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->ExportGraphButton, "Export Graph", 695, 115);
+			this->StyleButton(this->ExportGraphButton, "Export Graph", 805, 115);
 			this->ExportGraphButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ExportGraphButton_Click);
 			TopPanel->Controls->Add(this->ExportGraphButton);
 
@@ -482,19 +534,20 @@ namespace IRCAMThermalViewer {
 			this->ShowTitleCheckBox->Text = "Show Graph Title";
 			this->ShowTitleCheckBox->Checked = false;
 			this->ShowTitleCheckBox->AutoSize = true;
-			this->ShowTitleCheckBox->Location = System::Drawing::Point(818, 43);
+			this->ShowTitleCheckBox->Location = System::Drawing::Point(928, 43);
 			this->ShowTitleCheckBox->ForeColor = System::Drawing::Color::White;
 			this->ShowTitleCheckBox->CheckedChanged += gcnew System::EventHandler(this, &DataLogGUI::ShowTitleCheckBox_CheckedChanged);
 			TopPanel->Controls->Add(this->ShowTitleCheckBox);
 
 			this->HintToolTip = gcnew System::Windows::Forms::ToolTip();
+			this->HintToolTip->SetToolTip(this->AddMarkerButton, "Adds a marker (a vertical line with the time and a text) at the current time of the data logging. To add a marker at another time, right-click the graph. Markers can be dragged with the mouse.");
 			this->HintToolTip->SetToolTip(this->ShowTitleCheckBox, "Shows the title above the graph and in an exported image. Double-click the title on the graph to edit it.");
 
 			this->AutoScrollCheckBox = gcnew System::Windows::Forms::CheckBox();
 			this->AutoScrollCheckBox->Text = "Auto-scroll table to newest";
 			this->AutoScrollCheckBox->Checked = true;
 			this->AutoScrollCheckBox->AutoSize = true;
-			this->AutoScrollCheckBox->Location = System::Drawing::Point(950, 43);
+			this->AutoScrollCheckBox->Location = System::Drawing::Point(1060, 43);
 			this->AutoScrollCheckBox->ForeColor = System::Drawing::Color::White;
 			TopPanel->Controls->Add(this->AutoScrollCheckBox);
 
@@ -688,6 +741,7 @@ namespace IRCAMThermalViewer {
 			this->LogChart->MouseMove += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseMove);
 			this->LogChart->MouseDown += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseDown);
 			this->LogChart->MouseUp += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseUp);
+			this->LogChart->PostPaint += gcnew System::EventHandler<System::Windows::Forms::DataVisualization::Charting::ChartPaintEventArgs^>(this, &DataLogGUI::LogChart_PostPaint);
 			this->BuildMeasureObjects();
 			this->LogChart->MouseDoubleClick += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseDoubleClick);
 
@@ -759,6 +813,29 @@ namespace IRCAMThermalViewer {
 
 		System::Void LogChart_MouseMove(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
 
+			// A marker that is being dragged follows the mouse (it stays inside the logged time range); without a drag the mouse cursor shows when it is on a marker
+			if (this->MarkerDragging >= 0) {
+
+				if ((e->Button & System::Windows::Forms::MouseButtons::Left) == System::Windows::Forms::MouseButtons::Left && this->MarkerDragging < this->GraphMarkers->Count) {
+
+					double MarkerTime = 0.0;
+
+					if (this->GetMeasureTimeAtMouse(e->X, MarkerTime) == true) {
+
+						double MarkerMilliSec = (MarkerTime - this->ChartStartTime.ToOADate()) * 86400000.0;
+						if (MarkerMilliSec < 0.0) { MarkerMilliSec = 0.0; }
+
+						this->GraphMarkers[this->MarkerDragging]->ElapsedMilliSec = MarkerMilliSec;
+						this->LogChart->Invalidate();
+
+					}
+
+				}
+				else { this->MarkerDragging = -1; }
+
+			}
+			else { this->UpdateMarkerHover(e->X, e->Y); }
+
 			// A measurement cursor that is being dragged follows the mouse (also outside the plot area: it stays inside the logged time range)
 			if (this->MeasureDragging >= 0 && (e->Button & System::Windows::Forms::MouseButtons::Left) == System::Windows::Forms::MouseButtons::Left) {
 
@@ -775,6 +852,430 @@ namespace IRCAMThermalViewer {
 
 			// The label is hidden when the mouse leaves the graph (it shows again when the mouse comes back)
 			this->CursorLabel->Visible = false;
+			this->UpdateMarkerHover(-1, -1);
+
+		}
+
+		// ------------------------- Graph markers (a note at a time in the graph) ------------------------- //
+
+		// A marker is a vertical line in the graph with its time (h:mm:ss) and, below the time, a text. It is added at the time of the newest logged sample (Add Marker
+		// button, while logging) or at the time where the graph is right clicked (Add Marker Here), and it can be dragged with the mouse (like the cursors of the two-cursor
+		// measurement), deleted one by one (right click on the marker) or all at once. The markers are drawn on the chart itself (PostPaint), so they follow zoom and
+		// resizing, and they are part of an exported image. They belong to the data of the graph: Clear Graph and a new log session remove them (they are not
+		// saved in the log file).
+
+		System::Void CreateMarkerMenuItems() {
+
+			this->AddMarkerMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->AddMarkerMenuItem, "Add Marker Here...");
+			this->AddMarkerMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::AddMarkerMenuItem_Click);
+
+			this->DeleteMarkerMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->DeleteMarkerMenuItem, "Delete Marker");
+			this->DeleteMarkerMenuItem->Visible = false;
+			this->DeleteMarkerMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::DeleteMarkerMenuItem_Click);
+
+			this->DeleteAllMarkersMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->DeleteAllMarkersMenuItem, "Delete All Markers");
+			this->DeleteAllMarkersMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::DeleteAllMarkersMenuItem_Click);
+
+			this->MarkerSeparator = gcnew System::Windows::Forms::ToolStripSeparator();
+
+		}
+
+		System::String^ MarkerDisplayText(GraphMarker^ Marker) {
+
+			// The time of a marker, followed by its text (for the menu)
+			System::String^ DisplayText = this->FormatAxisTime(Marker->ElapsedMilliSec, false);
+			if (Marker->Text != nullptr && Marker->Text->Length > 0) { DisplayText = DisplayText + gcnew System::String("  ") + Marker->Text; }
+
+			return DisplayText;
+
+		}
+
+		System::Void UpdateMarkerMenuItems() {
+
+			// Called when the right click menu opens: where the mouse is decides what the marker items do
+			System::Drawing::Point MousePoint = this->LogChart->PointToClient(System::Windows::Forms::Control::MousePosition);
+
+			this->MarkerMenuTimeValid = false;
+			this->MarkerMenuTarget = nullptr;
+
+			double TimeValue = 0.0;
+
+			if (this->IsPointInPlotArea(MousePoint.X, MousePoint.Y) == true && this->GetMeasureTimeAtMouse(MousePoint.X, TimeValue) == true) {
+
+				this->MarkerMenuTime = TimeValue;
+				this->MarkerMenuTimeValid = true;
+
+			}
+
+			this->AddMarkerMenuItem->Enabled = this->MarkerMenuTimeValid;
+
+			// The item that deletes one marker is only shown when the mouse is on a marker (its line or its text)
+			int Hit = this->FindMarkerAt(MousePoint.X, MousePoint.Y);
+
+			if (Hit >= 0) {
+
+				this->MarkerMenuTarget = this->GraphMarkers[Hit];
+				this->DeleteMarkerMenuItem->Text = gcnew System::String("Delete Marker: ") + this->MarkerDisplayText(this->MarkerMenuTarget);
+				this->DeleteMarkerMenuItem->Visible = true;
+
+			}
+			else { this->DeleteMarkerMenuItem->Visible = false; }
+
+			this->DeleteAllMarkersMenuItem->Enabled = (this->GraphMarkers->Count > 0);
+
+		}
+
+		System::Void ClearGraphMarkers() {
+
+			// Removes all markers (nothing to do before the graph objects are built)
+			if (this->GraphMarkers == nullptr) { return; }
+
+			this->GraphMarkers->Clear();
+			this->MarkerDragging = -1;
+			this->MarkerMenuTarget = nullptr;
+
+			if (this->LogChart != nullptr) { this->LogChart->Invalidate(); }
+
+		}
+
+		bool ShowMarkerTextWindow(System::String^% MarkerText) {
+
+			// The window for the text of a marker. Returns true when it was closed with Add Marker (the text can be empty: the marker then shows only its time).
+			System::Windows::Forms::Form^ MarkerWindow = gcnew System::Windows::Forms::Form();
+			MarkerWindow->Text = "Add Marker";
+			MarkerWindow->FormBorderStyle = System::Windows::Forms::FormBorderStyle::FixedDialog;
+			MarkerWindow->StartPosition = System::Windows::Forms::FormStartPosition::CenterParent;
+			MarkerWindow->MinimizeBox = false;
+			MarkerWindow->MaximizeBox = false;
+			MarkerWindow->ShowInTaskbar = false;
+			MarkerWindow->BackColor = System::Drawing::Color::White;
+			MarkerWindow->ForeColor = System::Drawing::Color::Black;
+			MarkerWindow->ClientSize = System::Drawing::Size(420, 130);
+
+			System::Windows::Forms::Label^ MarkerLabel = gcnew System::Windows::Forms::Label();
+			MarkerLabel->Text = "Marker text (shown below the time of the marker):";
+			MarkerLabel->AutoSize = false;
+			MarkerLabel->Location = System::Drawing::Point(20, 16);
+			MarkerLabel->Size = System::Drawing::Size(380, 22);
+			MarkerWindow->Controls->Add(MarkerLabel);
+
+			System::Windows::Forms::TextBox^ MarkerTextBox = gcnew System::Windows::Forms::TextBox();
+			MarkerTextBox->MaxLength = _DataLogMarker_MaxTextLength;
+			MarkerTextBox->Text = MarkerText;
+			MarkerTextBox->Location = System::Drawing::Point(20, 42);
+			MarkerTextBox->Size = System::Drawing::Size(380, 24);
+			MarkerWindow->Controls->Add(MarkerTextBox);
+
+			System::Windows::Forms::Button^ MarkerOkButton = gcnew System::Windows::Forms::Button();
+			MarkerOkButton->Text = "Add Marker";
+			MarkerOkButton->DialogResult = System::Windows::Forms::DialogResult::OK;
+			MarkerOkButton->Location = System::Drawing::Point(95, 84);
+			MarkerOkButton->Size = System::Drawing::Size(110, 30);
+			MarkerWindow->Controls->Add(MarkerOkButton);
+			MarkerWindow->AcceptButton = MarkerOkButton;
+
+			System::Windows::Forms::Button^ MarkerCancelButton = gcnew System::Windows::Forms::Button();
+			MarkerCancelButton->Text = "Cancel";
+			MarkerCancelButton->DialogResult = System::Windows::Forms::DialogResult::Cancel;
+			MarkerCancelButton->Location = System::Drawing::Point(215, 84);
+			MarkerCancelButton->Size = System::Drawing::Size(110, 30);
+			MarkerWindow->Controls->Add(MarkerCancelButton);
+			MarkerWindow->CancelButton = MarkerCancelButton;
+
+			MarkerWindow->ActiveControl = MarkerTextBox;
+
+			if (MarkerWindow->ShowDialog(this) == System::Windows::Forms::DialogResult::OK) {
+
+				MarkerText = MarkerTextBox->Text->Trim();
+				return true;
+
+			}
+
+			return false;
+
+		}
+
+		System::Void AddMarkerAt(double ElapsedMilliSec) {
+
+			// The marker is placed at once (at the time of the click, not at the time the text window is closed) and gets its text in the window. Cancel removes it again.
+			GraphMarker^ NewMarker = gcnew GraphMarker();
+			NewMarker->ElapsedMilliSec = ElapsedMilliSec;
+			NewMarker->Text = "";
+
+			this->GraphMarkers->Add(NewMarker);
+			this->LogChart->Invalidate();
+
+			System::String^ NewText = "";
+
+			if (this->ShowMarkerTextWindow(NewText) == true) { NewMarker->Text = NewText; }
+			else { this->GraphMarkers->Remove(NewMarker); }
+
+			this->LogChart->Invalidate();
+
+		}
+
+		System::Void AddMarkerButton_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// A marker at the current time: the time of the newest logged sample
+			if (DataLoggingIsRunningFlag == false) {
+
+				System::Windows::Forms::MessageBox::Show(this, "The Add Marker button adds a marker at the current time of the data logging, so data logging must be running.\r\n\r\nTo add a marker at another time (also for a log that has stopped), right-click the graph at that time and choose Add Marker Here.",
+					"Add Marker", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Information);
+				return;
+
+			}
+
+			// Bring the graph up to date first, so that the newest logged sample is known
+			this->RefreshLogView();
+
+			if (this->ViewedSampleRows == 0) { return; }
+
+			this->AddMarkerAt(this->LastElapsedMilliSec);
+
+		}
+
+		System::Void AddMarkerMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// A marker at the time where the graph was right clicked
+			if (this->MarkerMenuTimeValid == false) { return; }
+
+			double ElapsedMilliSec = (this->MarkerMenuTime - this->ChartStartTime.ToOADate()) * 86400000.0;
+			if (ElapsedMilliSec < 0.0) { ElapsedMilliSec = 0.0; }
+
+			this->AddMarkerAt(ElapsedMilliSec);
+
+		}
+
+		System::Void DeleteMarkerMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Deletes the marker that was right clicked
+			if (this->MarkerMenuTarget == nullptr) { return; }
+
+			this->GraphMarkers->Remove(this->MarkerMenuTarget);
+			this->MarkerMenuTarget = nullptr;
+			this->LogChart->Invalidate();
+
+		}
+
+		System::Void DeleteAllMarkersMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			if (this->GraphMarkers->Count == 0) { return; }
+
+			System::Windows::Forms::DialogResult Answer = System::Windows::Forms::MessageBox::Show(this,
+				"Are you sure you want to delete all markers?", "Delete All Markers",
+				System::Windows::Forms::MessageBoxButtons::YesNo, System::Windows::Forms::MessageBoxIcon::Question, System::Windows::Forms::MessageBoxDefaultButton::Button2);
+
+			if (Answer != System::Windows::Forms::DialogResult::Yes) { return; }
+
+			this->ClearGraphMarkers();
+
+		}
+
+		bool GetPlotAreaRect(System::Drawing::RectangleF% PlotRect, double% XMinimum, double% XMaximum) {
+
+			// The plot area of the graph in pixels, and the time range (days) that is shown. The same test as IsPointInPlotArea. False when the axes are not ready.
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::Axis^ AxisX = this->LogChart->ChartAreas[0]->AxisX;
+				System::Windows::Forms::DataVisualization::Charting::Axis^ AxisY = this->LogChart->ChartAreas[0]->AxisY;
+
+				double XMin = (AxisX->ScaleView->IsZoomed == true) ? AxisX->ScaleView->ViewMinimum : AxisX->Minimum;
+				double XMax = (AxisX->ScaleView->IsZoomed == true) ? AxisX->ScaleView->ViewMaximum : AxisX->Maximum;
+				double YMin = (AxisY->ScaleView->IsZoomed == true) ? AxisY->ScaleView->ViewMinimum : AxisY->Minimum;
+				double YMax = (AxisY->ScaleView->IsZoomed == true) ? AxisY->ScaleView->ViewMaximum : AxisY->Maximum;
+
+				if (System::Double::IsNaN(XMin) || System::Double::IsNaN(XMax) || System::Double::IsNaN(YMin) || System::Double::IsNaN(YMax)) { return false; }
+
+				double PixelA = AxisX->ValueToPixelPosition(XMin);
+				double PixelB = AxisX->ValueToPixelPosition(XMax);
+				double PixelC = AxisY->ValueToPixelPosition(YMin);
+				double PixelD = AxisY->ValueToPixelPosition(YMax);
+
+				if (System::Double::IsNaN(PixelA) || System::Double::IsNaN(PixelB) || System::Double::IsNaN(PixelC) || System::Double::IsNaN(PixelD)) { return false; }
+
+				PlotRect = System::Drawing::RectangleF((float)System::Math::Min(PixelA, PixelB), (float)System::Math::Min(PixelC, PixelD),
+					(float)System::Math::Abs(PixelB - PixelA), (float)System::Math::Abs(PixelD - PixelC));
+				XMinimum = XMin;
+				XMaximum = XMax;
+
+				return true;
+
+			}
+			catch (System::Exception^) {}
+
+			return false;
+
+		}
+
+		System::Void LogChart_PostPaint(System::Object^ sender, System::Windows::Forms::DataVisualization::Charting::ChartPaintEventArgs^ e) {
+
+			// The markers are drawn after the plot area (so they are also in an exported image)
+			if (this->GraphMarkers->Count == 0) { return; }
+			if (dynamic_cast<System::Windows::Forms::DataVisualization::Charting::ChartArea^>(e->ChartElement) == nullptr) { return; }
+
+			try { this->DrawMarkers(e->ChartGraphics->Graphics); }
+			catch (System::Exception^) {}
+
+		}
+
+		System::Void DrawMarkers(System::Drawing::Graphics^ Gfx) {
+
+			for (int i = 0; i < this->GraphMarkers->Count; i++) { this->GraphMarkers[i]->Drawn = false; }
+
+			System::Drawing::RectangleF PlotRect;
+			double XMinimum = 0.0;
+			double XMaximum = 0.0;
+
+			if (this->GetPlotAreaRect(PlotRect, XMinimum, XMaximum) == false) { return; }
+			if (PlotRect.Width < 4.0f || PlotRect.Height < 4.0f) { return; }
+
+			System::Windows::Forms::DataVisualization::Charting::Axis^ AxisX = this->LogChart->ChartAreas[0]->AxisX;
+
+			// The markers in the order of their time, so that the texts that would be on top of each other are put in rows below each other
+			System::Collections::Generic::List<GraphMarker^>^ Ordered = gcnew System::Collections::Generic::List<GraphMarker^>();
+
+			for (int i = 0; i < this->GraphMarkers->Count; i++) {
+
+				int Position = Ordered->Count;
+				while (Position > 0 && Ordered[Position - 1]->ElapsedMilliSec > this->GraphMarkers[i]->ElapsedMilliSec) { Position--; }
+				Ordered->Insert(Position, this->GraphMarkers[i]);
+
+			}
+
+			if (this->MarkerFont == nullptr) { this->MarkerFont = gcnew System::Drawing::Font("Arial", 9.0f, System::Drawing::FontStyle::Bold); }
+
+			System::Drawing::Color MarkerColor = System::Drawing::Color::FromArgb(255, 150, 0);
+			System::Drawing::Pen^ LinePen = gcnew System::Drawing::Pen(MarkerColor, 2.0f);
+			System::Drawing::Pen^ BorderPen = gcnew System::Drawing::Pen(MarkerColor, 1.0f);
+			System::Drawing::SolidBrush^ BackBrush = gcnew System::Drawing::SolidBrush(System::Drawing::Color::FromArgb(215, 20, 20, 20));
+			System::Drawing::SolidBrush^ TimeBrush = gcnew System::Drawing::SolidBrush(MarkerColor);
+			System::Drawing::SolidBrush^ TextBrush = gcnew System::Drawing::SolidBrush(System::Drawing::Color::White);
+			System::Collections::Generic::List<System::Drawing::RectangleF>^ PlacedBoxes = gcnew System::Collections::Generic::List<System::Drawing::RectangleF>();
+
+			System::Drawing::Drawing2D::GraphicsState^ SavedState = Gfx->Save();
+
+			try {
+
+				Gfx->SetClip(PlotRect);
+
+				for (int i = 0; i < Ordered->Count; i++) {
+
+					GraphMarker^ Marker = Ordered[i];
+
+					double TimeValue = this->ChartStartTime.AddMilliseconds(Marker->ElapsedMilliSec).ToOADate();
+					if (TimeValue < XMinimum || TimeValue > XMaximum) { continue; }
+
+					float LineX = (float)AxisX->ValueToPixelPosition(TimeValue);
+					if (System::Single::IsNaN(LineX)) { continue; }
+
+					Gfx->DrawLine(LinePen, LineX, PlotRect.Top, LineX, PlotRect.Bottom);
+
+					// The time on the first line, the text below it
+					System::String^ TimeLine = this->FormatAxisTime(Marker->ElapsedMilliSec, false);
+					System::String^ TextLine = (Marker->Text != nullptr) ? Marker->Text : gcnew System::String("");
+
+					System::Drawing::SizeF TimeSize = Gfx->MeasureString(TimeLine, this->MarkerFont);
+					System::Drawing::SizeF TextSize = System::Drawing::SizeF(0.0f, 0.0f);
+					if (TextLine->Length > 0) { TextSize = Gfx->MeasureString(TextLine, this->MarkerFont); }
+
+					float BoxWidth = System::Math::Max(TimeSize.Width, TextSize.Width) + 8.0f;
+					float BoxHeight = TimeSize.Height + TextSize.Height + 4.0f;
+
+					// Right of the line, or left of it when it would leave the plot area
+					float BoxX = LineX + 4.0f;
+					if (BoxX + BoxWidth > PlotRect.Right - 1.0f) { BoxX = LineX - 4.0f - BoxWidth; }
+					if (BoxX < PlotRect.Left + 1.0f) { BoxX = PlotRect.Left + 1.0f; }
+
+					// The first row where the box does not cover another one
+					float BoxY = PlotRect.Top + 3.0f;
+					bool Moved = true;
+
+					for (int Guard = 0; Moved == true && Guard < 40; Guard++) {
+
+						Moved = false;
+						System::Drawing::RectangleF Candidate = System::Drawing::RectangleF(BoxX, BoxY, BoxWidth, BoxHeight);
+
+						for (int p = 0; p < PlacedBoxes->Count; p++) {
+
+							System::Drawing::RectangleF Other = PlacedBoxes[p];
+
+							if (Candidate.IntersectsWith(Other)) { BoxY = Other.Bottom + 2.0f; Moved = true; break; }
+
+						}
+
+					}
+
+					if (BoxY + BoxHeight > PlotRect.Bottom) { BoxY = PlotRect.Top + 3.0f; }
+
+					System::Drawing::RectangleF Box = System::Drawing::RectangleF(BoxX, BoxY, BoxWidth, BoxHeight);
+					PlacedBoxes->Add(Box);
+
+					Gfx->FillRectangle(BackBrush, Box);
+					Gfx->DrawRectangle(BorderPen, Box.X, Box.Y, Box.Width, Box.Height);
+					Gfx->DrawString(TimeLine, this->MarkerFont, TimeBrush, BoxX + 4.0f, BoxY + 2.0f);
+					if (TextLine->Length > 0) { Gfx->DrawString(TextLine, this->MarkerFont, TextBrush, BoxX + 4.0f, BoxY + 2.0f + TimeSize.Height); }
+
+					// Where the marker is on screen (for picking it with the mouse)
+					Marker->PixelX = LineX;
+					Marker->LabelRect = Box;
+					Marker->Drawn = true;
+
+				}
+
+			}
+			finally {
+
+				Gfx->Restore(SavedState);
+				delete LinePen;
+				delete BorderPen;
+				delete BackBrush;
+				delete TimeBrush;
+				delete TextBrush;
+
+			}
+
+		}
+
+		int FindMarkerAt(int MouseX, int MouseY) {
+
+			// The marker whose line (a few pixels wide) or text is at the mouse position, or -1. Uses the positions of the last drawing.
+			if (this->GraphMarkers->Count == 0) { return -1; }
+			if (this->IsPointInPlotArea(MouseX, MouseY) == false) { return -1; }
+
+			for (int i = this->GraphMarkers->Count - 1; i >= 0; i--) {
+
+				GraphMarker^ Marker = this->GraphMarkers[i];
+				if (Marker->Drawn == false) { continue; }
+
+				if (Marker->LabelRect.Contains((float)MouseX, (float)MouseY)) { return i; }
+				if (System::Math::Abs((float)MouseX - Marker->PixelX) <= 5.0f) { return i; }
+
+			}
+
+			return -1;
+
+		}
+
+		System::Void UpdateMarkerHover(int MouseX, int MouseY) {
+
+			// While the mouse is on a marker (or a marker is dragged) the cursor is a horizontal arrow and the zoom rectangle is switched off, so a drag moves the marker
+			// and does not zoom. It comes back when the mouse leaves the marker (unless the two-cursor measurement has it switched off).
+			bool Over = (this->MarkerDragging >= 0) || (this->FindMarkerAt(MouseX, MouseY) >= 0);
+
+			if (Over == this->MarkerHoverActive) { return; }
+
+			this->MarkerHoverActive = Over;
+
+			System::Windows::Forms::DataVisualization::Charting::ChartArea^ Area = this->LogChart->ChartAreas[0];
+			Area->CursorX->IsUserSelectionEnabled = (Over == false) && (this->MeasureModeEnabled == false);
+			Area->CursorY->IsUserSelectionEnabled = (Over == false) && (this->MeasureModeEnabled == false);
+
+			if (Over == true) { this->LogChart->Cursor = System::Windows::Forms::Cursors::SizeWE; }
+			else if (this->MeasureModeEnabled == true) { this->LogChart->Cursor = System::Windows::Forms::Cursors::Cross; }
+			else { this->LogChart->Cursor = System::Windows::Forms::Cursors::Default; }
 
 		}
 
@@ -1018,6 +1519,21 @@ namespace IRCAMThermalViewer {
 
 		System::Void LogChart_MouseDown(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
 
+			// A left click on a marker (its line or its text) picks it: keep the button down and move the mouse to drag it. This works with and without the two-cursor measurement.
+			if (e->Button == System::Windows::Forms::MouseButtons::Left) {
+
+				int MarkerHit = this->FindMarkerAt(e->X, e->Y);
+
+				if (MarkerHit >= 0) {
+
+					this->MarkerDragging = MarkerHit;
+					this->UpdateMarkerHover(e->X, e->Y);
+					return;
+
+				}
+
+			}
+
 			// With Measure With Two Cursors on, a left click in the plot area places a cursor: the first click A, the second B; after that the nearer cursor moves.
 			// Keep the button down and move the mouse to fine-tune the position.
 			if (this->MeasureModeEnabled == false || e->Button != System::Windows::Forms::MouseButtons::Left) { return; }
@@ -1041,6 +1557,9 @@ namespace IRCAMThermalViewer {
 		System::Void LogChart_MouseUp(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
 
 			this->MeasureDragging = -1;
+
+			// A dragged marker is dropped (the arrow cursor stays while the mouse is still on it)
+			if (this->MarkerDragging >= 0) { this->MarkerDragging = -1; this->UpdateMarkerHover(e->X, e->Y); }
 
 		}
 
@@ -1660,6 +2179,8 @@ namespace IRCAMThermalViewer {
 			this->StyleMenuItem(this->ClearCursorsMenuItem, "Clear Cursors");
 			this->ClearCursorsMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::ClearCursorsMenuItem_Click);
 
+			this->CreateMarkerMenuItems();
+
 			this->XTicksMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
 			this->StyleMenuItem(this->XTicksMenuItem, "X-Axis Number Of Ticks");
 			this->AddTickItems(this->XTicksMenuItem, gcnew cli::array<int>{ 5, 10, 20, 25, 50 });
@@ -1708,6 +2229,10 @@ namespace IRCAMThermalViewer {
 			this->ChartContextMenu->Items->Add(this->SetCursorTimesMenuItem);
 			this->ChartContextMenu->Items->Add(this->ClearCursorsMenuItem);
 			this->ChartContextMenu->Items->Add(Separator1);
+			this->ChartContextMenu->Items->Add(this->AddMarkerMenuItem);
+			this->ChartContextMenu->Items->Add(this->DeleteMarkerMenuItem);
+			this->ChartContextMenu->Items->Add(this->DeleteAllMarkersMenuItem);
+			this->ChartContextMenu->Items->Add(this->MarkerSeparator);
 			this->ChartContextMenu->Items->Add(this->XTicksMenuItem);
 			this->ChartContextMenu->Items->Add(this->YTicksMenuItem);
 			this->ChartContextMenu->Items->Add(Separator2);
@@ -1744,6 +2269,7 @@ namespace IRCAMThermalViewer {
 		System::Void ChartContextMenu_Opening(System::Object^ sender, System::ComponentModel::CancelEventArgs^ e) {
 
 			// Updates the items before the menu is shown
+			this->UpdateMarkerMenuItems();
 			this->CursorTempMenuItem->Checked = this->CursorLabelEnabled;
 			this->MeasureMenuItem->Checked = this->MeasureModeEnabled;
 			this->ClearCursorsMenuItem->Enabled = (!System::Double::IsNaN(this->MeasureTimeA) || !System::Double::IsNaN(this->MeasureTimeB));
@@ -2742,8 +3268,9 @@ namespace IRCAMThermalViewer {
 			for (int i = 0; i < this->LogChart->Series->Count; i++) { this->LogChart->Series[i]->Points->Clear(); }
 			for (int i = 0; i < this->SeriesBuffers->Count; i++) { this->SeriesBuffers[i]->Clear(); }
 
-			// The cursors belonged to the data that was removed
+			// The cursors and the markers belonged to the data that was removed
 			this->ClearMeasureCursors();
+			this->ClearGraphMarkers();
 
 		}
 
@@ -2766,18 +3293,17 @@ namespace IRCAMThermalViewer {
 			// Then the window for the notes (it shows the notes that are set now - keep them, change them or empty the text). Cancel cancels the export.
 			if (this->ShowGraphNotesWindow() == false) { return; }
 
-			// Default file name: the name of the session file + _graph + the time of this export (so every export gets another name and the save window does not
-			// ask to overwrite the previous one), or the date and time when there is no session file name
+			// Default file name: the name of the session file + _graph, or the date and time
 			System::String^ DefaultName;
 			System::String^ SessionFileName = GlobalVariables::DataLoggingSessionFileNameString;
-			System::DateTime NowTime = System::DateTime::Now;
 
-			if (SessionFileName != nullptr && SessionFileName->Length > 0) {
+			if (SessionFileName != nullptr && SessionFileName->Length > 0) { DefaultName = System::IO::Path::GetFileNameWithoutExtension(SessionFileName) + gcnew System::String("_graph"); }
+			else {
 
-				DefaultName = System::IO::Path::GetFileNameWithoutExtension(SessionFileName) + gcnew System::String("_graph_") + NowTime.ToString("HH-mm-ss", System::Globalization::CultureInfo::InvariantCulture);
+				System::DateTime NowTime = System::DateTime::Now;
+				DefaultName = gcnew System::String("DataLogGraph_") + NowTime.ToString("ddMMMyyyy_HH-mm-ss", System::Globalization::CultureInfo::InvariantCulture);
 
 			}
-			else { DefaultName = gcnew System::String("DataLogGraph_") + NowTime.ToString("ddMMMyyyy_HH-mm-ss", System::Globalization::CultureInfo::InvariantCulture); }
 
 			System::Windows::Forms::SaveFileDialog^ SaveDialog = gcnew System::Windows::Forms::SaveFileDialog();
 			SaveDialog->Title = "Export Graph";
@@ -3396,6 +3922,7 @@ namespace IRCAMThermalViewer {
 			this->LastElapsedMilliSec = 0.0;
 			this->SeriesBuffers->Clear();
 			this->ClearMeasureCursors();
+			this->ClearGraphMarkers();
 			this->PendingLines->Clear();
 			this->ViewDecoder->Reset();
 			this->LoadingBehind = false;
