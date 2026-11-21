@@ -335,6 +335,7 @@ namespace IRCAMThermalViewer {
 		System::Drawing::Point MeasurePanelDragOrigin;    // Position of the panel when the drag started
 		System::Windows::Forms::ToolStripMenuItem^ MeasureMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ ClearCursorsMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ SetCursorTimesMenuItem;
 
 		// Right click menu of the graph, and its settings
 		System::Windows::Forms::ContextMenuStrip^ ChartContextMenu;
@@ -1179,47 +1180,46 @@ namespace IRCAMThermalViewer {
 
 		}
 
-		System::Void GetMeasureExportLines(System::Collections::Generic::List<System::String^>^ Lines) {
+		System::Void DrawMeasurePanelOnExport(System::Drawing::Graphics^ OutputGraphics, float GraphTop) {
 
-			// The measurement as "Label: value" lines for the table of an exported image (only when both cursors are placed)
-			if (System::Double::IsNaN(this->MeasureTimeA) || System::Double::IsNaN(this->MeasureTimeB)) { return; }
+			// Draws the readout panel of the two-cursor measurement into the exported image exactly as it is in the Data Log window: the same position in the graph,
+			// size, background, border, text rows, fonts and colors (taken from the panel and its rows). GraphTop = the top of the graph in the image. Nothing is drawn
+			// while no cursor is placed (the hint text of the mode is not data).
+			if (this->MeasurePanel == nullptr || this->MeasurePanel->Visible == false) { return; }
+			if (System::Double::IsNaN(this->MeasureTimeA) && System::Double::IsNaN(this->MeasureTimeB)) { return; }
 
-			System::String^ Unit = GlobalVariables::DefaultTempUnitString;
-			double DeltaSeconds = (this->MeasureTimeB - this->MeasureTimeA) * 86400.0;
+			float PanelX = (float)this->MeasurePanel->Left;
+			float PanelY = GraphTop + (float)this->MeasurePanel->Top;
+			float PanelW = (float)this->MeasurePanel->Width;
+			float PanelH = (float)this->MeasurePanel->Height;
 
-			Lines->Add(gcnew System::String("Cursor A: ") + this->FormatMeasureTime(this->MeasureTimeA));
-			Lines->Add(gcnew System::String("Cursor B: ") + this->FormatMeasureTime(this->MeasureTimeB));
-			Lines->Add(gcnew System::String(L"\u0394t (B - A): ") + this->FormatMeasureDeltaTime(DeltaSeconds));
+			// Border thickness of the panel (the part of its size that is not client area)
+			float BorderX = ((float)this->MeasurePanel->Width - (float)this->MeasurePanel->ClientSize.Width) / 2.0f;
+			float BorderY = ((float)this->MeasurePanel->Height - (float)this->MeasurePanel->ClientSize.Height) / 2.0f;
 
-			System::Collections::Generic::List<MeasureRow^>^ Rows = this->CollectMeasureRows();
+			System::Drawing::SolidBrush^ BackBrush = gcnew System::Drawing::SolidBrush(this->MeasurePanel->BackColor);
+			System::Drawing::Pen^ BorderPen = gcnew System::Drawing::Pen(System::Drawing::Color::FromArgb(110, 110, 110), 1.0f);
 
-			for (int r = 0; r < Rows->Count; r++) {
+			OutputGraphics->FillRectangle(BackBrush, PanelX, PanelY, PanelW, PanelH);
+			OutputGraphics->DrawRectangle(BorderPen, PanelX, PanelY, PanelW - 1.0f, PanelH - 1.0f);
 
-				MeasureRow^ Row = Rows[r];
+			// No extra left margin: the text starts where the label of the window starts
+			System::Drawing::StringFormat^ TextFormat = gcnew System::Drawing::StringFormat(System::Drawing::StringFormat::GenericTypographic);
 
-				double RowValueA = Row->ValueA;
-				double RowValueB = Row->ValueB;
-				System::String^ AText = (Row->HasA == true) ? RowValueA.ToString("F2") : gcnew System::String("N/A");
-				System::String^ BText = (Row->HasB == true) ? RowValueB.ToString("F2") : gcnew System::String("N/A");
-				Lines->Add(Row->Name + gcnew System::String(" (A, B): ") + AText + gcnew System::String(", ") + BText + gcnew System::String(" ") + Unit);
+			for (int r = 0; r < this->MeasureRowLabels->Count; r++) {
 
-				if (Row->HasA == true && Row->HasB == true) {
+				System::Windows::Forms::Label^ RowLabel = this->MeasureRowLabels[r];
+				System::Drawing::SolidBrush^ TextBrush = gcnew System::Drawing::SolidBrush(RowLabel->ForeColor);
 
-					double DeltaTemperature = Row->ValueB - Row->ValueA;
-					System::String^ SlopeText = gcnew System::String("N/A");
+				OutputGraphics->DrawString(RowLabel->Text, RowLabel->Font, TextBrush, PanelX + BorderX + (float)RowLabel->Left, PanelY + BorderY + (float)RowLabel->Top, TextFormat);
 
-					if (System::Math::Abs(DeltaSeconds) > 0.0000001) {
-
-						double SlopePerMinute = DeltaTemperature / (DeltaSeconds / 60.0);
-						SlopeText = SlopePerMinute.ToString("+0.000;-0.000;0.000") + gcnew System::String(" ") + Unit + gcnew System::String("/min");
-
-					}
-
-					Lines->Add(Row->Name + gcnew System::String(L" (\u0394T, slope): ") + DeltaTemperature.ToString("+0.00;-0.00;0.00") + gcnew System::String(" ") + Unit + gcnew System::String(", ") + SlopeText);
-
-				}
+				delete TextBrush;
 
 			}
+
+			delete TextFormat;
+			delete BorderPen;
+			delete BackBrush;
 
 		}
 
@@ -1304,6 +1304,194 @@ namespace IRCAMThermalViewer {
 			// Switches the placing of the two cursors on or off
 			this->MeasureModeEnabled = this->MeasureMenuItem->Checked;
 			this->ApplyMeasureMode();
+
+		}
+
+		bool TryParseElapsedTime(System::String^ Text, double% Seconds) {
+
+			// An elapsed time typed by the user, in seconds: h:mm:ss, h:mm:ss.fff, m:ss, m:ss.f or only seconds (83.5); a decimal point or comma; an "s" at the end is allowed.
+			// The parts before the last one are whole numbers; no sign.
+			System::String^ Clean = Text->Trim();
+
+			if (Clean->EndsWith("s", System::StringComparison::OrdinalIgnoreCase)) { Clean = Clean->Substring(0, Clean->Length - 1)->Trim(); }
+
+			Clean = Clean->Replace(L',', L'.');
+
+			if (Clean->Length == 0) { return false; }
+
+			cli::array<System::String^>^ Parts = Clean->Split(L':');
+
+			if (Parts->Length > 3) { return false; }
+
+			double Total = 0.0;
+
+			for (int i = 0; i < Parts->Length; i++) {
+
+				System::String^ Part = Parts[i]->Trim();
+				double Number = 0.0;
+				System::Globalization::NumberStyles Style = (i == Parts->Length - 1) ? System::Globalization::NumberStyles::AllowDecimalPoint : System::Globalization::NumberStyles::None;
+
+				if (Part->Length == 0) { return false; }
+				if (System::Double::TryParse(Part, Style, System::Globalization::CultureInfo::InvariantCulture, Number) == false) { return false; }
+
+				Total = (Total * 60.0) + Number;
+
+			}
+
+			Seconds = Total;
+			return true;
+
+		}
+
+		System::Void RemoveMeasureCursor(int Index) {
+
+			// Removes cursor A (0) or B (1) only
+			if (Index == 0) { this->MeasureTimeA = System::Double::NaN; this->MeasureLineA->Visible = false; }
+			else { this->MeasureTimeB = System::Double::NaN; this->MeasureLineB->Visible = false; }
+
+			this->UpdateMeasurement();
+
+		}
+
+		System::Void SetCursorTimesMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// A window to type the elapsed time of cursor A and cursor B (the same time as shown in the panel and on the time axis)
+			double FirstTime = 0.0;
+			double LastTime = 0.0;
+
+			if (this->GetMeasureTimeLimits(FirstTime, LastTime) == false) {
+
+				System::Windows::Forms::MessageBox::Show(this, "There is no data in the graph yet, so no cursor can be placed.", "Set Cursor Times", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Information);
+				return;
+
+			}
+
+			double StartDay = this->ChartStartTime.ToOADate();
+			System::String^ RangeText = this->FormatMeasureTime(FirstTime) + gcnew System::String(" to ") + this->FormatMeasureTime(LastTime);
+
+			System::Windows::Forms::Form^ TimesWindow = gcnew System::Windows::Forms::Form();
+			TimesWindow->Text = "Set Cursor Times";
+			TimesWindow->FormBorderStyle = System::Windows::Forms::FormBorderStyle::FixedDialog;
+			TimesWindow->StartPosition = System::Windows::Forms::FormStartPosition::CenterParent;
+			TimesWindow->MinimizeBox = false;
+			TimesWindow->MaximizeBox = false;
+			TimesWindow->ShowInTaskbar = false;
+			TimesWindow->BackColor = System::Drawing::Color::White;
+			TimesWindow->ForeColor = System::Drawing::Color::Black;
+			TimesWindow->ClientSize = System::Drawing::Size(400, 250);
+
+			System::Windows::Forms::Label^ ALabel = gcnew System::Windows::Forms::Label();
+			ALabel->Text = "Cursor A:";
+			ALabel->AutoSize = false;
+			ALabel->Location = System::Drawing::Point(20, 24);
+			ALabel->Size = System::Drawing::Size(100, 24);
+			TimesWindow->Controls->Add(ALabel);
+
+			System::Windows::Forms::TextBox^ ABox = gcnew System::Windows::Forms::TextBox();
+			ABox->Location = System::Drawing::Point(130, 22);
+			ABox->Size = System::Drawing::Size(240, 24);
+			if (!System::Double::IsNaN(this->MeasureTimeA)) { ABox->Text = this->FormatMeasureTime(this->MeasureTimeA); }
+			TimesWindow->Controls->Add(ABox);
+
+			System::Windows::Forms::Label^ BLabel = gcnew System::Windows::Forms::Label();
+			BLabel->Text = "Cursor B:";
+			BLabel->AutoSize = false;
+			BLabel->Location = System::Drawing::Point(20, 64);
+			BLabel->Size = System::Drawing::Size(100, 24);
+			TimesWindow->Controls->Add(BLabel);
+
+			System::Windows::Forms::TextBox^ BBox = gcnew System::Windows::Forms::TextBox();
+			BBox->Location = System::Drawing::Point(130, 62);
+			BBox->Size = System::Drawing::Size(240, 24);
+			if (!System::Double::IsNaN(this->MeasureTimeB)) { BBox->Text = this->FormatMeasureTime(this->MeasureTimeB); }
+			TimesWindow->Controls->Add(BBox);
+
+			System::Windows::Forms::Label^ NoteLabel = gcnew System::Windows::Forms::Label();
+			NoteLabel->Text = gcnew System::String("Elapsed time since the start of the log, as on the time axis: h:mm:ss, h:mm:ss.fff, m:ss or seconds (for example 1:23.5 or 83.5).\r\n\r\nThe logged time range is ") +
+				RangeText + gcnew System::String(". An empty box removes that cursor.");
+			NoteLabel->AutoSize = false;
+			NoteLabel->Location = System::Drawing::Point(20, 104);
+			NoteLabel->Size = System::Drawing::Size(360, 90);
+			TimesWindow->Controls->Add(NoteLabel);
+
+			System::Windows::Forms::Button^ TimesOkButton = gcnew System::Windows::Forms::Button();
+			TimesOkButton->Text = "Set";
+			TimesOkButton->DialogResult = System::Windows::Forms::DialogResult::OK;
+			TimesOkButton->Location = System::Drawing::Point(90, 204);
+			TimesOkButton->Size = System::Drawing::Size(110, 30);
+			TimesWindow->Controls->Add(TimesOkButton);
+			TimesWindow->AcceptButton = TimesOkButton;
+
+			System::Windows::Forms::Button^ TimesCancelButton = gcnew System::Windows::Forms::Button();
+			TimesCancelButton->Text = "Cancel";
+			TimesCancelButton->DialogResult = System::Windows::Forms::DialogResult::Cancel;
+			TimesCancelButton->Location = System::Drawing::Point(210, 204);
+			TimesCancelButton->Size = System::Drawing::Size(110, 30);
+			TimesWindow->Controls->Add(TimesCancelButton);
+			TimesWindow->CancelButton = TimesCancelButton;
+
+			// The window is shown again with the typed text until both boxes are correct (or Cancel)
+			while (TimesWindow->ShowDialog(this) == System::Windows::Forms::DialogResult::OK) {
+
+				// New limits: the log can have grown while the window was open
+				if (this->GetMeasureTimeLimits(FirstTime, LastTime) == false) { return; }
+
+				cli::array<System::Windows::Forms::TextBox^>^ Boxes = gcnew cli::array<System::Windows::Forms::TextBox^>(2);
+				Boxes[0] = ABox;
+				Boxes[1] = BBox;
+
+				cli::array<double>^ NewTimes = gcnew cli::array<double>(2);
+				bool InputIsCorrect = true;
+				const double ToleranceDays = 0.001 / 86400.0;     // 1 ms: a time shown with milliseconds can be a little beyond the first / last sample
+
+				for (int k = 0; k < 2 && InputIsCorrect == true; k++) {
+
+					System::String^ CursorName = (k == 0) ? gcnew System::String("A") : gcnew System::String("B");
+					NewTimes[k] = System::Double::NaN;
+
+					if (Boxes[k]->Text->Trim()->Length == 0) { continue; }
+
+					double TypedSeconds = 0.0;
+
+					if (this->TryParseElapsedTime(Boxes[k]->Text, TypedSeconds) == false) {
+
+						System::Windows::Forms::MessageBox::Show(this, gcnew System::String("Cursor ") + CursorName + gcnew System::String(": \"") + Boxes[k]->Text + gcnew System::String("\" is not a time. Use h:mm:ss, h:mm:ss.fff, m:ss or seconds."),
+							"Set Cursor Times", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Warning);
+						InputIsCorrect = false;
+						continue;
+
+					}
+
+					double TypedDay = StartDay + (TypedSeconds / 86400.0);
+
+					if (TypedDay < FirstTime - ToleranceDays || TypedDay > LastTime + ToleranceDays) {
+
+						System::Windows::Forms::MessageBox::Show(this, gcnew System::String("Cursor ") + CursorName + gcnew System::String(": the time is outside the logged time range (") + this->FormatMeasureTime(FirstTime) +
+							gcnew System::String(" to ") + this->FormatMeasureTime(LastTime) + gcnew System::String(") of the lines that are shown."), "Set Cursor Times",
+							System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Warning);
+						InputIsCorrect = false;
+						continue;
+
+					}
+
+					NewTimes[k] = System::Math::Min(LastTime, System::Math::Max(FirstTime, TypedDay));
+
+				}
+
+				if (InputIsCorrect == false) { continue; }
+
+				for (int k = 0; k < 2; k++) {
+
+					if (System::Double::IsNaN(NewTimes[k])) { this->RemoveMeasureCursor(k); }
+					else { this->SetMeasureCursor(k, NewTimes[k]); }
+
+				}
+
+				break;
+
+			}
+
+			delete TimesWindow;
 
 		}
 
@@ -1436,6 +1624,10 @@ namespace IRCAMThermalViewer {
 			this->MeasureMenuItem->CheckOnClick = true;
 			this->MeasureMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::MeasureMenuItem_Click);
 
+			this->SetCursorTimesMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->SetCursorTimesMenuItem, "Set Cursor Times...");
+			this->SetCursorTimesMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::SetCursorTimesMenuItem_Click);
+
 			this->ClearCursorsMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
 			this->StyleMenuItem(this->ClearCursorsMenuItem, "Clear Cursors");
 			this->ClearCursorsMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::ClearCursorsMenuItem_Click);
@@ -1485,6 +1677,7 @@ namespace IRCAMThermalViewer {
 
 			this->ChartContextMenu->Items->Add(this->CursorTempMenuItem);
 			this->ChartContextMenu->Items->Add(this->MeasureMenuItem);
+			this->ChartContextMenu->Items->Add(this->SetCursorTimesMenuItem);
 			this->ChartContextMenu->Items->Add(this->ClearCursorsMenuItem);
 			this->ChartContextMenu->Items->Add(Separator1);
 			this->ChartContextMenu->Items->Add(this->XTicksMenuItem);
@@ -2834,6 +3027,9 @@ namespace IRCAMThermalViewer {
 				if (VectorImage != nullptr) { OutputGraphics->DrawImage(VectorImage, 0, StripHeight, ChartImage->Width, ChartImage->Height); }
 				else { OutputGraphics->DrawImage(ChartImage, 0, StripHeight, ChartImage->Width, ChartImage->Height); }
 
+				// The readout of the two-cursor measurement, on the graph, as in the window (the cursor lines are already part of the graph)
+				this->DrawMeasurePanelOnExport(OutputGraphics, (float)StripHeight);
+
 				// The table below the graph
 				System::Drawing::SolidBrush^ ConfigBrush = gcnew System::Drawing::SolidBrush(System::Drawing::Color::FromArgb(220, 220, 220));
 				System::Drawing::SolidBrush^ HeadingBackBrush = gcnew System::Drawing::SolidBrush(System::Drawing::Color::FromArgb(60, 60, 60));
@@ -3009,9 +3205,6 @@ namespace IRCAMThermalViewer {
 			else { OtherLines->Add(gcnew System::String("Drift-Based Calibration: Off")); }
 
 			OtherLines->Add(gcnew System::String("Temperature Unit: ") + GlobalVariables::DefaultTempUnitString);
-
-			// Two-cursor measurement (cursors A and B placed): the times, the time difference and, per line that is shown, the values, the difference and the slope
-			this->GetMeasureExportLines(OtherLines);
 
 		}
 
