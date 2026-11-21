@@ -6,9 +6,11 @@ the number counts builds of this repository.
 ## Unreleased
 
 - **Fix (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_29`, not tested yet, not compiled yet): the cursor temperature label showed `Temperature: N/A` while the mouse was on a cursor line of the two-cursor
-  measurement.** The cursor lines are annotations of the chart, and the hit test of the label (`UpdateCursorLabel`) did not count an annotation as plot area, so on the line it behaved as if the mouse were outside
-  the graph. `UpdateCursorLabel` now uses `IsPointInPlotArea` (the same test as the placing of the cursors), which counts a cursor line as plot area: the label shows the temperature and time under the mouse also on
-  a cursor line. Change in `DataLogGUI.h` only.
+  measurement.** The cursor lines are annotations of the chart. The label (`UpdateCursorLabel`) decided with the hit test of the chart, which over an annotation reports an annotation without a chart area, so on a
+  line the mouse counted as outside the graph (a first attempt that only added the annotation type to the hit test was not enough for this reason). `IsPointInPlotArea` now decides by position: the mouse is inside
+  the plot area when it is between the pixel positions of the ends of the shown time and temperature ranges (the zoomed range while zoomed); the hit test is only a fallback when the axes are not ready.
+  `UpdateCursorLabel` and the placing of the cursors use it, so the label shows the temperature and time under the mouse also on a cursor line, and the axes and scroll bars still count as outside. Change in
+  `DataLogGUI.h` only.
 
 - **New (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_29`, not tested yet, not compiled yet): typed cursor times for the two-cursor measurement of the Data Log graph.** The cursors A and B (previous entry) could
   only be placed with the mouse, which is as exact as a pixel. New right-click menu item **Set Cursor Times...** opens a window with two boxes, **Cursor A** and **Cursor B**, for the elapsed time since the start of
