@@ -2766,17 +2766,18 @@ namespace IRCAMThermalViewer {
 			// Then the window for the notes (it shows the notes that are set now - keep them, change them or empty the text). Cancel cancels the export.
 			if (this->ShowGraphNotesWindow() == false) { return; }
 
-			// Default file name: the name of the session file + _graph, or the date and time
+			// Default file name: the name of the session file + _graph + the time of this export (so every export gets another name and the save window does not
+			// ask to overwrite the previous one), or the date and time when there is no session file name
 			System::String^ DefaultName;
 			System::String^ SessionFileName = GlobalVariables::DataLoggingSessionFileNameString;
+			System::DateTime NowTime = System::DateTime::Now;
 
-			if (SessionFileName != nullptr && SessionFileName->Length > 0) { DefaultName = System::IO::Path::GetFileNameWithoutExtension(SessionFileName) + gcnew System::String("_graph"); }
-			else {
+			if (SessionFileName != nullptr && SessionFileName->Length > 0) {
 
-				System::DateTime NowTime = System::DateTime::Now;
-				DefaultName = gcnew System::String("DataLogGraph_") + NowTime.ToString("ddMMMyyyy_HH-mm-ss", System::Globalization::CultureInfo::InvariantCulture);
+				DefaultName = System::IO::Path::GetFileNameWithoutExtension(SessionFileName) + gcnew System::String("_graph_") + NowTime.ToString("HH-mm-ss", System::Globalization::CultureInfo::InvariantCulture);
 
 			}
+			else { DefaultName = gcnew System::String("DataLogGraph_") + NowTime.ToString("ddMMMyyyy_HH-mm-ss", System::Globalization::CultureInfo::InvariantCulture); }
 
 			System::Windows::Forms::SaveFileDialog^ SaveDialog = gcnew System::Windows::Forms::SaveFileDialog();
 			SaveDialog->Title = "Export Graph";
