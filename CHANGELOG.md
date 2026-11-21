@@ -5,6 +5,11 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- **Fix (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_29`, not tested yet, not compiled yet): the suggested file name of Export Graph is now different for every export.** It was the session file name + `_graph`
+  (for example `DataLogSession_21Nov2026_12-57-55_graph`; the date and time in it are those of the session start), so a second export of the same session got the same name and the save window asked to overwrite the
+  first image. It is now the session file name + `_graph_` + the time of the export, for example `DataLogSession_21Nov2026_12-57-55_graph_12-59-55`. Without a session file name it is still `DataLogGraph_` + date and
+  time. Change in `ExportGraphButton_Click` (`DataLogGUI.h`) only.
+
 - **Fix (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_29`, not tested yet, not compiled yet): the cursor temperature label showed `Temperature: N/A` while the mouse was on a cursor line of the two-cursor
   measurement.** The cursor lines are annotations of the chart. The label (`UpdateCursorLabel`) decided with the hit test of the chart, which over an annotation reports an annotation without a chart area, so on a
   line the mouse counted as outside the graph (a first attempt that only added the annotation type to the hit test was not enough for this reason). `IsPointInPlotArea` now decides by position: the mouse is inside
