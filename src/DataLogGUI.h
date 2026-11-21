@@ -200,6 +200,32 @@ namespace IRCAMThermalViewer {
 
 	};
 
+	// One graph line in the two-cursor measurement: its name and color and its value at cursor A and at cursor B (HasA / HasB are false when the line has no
+	// value at that time: outside the logged time range or a gap in the line)
+	ref class MeasureRow {
+
+	public:
+
+		System::String^ Name;
+		System::Drawing::Color LineColor;
+		bool HasA;
+		bool HasB;
+		double ValueA;
+		double ValueB;
+
+		MeasureRow() {
+
+			this->Name = "";
+			this->LineColor = System::Drawing::Color::White;
+			this->HasA = false;
+			this->HasB = false;
+			this->ValueA = 0.0;
+			this->ValueB = 0.0;
+
+		}
+
+	};
+
 	public ref class DataLogGUI : public System::Windows::Forms::Form {
 
 	public:
@@ -228,6 +254,13 @@ namespace IRCAMThermalViewer {
 			this->ViewDelimiter = nullptr;
 			this->ViewDelimiterFilePath = nullptr;
 			this->CursorLabelEnabled = false;
+			this->MeasureModeEnabled = false;
+			this->MeasureTimeA = System::Double::NaN;
+			this->MeasureTimeB = System::Double::NaN;
+			this->MeasureDragging = -1;
+			this->MeasureRowLabels = gcnew System::Collections::Generic::List<System::Windows::Forms::Label^>();
+			this->MeasurePanelPositioned = false;
+			this->MeasurePanelDragging = false;
 			this->XTickCount = 0;
 			this->YTickCount = 0;
 			this->YRangeLocked = false;
@@ -284,6 +317,24 @@ namespace IRCAMThermalViewer {
 		System::DateTime ChartStartTime;
 		System::Windows::Forms::Label^ CursorLabel;     // Shows the temperature at the mouse cursor (switched on / off in the right click menu of the graph)
 		bool CursorLabelEnabled;
+
+		// Two-cursor measurement (right click menu: Measure With Two Cursors): cursor A and B are vertical lines in the graph (annotations of the chart, so they
+		// are part of an exported image). A panel in the graph shows the time of each cursor, the time difference and, for every line that is shown, its value at A and
+		// at B, the temperature difference and the slope (temperature unit per minute). Times are in days (the unit of the time axis), NaN = the cursor is not placed.
+		bool MeasureModeEnabled;                     // True: a left click / drag in the graph places or moves a cursor (the zoom rectangle is switched off meanwhile)
+		double MeasureTimeA;
+		double MeasureTimeB;
+		int MeasureDragging;                         // -1 = no cursor is being dragged, 0 = cursor A, 1 = cursor B
+		System::Windows::Forms::DataVisualization::Charting::VerticalLineAnnotation^ MeasureLineA;
+		System::Windows::Forms::DataVisualization::Charting::VerticalLineAnnotation^ MeasureLineB;
+		System::Windows::Forms::FlowLayoutPanel^ MeasurePanel;      // The readout of the measurement (can be moved with the mouse)
+		System::Collections::Generic::List<System::Windows::Forms::Label^>^ MeasureRowLabels;
+		bool MeasurePanelPositioned;                 // The panel got its first position
+		bool MeasurePanelDragging;
+		System::Drawing::Point MeasurePanelDragStart;     // Mouse position (screen) when the panel drag started
+		System::Drawing::Point MeasurePanelDragOrigin;    // Position of the panel when the drag started
+		System::Windows::Forms::ToolStripMenuItem^ MeasureMenuItem;
+		System::Windows::Forms::ToolStripMenuItem^ ClearCursorsMenuItem;
 
 		// Right click menu of the graph, and its settings
 		System::Windows::Forms::ContextMenuStrip^ ChartContextMenu;
@@ -634,6 +685,9 @@ namespace IRCAMThermalViewer {
 			this->LogChart->Controls->Add(this->CursorLabel);
 
 			this->LogChart->MouseMove += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseMove);
+			this->LogChart->MouseDown += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseDown);
+			this->LogChart->MouseUp += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseUp);
+			this->BuildMeasureObjects();
 			this->LogChart->MouseDoubleClick += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::LogChart_MouseDoubleClick);
 
 			// Text box for editing the title directly on the graph (hidden until the title is double-clicked)
@@ -709,6 +763,14 @@ namespace IRCAMThermalViewer {
 
 		System::Void LogChart_MouseMove(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
 
+			// A measurement cursor that is being dragged follows the mouse (also outside the plot area: it stays inside the logged time range)
+			if (this->MeasureDragging >= 0 && (e->Button & System::Windows::Forms::MouseButtons::Left) == System::Windows::Forms::MouseButtons::Left) {
+
+				double DragTime = 0.0;
+				if (this->GetMeasureTimeAtMouse(e->X, DragTime) == true) { this->SetMeasureCursor(this->MeasureDragging, DragTime); }
+
+			}
+
 			if (this->CursorLabelEnabled == true) { this->UpdateCursorLabel(e->X, e->Y); }
 
 		}
@@ -717,6 +779,537 @@ namespace IRCAMThermalViewer {
 
 			// The label is hidden when the mouse leaves the graph (it shows again when the mouse comes back)
 			this->CursorLabel->Visible = false;
+
+		}
+
+		// ------------------------- Two-cursor measurement ------------------------- //
+
+		System::Void BuildMeasureObjects() {
+
+			// The two cursor lines (annotations of the chart, hidden until placed) and the readout panel
+			System::Drawing::Color ColorA = System::Drawing::Color::FromArgb(255, 220, 60);
+			System::Drawing::Color ColorB = System::Drawing::Color::FromArgb(60, 220, 255);
+
+			for (int k = 0; k < 2; k++) {
+
+				System::Windows::Forms::DataVisualization::Charting::VerticalLineAnnotation^ Line = gcnew System::Windows::Forms::DataVisualization::Charting::VerticalLineAnnotation();
+				Line->Name = (k == 0) ? gcnew System::String("MeasureCursorA") : gcnew System::String("MeasureCursorB");
+				Line->AxisX = this->LogChart->ChartAreas[0]->AxisX;
+				Line->IsInfinitive = true;
+				Line->ClipToChartArea = this->LogChart->ChartAreas[0]->Name;
+				Line->LineColor = (k == 0) ? ColorA : ColorB;
+				Line->LineWidth = 2;
+				Line->LineDashStyle = System::Windows::Forms::DataVisualization::Charting::ChartDashStyle::Dash;
+				Line->AllowMoving = false;
+				Line->AllowSelecting = false;
+				Line->Y = 0;
+				Line->Height = 100;
+				Line->X = 0;
+				Line->Visible = false;
+				this->LogChart->Annotations->Add(Line);
+
+				if (k == 0) { this->MeasureLineA = Line; }
+				else { this->MeasureLineB = Line; }
+
+			}
+
+			this->MeasurePanel = gcnew System::Windows::Forms::FlowLayoutPanel();
+			this->MeasurePanel->FlowDirection = System::Windows::Forms::FlowDirection::TopDown;
+			this->MeasurePanel->WrapContents = false;
+			this->MeasurePanel->AutoSize = true;
+			this->MeasurePanel->AutoSizeMode = System::Windows::Forms::AutoSizeMode::GrowAndShrink;
+			this->MeasurePanel->BackColor = System::Drawing::Color::FromArgb(20, 20, 20);
+			this->MeasurePanel->BorderStyle = System::Windows::Forms::BorderStyle::FixedSingle;
+			this->MeasurePanel->Padding = System::Windows::Forms::Padding(4);
+			this->MeasurePanel->Cursor = System::Windows::Forms::Cursors::SizeAll;
+			this->MeasurePanel->Visible = false;
+			this->MeasurePanel->MouseDown += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::MeasurePanel_MouseDown);
+			this->MeasurePanel->MouseMove += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::MeasurePanel_MouseMove);
+			this->MeasurePanel->MouseUp += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::MeasurePanel_MouseUp);
+			this->LogChart->Controls->Add(this->MeasurePanel);
+
+		}
+
+		System::Void MeasurePanel_MouseDown(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
+
+			// The panel is moved by dragging it (the sender is the panel or one of its text rows; the screen position of the mouse is used)
+			if (e->Button != System::Windows::Forms::MouseButtons::Left) { return; }
+
+			this->MeasurePanelDragging = true;
+			this->MeasurePanelDragStart = System::Windows::Forms::Control::MousePosition;
+			this->MeasurePanelDragOrigin = this->MeasurePanel->Location;
+
+		}
+
+		System::Void MeasurePanel_MouseMove(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
+
+			if (this->MeasurePanelDragging == false) { return; }
+
+			System::Drawing::Point Now = System::Windows::Forms::Control::MousePosition;
+			this->MeasurePanel->Location = System::Drawing::Point(this->MeasurePanelDragOrigin.X + (Now.X - this->MeasurePanelDragStart.X),
+				this->MeasurePanelDragOrigin.Y + (Now.Y - this->MeasurePanelDragStart.Y));
+			this->KeepMeasurePanelInside();
+
+		}
+
+		System::Void MeasurePanel_MouseUp(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
+
+			this->MeasurePanelDragging = false;
+
+		}
+
+		System::Void KeepMeasurePanelInside() {
+
+			// The panel stays inside the graph
+			int X = this->MeasurePanel->Left;
+			int Y = this->MeasurePanel->Top;
+
+			if (X + this->MeasurePanel->Width > this->LogChart->ClientSize.Width) { X = this->LogChart->ClientSize.Width - this->MeasurePanel->Width; }
+			if (Y + this->MeasurePanel->Height > this->LogChart->ClientSize.Height) { Y = this->LogChart->ClientSize.Height - this->MeasurePanel->Height; }
+			if (X < 0) { X = 0; }
+			if (Y < 0) { Y = 0; }
+
+			if (X != this->MeasurePanel->Left || Y != this->MeasurePanel->Top) { this->MeasurePanel->Location = System::Drawing::Point(X, Y); }
+
+		}
+
+		bool IsPointInPlotArea(int MouseX, int MouseY) {
+
+			// True when the point is inside the plot area of the graph (not on the axes, the scroll bars or outside the graph). A cursor line counts as plot area.
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::HitTestResult^ Hit = this->LogChart->HitTest(MouseX, MouseY);
+				System::Windows::Forms::DataVisualization::Charting::ChartElementType Element = Hit->ChartElementType;
+
+				return (Hit->ChartArea != nullptr && (Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::PlottingArea ||
+					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::DataPoint ||
+					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::Gridlines ||
+					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::StripLines ||
+					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::Annotation));
+
+			}
+			catch (System::Exception^) {}
+
+			return false;
+
+		}
+
+		bool GetMeasureTimeLimits(double% FirstTime, double% LastTime) {
+
+			// The logged time range (in days) of the lines that are shown: a cursor stays inside it, so every line has a value at the cursor (false when there is no data)
+			bool Found = false;
+
+			for (int i = 0; i < this->SeriesBuffers->Count && i < this->LogChart->Series->Count; i++) {
+
+				if (this->LogChart->Series[i]->Enabled == false) { continue; }
+
+				int Count = this->SeriesBuffers[i]->XValues->Count;
+				if (Count == 0) { continue; }
+
+				double LineFirst = this->SeriesBuffers[i]->XValues[0];
+				double LineLast = this->SeriesBuffers[i]->XValues[Count - 1];
+
+				if (Found == false || LineFirst < FirstTime) { FirstTime = LineFirst; }
+				if (Found == false || LineLast > LastTime) { LastTime = LineLast; }
+				Found = true;
+
+			}
+
+			return Found;
+
+		}
+
+		bool GetMeasureTimeAtMouse(int MouseX, double% TimeValue) {
+
+			// The time (in days) at the horizontal mouse position, limited to the logged time range. False when there is nothing to measure yet.
+			double FirstTime = 0.0;
+			double LastTime = 0.0;
+
+			if (this->GetMeasureTimeLimits(FirstTime, LastTime) == false) { return false; }
+
+			try {
+
+				double Value = this->LogChart->ChartAreas[0]->AxisX->PixelPositionToValue((double)MouseX);
+
+				if (System::Double::IsNaN(Value)) { return false; }
+				if (Value < FirstTime) { Value = FirstTime; }
+				if (Value > LastTime) { Value = LastTime; }
+
+				TimeValue = Value;
+				return true;
+
+			}
+			catch (System::Exception^) {}
+
+			return false;
+
+		}
+
+		bool GetLineValueAt(int SeriesIndex, double TimeValue, double% Value) {
+
+			// The value of a line at a time (days): the sample itself, or linear interpolation between the two neighbouring samples. False outside the logged time range
+			// of the line and in a gap (a NaN sample next to the time).
+			if (SeriesIndex < 0 || SeriesIndex >= this->SeriesBuffers->Count) { return false; }
+
+			LogSeriesBuffer^ Buffer = this->SeriesBuffers[SeriesIndex];
+			int Count = Buffer->XValues->Count;
+
+			if (Count == 0 || Buffer->YValues->Count != Count) { return false; }
+			if (TimeValue < Buffer->XValues[0] || TimeValue > Buffer->XValues[Count - 1]) { return false; }
+
+			int Index = Buffer->XValues->BinarySearch(TimeValue);
+
+			if (Index >= 0) {
+
+				double Exact = Buffer->YValues[Index];
+				if (System::Double::IsNaN(Exact)) { return false; }
+
+				Value = Exact;
+				return true;
+
+			}
+
+			Index = ~Index;     // The index of the first sample that is later than the time
+
+			if (Index <= 0 || Index >= Count) { return false; }
+
+			double X0 = Buffer->XValues[Index - 1];
+			double X1 = Buffer->XValues[Index];
+			double Y0 = Buffer->YValues[Index - 1];
+			double Y1 = Buffer->YValues[Index];
+
+			if (System::Double::IsNaN(Y0) || System::Double::IsNaN(Y1)) { return false; }
+
+			if (X1 - X0 <= 0.0) { Value = Y0; }
+			else { Value = Y0 + ((Y1 - Y0) * ((TimeValue - X0) / (X1 - X0))); }
+
+			return true;
+
+		}
+
+		System::Void LogChart_MouseDown(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
+
+			// With Measure With Two Cursors on, a left click in the plot area places a cursor: the first click A, the second B; after that the nearer cursor moves.
+			// Keep the button down and move the mouse to fine-tune the position.
+			if (this->MeasureModeEnabled == false || e->Button != System::Windows::Forms::MouseButtons::Left) { return; }
+			if (this->IsPointInPlotArea(e->X, e->Y) == false) { return; }
+
+			double TimeValue = 0.0;
+			if (this->GetMeasureTimeAtMouse(e->X, TimeValue) == false) { return; }
+
+			int Index = 0;
+
+			if (System::Double::IsNaN(this->MeasureTimeA)) { Index = 0; }
+			else if (System::Double::IsNaN(this->MeasureTimeB)) { Index = 1; }
+			else if (System::Math::Abs(TimeValue - this->MeasureTimeA) <= System::Math::Abs(TimeValue - this->MeasureTimeB)) { Index = 0; }
+			else { Index = 1; }
+
+			this->MeasureDragging = Index;
+			this->SetMeasureCursor(Index, TimeValue);
+
+		}
+
+		System::Void LogChart_MouseUp(System::Object^ sender, System::Windows::Forms::MouseEventArgs^ e) {
+
+			this->MeasureDragging = -1;
+
+		}
+
+		System::Void SetMeasureCursor(int Index, double TimeValue) {
+
+			// Places cursor A (0) or B (1) at a time (days) and updates the readout
+			if (Index == 0) { this->MeasureTimeA = TimeValue; this->MeasureLineA->X = TimeValue; this->MeasureLineA->Visible = true; }
+			else { this->MeasureTimeB = TimeValue; this->MeasureLineB->X = TimeValue; this->MeasureLineB->Visible = true; }
+
+			this->UpdateMeasurement();
+
+		}
+
+		System::Void ClearMeasureCursors() {
+
+			// Removes both cursors and the readout (nothing to do before the graph objects are built)
+			if (this->MeasureLineA == nullptr || this->MeasureLineB == nullptr || this->MeasurePanel == nullptr) { return; }
+
+			this->MeasureTimeA = System::Double::NaN;
+			this->MeasureTimeB = System::Double::NaN;
+			this->MeasureDragging = -1;
+			this->MeasureLineA->Visible = false;
+			this->MeasureLineB->Visible = false;
+			this->UpdateMeasurement();
+
+		}
+
+		System::Void ApplyMeasureMode() {
+
+			// While cursors are placed with the mouse the zoom rectangle is switched off (a click that moves a little would zoom in). Switching the mode off
+			// brings the zoom back and keeps the cursors and the readout until Clear Cursors.
+			System::Windows::Forms::DataVisualization::Charting::ChartArea^ Area = this->LogChart->ChartAreas[0];
+
+			Area->CursorX->IsUserSelectionEnabled = !this->MeasureModeEnabled;
+			Area->CursorY->IsUserSelectionEnabled = !this->MeasureModeEnabled;
+
+			if (this->MeasureModeEnabled == true) { this->LogChart->Cursor = System::Windows::Forms::Cursors::Cross; }
+			else { this->LogChart->Cursor = System::Windows::Forms::Cursors::Default; this->MeasureDragging = -1; }
+
+			this->UpdateMeasurement();
+
+		}
+
+		System::String^ FormatMeasureTime(double TimeValue) {
+
+			// Elapsed time of a cursor, h:mm:ss.fff
+			double ElapsedMilliSec = (TimeValue - this->ChartStartTime.ToOADate()) * 86400000.0;
+			return this->FormatAxisTime(ElapsedMilliSec, true);
+
+		}
+
+		System::String^ FormatMeasureDeltaTime(double DeltaSeconds) {
+
+			// Time difference B - A: signed seconds, and h:mm:ss in brackets from one minute on
+			System::String^ Text = DeltaSeconds.ToString("+0.###;-0.###;0") + gcnew System::String(" s");
+
+			if (System::Math::Abs(DeltaSeconds) >= 60.0) { Text = Text + gcnew System::String(" (") + this->FormatAxisTime(System::Math::Abs(DeltaSeconds) * 1000.0, false) + gcnew System::String(")"); }
+
+			return Text;
+
+		}
+
+		System::Collections::Generic::List<MeasureRow^>^ CollectMeasureRows() {
+
+			// The lines that are shown with their value at cursor A and at cursor B
+			System::Collections::Generic::List<MeasureRow^>^ Rows = gcnew System::Collections::Generic::List<MeasureRow^>();
+
+			bool ASet = !System::Double::IsNaN(this->MeasureTimeA);
+			bool BSet = !System::Double::IsNaN(this->MeasureTimeB);
+
+			for (int i = 0; i < this->LogChart->Series->Count; i++) {
+
+				System::Windows::Forms::DataVisualization::Charting::Series^ LineSeries = this->LogChart->Series[i];
+				if (LineSeries->Enabled == false) { continue; }
+
+				MeasureRow^ Row = gcnew MeasureRow();
+				Row->Name = LineSeries->LegendText;
+				Row->LineColor = LineSeries->Color;
+
+				double Value = 0.0;
+				if (ASet == true && this->GetLineValueAt(i, this->MeasureTimeA, Value) == true) { Row->HasA = true; Row->ValueA = Value; }
+				if (BSet == true && this->GetLineValueAt(i, this->MeasureTimeB, Value) == true) { Row->HasB = true; Row->ValueB = Value; }
+
+				Rows->Add(Row);
+
+			}
+
+			return Rows;
+
+		}
+
+		System::Void BuildMeasureTexts(System::Collections::Generic::List<System::String^>^ Texts, System::Collections::Generic::List<System::Drawing::Color>^ Colors) {
+
+			// The rows of the readout panel. Slope = (value at B - value at A) / (time at B - time at A), in the temperature unit per minute.
+			System::String^ Unit = GlobalVariables::DefaultTempUnitString;
+			System::Drawing::Color ColorA = System::Drawing::Color::FromArgb(255, 220, 60);
+			System::Drawing::Color ColorB = System::Drawing::Color::FromArgb(60, 220, 255);
+			System::Drawing::Color ColorText = System::Drawing::Color::White;
+			System::Drawing::Color ColorHint = System::Drawing::Color::FromArgb(170, 170, 170);
+
+			bool ASet = !System::Double::IsNaN(this->MeasureTimeA);
+			bool BSet = !System::Double::IsNaN(this->MeasureTimeB);
+
+			if (ASet == true) { Texts->Add(gcnew System::String("A:  ") + this->FormatMeasureTime(this->MeasureTimeA)); Colors->Add(ColorA); }
+			if (BSet == true) { Texts->Add(gcnew System::String("B:  ") + this->FormatMeasureTime(this->MeasureTimeB)); Colors->Add(ColorB); }
+
+			double DeltaSeconds = 0.0;
+			bool BothSet = (ASet == true && BSet == true);
+
+			if (BothSet == true) {
+
+				DeltaSeconds = (this->MeasureTimeB - this->MeasureTimeA) * 86400.0;
+				Texts->Add(gcnew System::String(L"\u0394t (B - A):  ") + this->FormatMeasureDeltaTime(DeltaSeconds)); Colors->Add(ColorText);
+
+			}
+
+			System::Collections::Generic::List<MeasureRow^>^ Rows = this->CollectMeasureRows();
+
+			for (int r = 0; r < Rows->Count; r++) {
+
+				MeasureRow^ Row = Rows[r];
+
+				System::String^ ValueText = Row->Name + gcnew System::String(":");
+				double RowValueA = Row->ValueA;
+				double RowValueB = Row->ValueB;
+				if (ASet == true) { ValueText = ValueText + gcnew System::String("  A = ") + ((Row->HasA == true) ? RowValueA.ToString("F2") : gcnew System::String("N/A")); }
+				if (BSet == true) { ValueText = ValueText + gcnew System::String("  B = ") + ((Row->HasB == true) ? RowValueB.ToString("F2") : gcnew System::String("N/A")); }
+				ValueText = ValueText + gcnew System::String(" ") + Unit;
+
+				Texts->Add(ValueText); Colors->Add(Row->LineColor);
+
+				if (BothSet == true) {
+
+					System::String^ DeltaText = gcnew System::String(L"      \u0394T = N/A");
+
+					if (Row->HasA == true && Row->HasB == true) {
+
+						double DeltaTemperature = Row->ValueB - Row->ValueA;
+						DeltaText = gcnew System::String(L"      \u0394T = ") + DeltaTemperature.ToString("+0.00;-0.00;0.00") + gcnew System::String(" ") + Unit;
+
+						if (System::Math::Abs(DeltaSeconds) > 0.0000001) {
+
+							double SlopePerMinute = DeltaTemperature / (DeltaSeconds / 60.0);
+							DeltaText = DeltaText + gcnew System::String("    Slope = ") + SlopePerMinute.ToString("+0.000;-0.000;0.000") + gcnew System::String(" ") + Unit + gcnew System::String("/min");
+
+						}
+						else { DeltaText = DeltaText + gcnew System::String("    Slope = N/A"); }
+
+					}
+
+					Texts->Add(DeltaText); Colors->Add(Row->LineColor);
+
+				}
+
+			}
+
+			if (Rows->Count == 0) { Texts->Add("No line is shown"); Colors->Add(ColorHint); }
+
+			if (BothSet == false && this->MeasureModeEnabled == true) {
+
+				Texts->Add(ASet == true ? gcnew System::String("Click in the graph to place cursor B") : gcnew System::String("Click in the graph to place cursor A"));
+				Colors->Add(ColorHint);
+
+			}
+
+		}
+
+		System::Void GetMeasureExportLines(System::Collections::Generic::List<System::String^>^ Lines) {
+
+			// The measurement as "Label: value" lines for the table of an exported image (only when both cursors are placed)
+			if (System::Double::IsNaN(this->MeasureTimeA) || System::Double::IsNaN(this->MeasureTimeB)) { return; }
+
+			System::String^ Unit = GlobalVariables::DefaultTempUnitString;
+			double DeltaSeconds = (this->MeasureTimeB - this->MeasureTimeA) * 86400.0;
+
+			Lines->Add(gcnew System::String("Cursor A: ") + this->FormatMeasureTime(this->MeasureTimeA));
+			Lines->Add(gcnew System::String("Cursor B: ") + this->FormatMeasureTime(this->MeasureTimeB));
+			Lines->Add(gcnew System::String(L"\u0394t (B - A): ") + this->FormatMeasureDeltaTime(DeltaSeconds));
+
+			System::Collections::Generic::List<MeasureRow^>^ Rows = this->CollectMeasureRows();
+
+			for (int r = 0; r < Rows->Count; r++) {
+
+				MeasureRow^ Row = Rows[r];
+
+				double RowValueA = Row->ValueA;
+				double RowValueB = Row->ValueB;
+				System::String^ AText = (Row->HasA == true) ? RowValueA.ToString("F2") : gcnew System::String("N/A");
+				System::String^ BText = (Row->HasB == true) ? RowValueB.ToString("F2") : gcnew System::String("N/A");
+				Lines->Add(Row->Name + gcnew System::String(" (A, B): ") + AText + gcnew System::String(", ") + BText + gcnew System::String(" ") + Unit);
+
+				if (Row->HasA == true && Row->HasB == true) {
+
+					double DeltaTemperature = Row->ValueB - Row->ValueA;
+					System::String^ SlopeText = gcnew System::String("N/A");
+
+					if (System::Math::Abs(DeltaSeconds) > 0.0000001) {
+
+						double SlopePerMinute = DeltaTemperature / (DeltaSeconds / 60.0);
+						SlopeText = SlopePerMinute.ToString("+0.000;-0.000;0.000") + gcnew System::String(" ") + Unit + gcnew System::String("/min");
+
+					}
+
+					Lines->Add(Row->Name + gcnew System::String(L" (\u0394T, slope): ") + DeltaTemperature.ToString("+0.00;-0.00;0.00") + gcnew System::String(" ") + Unit + gcnew System::String(", ") + SlopeText);
+
+				}
+
+			}
+
+		}
+
+		System::Void UpdateMeasurement() {
+
+			// Brings the readout panel up to date (cursor positions, shown lines). It is hidden while no cursor is placed.
+			bool ASet = !System::Double::IsNaN(this->MeasureTimeA);
+			bool BSet = !System::Double::IsNaN(this->MeasureTimeB);
+
+			if (ASet == false && BSet == false && this->MeasureModeEnabled == false) {
+
+				this->MeasurePanel->Visible = false;
+				return;
+
+			}
+
+			System::Collections::Generic::List<System::String^>^ Texts = gcnew System::Collections::Generic::List<System::String^>();
+			System::Collections::Generic::List<System::Drawing::Color>^ Colors = gcnew System::Collections::Generic::List<System::Drawing::Color>();
+			this->BuildMeasureTexts(Texts, Colors);
+
+			// Mode on but no cursor yet: only the hint
+			if (ASet == false && BSet == false) {
+
+				Texts->Clear();
+				Colors->Clear();
+				Texts->Add("Click in the graph to place cursor A");
+				Colors->Add(System::Drawing::Color::FromArgb(170, 170, 170));
+
+			}
+
+			this->MeasurePanel->SuspendLayout();
+
+			// One text row per label; labels are reused
+			while (this->MeasureRowLabels->Count < Texts->Count) {
+
+				System::Windows::Forms::Label^ RowLabel = gcnew System::Windows::Forms::Label();
+				RowLabel->AutoSize = true;
+				RowLabel->Margin = System::Windows::Forms::Padding(0, 1, 0, 1);
+				RowLabel->Cursor = System::Windows::Forms::Cursors::SizeAll;
+				RowLabel->MouseDown += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::MeasurePanel_MouseDown);
+				RowLabel->MouseMove += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::MeasurePanel_MouseMove);
+				RowLabel->MouseUp += gcnew System::Windows::Forms::MouseEventHandler(this, &DataLogGUI::MeasurePanel_MouseUp);
+				RowLabel->ContextMenuStrip = this->ChartContextMenu;
+				this->MeasurePanel->Controls->Add(RowLabel);
+				this->MeasureRowLabels->Add(RowLabel);
+
+			}
+
+			while (this->MeasureRowLabels->Count > Texts->Count) {
+
+				System::Windows::Forms::Label^ ExtraLabel = this->MeasureRowLabels[this->MeasureRowLabels->Count - 1];
+				this->MeasureRowLabels->RemoveAt(this->MeasureRowLabels->Count - 1);
+				this->MeasurePanel->Controls->Remove(ExtraLabel);
+
+			}
+
+			for (int r = 0; r < Texts->Count; r++) {
+
+				if (this->MeasureRowLabels[r]->Text != Texts[r]) { this->MeasureRowLabels[r]->Text = Texts[r]; }
+				this->MeasureRowLabels[r]->ForeColor = Colors[r];
+
+			}
+
+			this->MeasurePanel->ResumeLayout(true);
+
+			if (this->MeasurePanelPositioned == false) {
+
+				// First position: in the top left corner of the plot area
+				this->MeasurePanel->Location = System::Drawing::Point(85, 20);
+				this->MeasurePanelPositioned = true;
+
+			}
+
+			this->MeasurePanel->Visible = true;
+			this->MeasurePanel->BringToFront();
+			this->KeepMeasurePanelInside();
+
+		}
+
+		System::Void MeasureMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Switches the placing of the two cursors on or off
+			this->MeasureModeEnabled = this->MeasureMenuItem->Checked;
+			this->ApplyMeasureMode();
+
+		}
+
+		System::Void ClearCursorsMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			this->ClearMeasureCursors();
 
 		}
 
@@ -838,6 +1431,15 @@ namespace IRCAMThermalViewer {
 			this->CursorTempMenuItem->CheckOnClick = true;
 			this->CursorTempMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::CursorTempMenuItem_Click);
 
+			this->MeasureMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->MeasureMenuItem, "Measure With Two Cursors");
+			this->MeasureMenuItem->CheckOnClick = true;
+			this->MeasureMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::MeasureMenuItem_Click);
+
+			this->ClearCursorsMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
+			this->StyleMenuItem(this->ClearCursorsMenuItem, "Clear Cursors");
+			this->ClearCursorsMenuItem->Click += gcnew System::EventHandler(this, &DataLogGUI::ClearCursorsMenuItem_Click);
+
 			this->XTicksMenuItem = gcnew System::Windows::Forms::ToolStripMenuItem();
 			this->StyleMenuItem(this->XTicksMenuItem, "X-Axis Number Of Ticks");
 			this->AddTickItems(this->XTicksMenuItem, gcnew cli::array<int>{ 5, 10, 20, 25, 50 });
@@ -882,6 +1484,8 @@ namespace IRCAMThermalViewer {
 			System::Windows::Forms::ToolStripSeparator^ Separator2 = gcnew System::Windows::Forms::ToolStripSeparator();
 
 			this->ChartContextMenu->Items->Add(this->CursorTempMenuItem);
+			this->ChartContextMenu->Items->Add(this->MeasureMenuItem);
+			this->ChartContextMenu->Items->Add(this->ClearCursorsMenuItem);
 			this->ChartContextMenu->Items->Add(Separator1);
 			this->ChartContextMenu->Items->Add(this->XTicksMenuItem);
 			this->ChartContextMenu->Items->Add(this->YTicksMenuItem);
@@ -900,6 +1504,7 @@ namespace IRCAMThermalViewer {
 
 			this->LogChart->ContextMenuStrip = this->ChartContextMenu;
 			this->CursorLabel->ContextMenuStrip = this->ChartContextMenu;
+			this->MeasurePanel->ContextMenuStrip = this->ChartContextMenu;
 
 		}
 
@@ -919,6 +1524,8 @@ namespace IRCAMThermalViewer {
 
 			// Updates the items before the menu is shown
 			this->CursorTempMenuItem->Checked = this->CursorLabelEnabled;
+			this->MeasureMenuItem->Checked = this->MeasureModeEnabled;
+			this->ClearCursorsMenuItem->Enabled = (!System::Double::IsNaN(this->MeasureTimeA) || !System::Double::IsNaN(this->MeasureTimeB));
 			this->CheckTickItems(this->XTicksMenuItem, this->XTickCount);
 			this->CheckTickItems(this->YTicksMenuItem, this->YTickCount);
 
@@ -1476,6 +2083,9 @@ namespace IRCAMThermalViewer {
 
 			if (SeriesIndex >= 0 && SeriesIndex < this->LogChart->Series->Count) { this->LogChart->Series[SeriesIndex]->Enabled = LineCheck->Checked; }
 
+			// The measurement shows the lines that are shown
+			this->UpdateMeasurement();
+
 			// The ticks and the automatic range follow the lines that are shown
 			this->ApplyAxisSettings();
 
@@ -1910,6 +2520,9 @@ namespace IRCAMThermalViewer {
 			// Removes the points from all lines of the graph
 			for (int i = 0; i < this->LogChart->Series->Count; i++) { this->LogChart->Series[i]->Points->Clear(); }
 			for (int i = 0; i < this->SeriesBuffers->Count; i++) { this->SeriesBuffers[i]->Clear(); }
+
+			// The cursors belonged to the data that was removed
+			this->ClearMeasureCursors();
 
 		}
 
@@ -2397,6 +3010,9 @@ namespace IRCAMThermalViewer {
 
 			OtherLines->Add(gcnew System::String("Temperature Unit: ") + GlobalVariables::DefaultTempUnitString);
 
+			// Two-cursor measurement (cursors A and B placed): the times, the time difference and, per line that is shown, the values, the difference and the slope
+			this->GetMeasureExportLines(OtherLines);
+
 		}
 
 		System::Void GetAxisRangeTexts(System::String^% TimeText, System::String^% TemperatureText) {
@@ -2557,6 +3173,7 @@ namespace IRCAMThermalViewer {
 			this->ViewedSampleRows = 0;
 			this->LastElapsedMilliSec = 0.0;
 			this->SeriesBuffers->Clear();
+			this->ClearMeasureCursors();
 			this->PendingLines->Clear();
 			this->ViewDecoder->Reset();
 			this->LoadingBehind = false;
@@ -2900,6 +3517,9 @@ namespace IRCAMThermalViewer {
 			}
 
 			for (int s = 0; s < this->SeriesBuffers->Count; s++) { this->SyncChartSeries(s); }
+
+			// New samples (or thinned out points) can change the values at the cursors
+			if (!System::Double::IsNaN(this->MeasureTimeA) || !System::Double::IsNaN(this->MeasureTimeB)) { this->UpdateMeasurement(); }
 
 			// Time labels of the graph - with the day when the log is longer than about a day
 			if (this->LastElapsedMilliSec > 20.0 * 3600000.0) { this->LogChart->ChartAreas[0]->AxisX->LabelStyle->Format = "dd HH:mm"; }
