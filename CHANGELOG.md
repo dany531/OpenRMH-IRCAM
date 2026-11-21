@@ -5,6 +5,22 @@ the number counts builds of this repository.
 
 ## Unreleased
 
+- **New (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_28`, not tested yet, not compiled yet): two-cursor measurement in the Data Log graph (cursors A and B: time difference, temperature difference and slope in °C/min).**
+  To read a heating or cooling curve one had to subtract two mouse cursor readings by hand. New right-click menu items of the Data Log graph: **Measure With Two Cursors** (check item) and **Clear Cursors**. While the mode is
+  on, a **left click** in the plot area places **cursor A** (yellow dashed vertical line), the second click **cursor B** (cyan); after that a click moves the nearer cursor, and keeping the button down while moving the
+  mouse fine-tunes it. A cursor stays inside the logged time range of the lines that are shown. A **panel in the graph** (it can be moved with the mouse) shows the time of A and B (h:mm:ss.fff), **Δt (B - A)** (seconds, and
+  h:mm:ss from one minute on) and, **for every line that is shown** (in the color of the line), the value at A and at B, **ΔT = value(B) - value(A)** and the **slope = ΔT / Δt in temperature unit per minute**
+  (for example `+2.340 °C/min`). The value of a line at a cursor is the sample itself or the linear interpolation between the two neighbouring samples; `N/A` outside the logged time range of the line, in a gap (`NaN`)
+  and for the slope when Δt is 0. Hiding a line (check box) removes it from the panel at once; new samples and a thinning of old points (previous entries) update the values. The cursor lines are annotations of the
+  chart (axis bound to the time axis), so they follow zoom and axis changes and are **part of an exported image**; when both cursors are placed the **Other Information** table of an exported image also lists Cursor A,
+  Cursor B, Δt and, per line, the values at A and B, ΔT and the slope (the panel itself is not in the image). While the mode is on the zoom rectangle is switched off (a click that moves a little would zoom in); switching
+  the mode off brings the zoom back and **keeps** the cursors and the panel until **Clear Cursors**. The cursors are removed when the view is restarted (new session) and by the clear-graph button. The mouse cursor
+  temperature label can be used at the same time. Limits: the temperatures come from the data, not from the height of the click; cursors are placed with the mouse only (no typed time); no cursor outside the logged time
+  range. Change in `DataLogGUI.h` only (new class `MeasureRow`; `BuildMeasureObjects`, `LogChart_MouseDown`, `LogChart_MouseUp`, `LogChart_MouseMove`, `GetLineValueAt`, `GetMeasureTimeAtMouse`, `GetMeasureTimeLimits`,
+  `IsPointInPlotArea`, `SetMeasureCursor`, `ClearMeasureCursors`, `ApplyMeasureMode`, `CollectMeasureRows`, `BuildMeasureTexts`, `GetMeasureExportLines`, `UpdateMeasurement`, the panel drag handlers, `BuildChartContextMenu`,
+  `ChartContextMenu_Opening`, `LineCheck_CheckedChanged`, `ShowPendingData`, `ClearChartData`, `ResetView`, `GetExportInfoLines`). The file stays ASCII (the Δ characters are written as `\u0394`). The documentation file is
+  now `README_IRCAM-for-T2Splus_V2_2Dplots_expansion_28.md` (the `_27` file is replaced by it).
+
 - **Change (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_27`, not tested yet, not compiled yet): the oldest part of a long Data Log graph is thinned out (min / max decimation) instead of scrolling off the left side.**
   Before, a line of the graph kept the newest `_DataLogView_MaxPlotPoints` (100000) points and the oldest points were deleted, so in a long session (more than about 27.8 hours at 1 s, 66 minutes at 0.04 s) the start of the
   session disappeared from the graph. Now, when a line has more than 100000 points, the **older half** of its points is thinned out: of every **4 neighbouring points the lowest and the highest are kept** (they are real points with
