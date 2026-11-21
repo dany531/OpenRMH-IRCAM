@@ -37,6 +37,14 @@ namespace IRCAMThermalViewer {
 	// Graph markers: the longest text of a marker (characters)
 	#define _DataLogMarker_MaxTextLength 60
 
+	// Zoom buttons beside the axes of the graph (X+ X- Y+ Y-):
+	// - _DataLogZoomButton_Factor: one click on + shows this part of the visible range (0.7 = 70 %); one click on - shows 1 / this part (about 143 %). Smaller = bigger steps.
+	// - _DataLogZoomButton_MinTimeMilliSec: the smallest time range that + zooms to (milliseconds).
+	// - _DataLogZoomButton_MinTemperatureRange: the smallest temperature range that + zooms to.
+	#define _DataLogZoomButton_Factor 0.7
+	#define _DataLogZoomButton_MinTimeMilliSec 10.0
+	#define _DataLogZoomButton_MinTemperatureRange 0.01
+
 	#define _DataLogExport_ResolutionScale 3
 	#define _DataLogExport_UseVectorChart 1
 	#define _DataLogExport_JpegQuality 95
@@ -384,6 +392,14 @@ namespace IRCAMThermalViewer {
 		double MarkerMenuTime;                       // Time (days) where the graph was right clicked
 		GraphMarker^ MarkerMenuTarget;               // The marker that was right clicked (nullptr = none)
 
+		// Zoom buttons beside the axes of the graph
+		System::Windows::Forms::Panel^ YZoomStrip;
+		System::Windows::Forms::Panel^ XZoomStrip;
+		System::Windows::Forms::Button^ YZoomInButton;
+		System::Windows::Forms::Button^ YZoomOutButton;
+		System::Windows::Forms::Button^ XZoomInButton;
+		System::Windows::Forms::Button^ XZoomOutButton;
+
 		// Right click menu of the graph, and its settings
 		System::Windows::Forms::ContextMenuStrip^ ChartContextMenu;
 		System::Windows::Forms::ToolStripMenuItem^ CursorTempMenuItem;
@@ -585,6 +601,10 @@ namespace IRCAMThermalViewer {
 			ViewSplit->Panel1->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
 			ViewSplit->Panel2->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
 			ViewSplit->Panel1->Controls->Add(this->LogChart);
+
+			// Zoom buttons beside the axes: a strip left of the graph (temperature axis) and a strip below it (time axis). They are outside the graph, so they never cover
+			// the axes, the scroll bars or the markers. They are added before the check boxes above the graph, so they dock between those and the graph.
+			this->BuildZoomButtons();
 
 			// Check boxes above the graph - one per graph line, in the color of the line (replaces the legend of the graph)
 			this->LineChecksPanel = gcnew System::Windows::Forms::FlowLayoutPanel();
@@ -853,6 +873,232 @@ namespace IRCAMThermalViewer {
 			// The label is hidden when the mouse leaves the graph (it shows again when the mouse comes back)
 			this->CursorLabel->Visible = false;
 			this->UpdateMarkerHover(-1, -1);
+
+		}
+
+		// ------------------------- Zoom buttons beside the axes ------------------------- //
+
+		// The zoom rectangle always zooms both axes at once. The buttons zoom one axis only (X = time axis, Y = temperature axis), in steps, also when the graph is
+		// zoomed already: + shows a smaller part of the axis, - a larger part (back to the whole range at the end, which also hides the scroll bar of that axis).
+		// The zoom is around the middle of what is shown now. The scroll bars and the Reset Zoom button work as before.
+
+		System::Void StyleZoomButton(System::Windows::Forms::Button^ ZoomButton, System::String^ ButtonText, System::String^ HintText) {
+
+			this->StyleButton(ZoomButton, ButtonText, 0, 36);
+			ZoomButton->Size = System::Drawing::Size(36, 26);
+			ZoomButton->Font = gcnew System::Drawing::Font("Arial", 9.0f, System::Drawing::FontStyle::Bold);
+			ZoomButton->TabStop = false;
+			this->HintToolTip->SetToolTip(ZoomButton, HintText);
+
+		}
+
+		System::Void BuildZoomButtons() {
+
+			this->YZoomStrip = gcnew System::Windows::Forms::Panel();
+			this->YZoomStrip->Dock = System::Windows::Forms::DockStyle::Left;
+			this->YZoomStrip->Width = 40;
+			this->YZoomStrip->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+
+			this->XZoomStrip = gcnew System::Windows::Forms::Panel();
+			this->XZoomStrip->Dock = System::Windows::Forms::DockStyle::Bottom;
+			this->XZoomStrip->Height = 32;
+			this->XZoomStrip->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+
+			this->YZoomInButton = gcnew System::Windows::Forms::Button();
+			this->StyleZoomButton(this->YZoomInButton, "Y+", "Zoom in the temperature axis (Y): shows a smaller temperature range");
+			this->YZoomInButton->Click += gcnew System::EventHandler(this, &DataLogGUI::YZoomInButton_Click);
+
+			this->YZoomOutButton = gcnew System::Windows::Forms::Button();
+			this->StyleZoomButton(this->YZoomOutButton, "Y-", "Zoom out the temperature axis (Y): shows a larger temperature range");
+			this->YZoomOutButton->Click += gcnew System::EventHandler(this, &DataLogGUI::YZoomOutButton_Click);
+
+			this->XZoomOutButton = gcnew System::Windows::Forms::Button();
+			this->StyleZoomButton(this->XZoomOutButton, "X-", "Zoom out the time axis (X): shows a longer time");
+			this->XZoomOutButton->Click += gcnew System::EventHandler(this, &DataLogGUI::XZoomOutButton_Click);
+
+			this->XZoomInButton = gcnew System::Windows::Forms::Button();
+			this->StyleZoomButton(this->XZoomInButton, "X+", "Zoom in the time axis (X): shows a shorter time");
+			this->XZoomInButton->Click += gcnew System::EventHandler(this, &DataLogGUI::XZoomInButton_Click);
+
+			this->YZoomStrip->Controls->Add(this->YZoomInButton);
+			this->YZoomStrip->Controls->Add(this->YZoomOutButton);
+			this->XZoomStrip->Controls->Add(this->XZoomOutButton);
+			this->XZoomStrip->Controls->Add(this->XZoomInButton);
+
+			this->YZoomStrip->SizeChanged += gcnew System::EventHandler(this, &DataLogGUI::ZoomStrip_SizeChanged);
+			this->XZoomStrip->SizeChanged += gcnew System::EventHandler(this, &DataLogGUI::ZoomStrip_SizeChanged);
+
+			ViewSplit->Panel1->Controls->Add(this->YZoomStrip);
+			ViewSplit->Panel1->Controls->Add(this->XZoomStrip);
+
+			this->LayoutZoomButtons();
+
+		}
+
+		System::Void ZoomStrip_SizeChanged(System::Object^ sender, System::EventArgs^ e) {
+
+			this->LayoutZoomButtons();
+
+		}
+
+		System::Void LayoutZoomButtons() {
+
+			// The buttons are in the middle of their strip: the two Y buttons below each other, the two X buttons next to each other
+			if (this->YZoomStrip == nullptr || this->XZoomStrip == nullptr) { return; }
+
+			int YLeft = (this->YZoomStrip->ClientSize.Width - this->YZoomInButton->Width) / 2;
+			int YTop = (this->YZoomStrip->ClientSize.Height - (this->YZoomInButton->Height + 4 + this->YZoomOutButton->Height)) / 2;
+			if (YLeft < 0) { YLeft = 0; }
+			if (YTop < 0) { YTop = 0; }
+
+			this->YZoomInButton->Location = System::Drawing::Point(YLeft, YTop);
+			this->YZoomOutButton->Location = System::Drawing::Point(YLeft, YTop + this->YZoomInButton->Height + 4);
+
+			int XLeft = (this->XZoomStrip->ClientSize.Width - (this->XZoomOutButton->Width + 4 + this->XZoomInButton->Width)) / 2;
+			int XTop = (this->XZoomStrip->ClientSize.Height - this->XZoomOutButton->Height) / 2;
+			if (XLeft < 0) { XLeft = 0; }
+			if (XTop < 0) { XTop = 0; }
+
+			this->XZoomOutButton->Location = System::Drawing::Point(XLeft, XTop);
+			this->XZoomInButton->Location = System::Drawing::Point(XLeft + this->XZoomOutButton->Width + 4, XTop);
+
+		}
+
+		System::Void XZoomInButton_Click(System::Object^ sender, System::EventArgs^ e) { this->ZoomAxisByButton(true, true); }
+		System::Void XZoomOutButton_Click(System::Object^ sender, System::EventArgs^ e) { this->ZoomAxisByButton(true, false); }
+		System::Void YZoomInButton_Click(System::Object^ sender, System::EventArgs^ e) { this->ZoomAxisByButton(false, true); }
+		System::Void YZoomOutButton_Click(System::Object^ sender, System::EventArgs^ e) { this->ZoomAxisByButton(false, false); }
+
+		bool GetAxisFullRange(bool IsTimeAxis, double% RangeMinimum, double% RangeMaximum) {
+
+			// The whole range of an axis (the time axis in days): the range of the axis itself, or - while the axis has not calculated it yet - the range of the logged data
+			// of the lines that are shown. False when there is no data.
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::Axis^ TheAxis = (IsTimeAxis == true) ? this->LogChart->ChartAreas[0]->AxisX : this->LogChart->ChartAreas[0]->AxisY;
+
+				double AxisMinimum = TheAxis->Minimum;
+				double AxisMaximum = TheAxis->Maximum;
+
+				if (!System::Double::IsNaN(AxisMinimum) && !System::Double::IsNaN(AxisMaximum) && AxisMaximum > AxisMinimum) {
+
+					RangeMinimum = AxisMinimum;
+					RangeMaximum = AxisMaximum;
+					return true;
+
+				}
+
+				if (IsTimeAxis == true) {
+
+					double FirstTime = 0.0;
+					double LastTime = 0.0;
+
+					if (this->GetMeasureTimeLimits(FirstTime, LastTime) == true && LastTime > FirstTime) {
+
+						RangeMinimum = FirstTime;
+						RangeMaximum = LastTime;
+						return true;
+
+					}
+
+					return false;
+
+				}
+
+				bool Found = false;
+				double LowestValue = 0.0;
+				double HighestValue = 0.0;
+
+				for (int i = 0; i < this->SeriesBuffers->Count && i < this->LogChart->Series->Count; i++) {
+
+					if (this->LogChart->Series[i]->Enabled == false) { continue; }
+
+					for (int j = 0; j < this->SeriesBuffers[i]->YValues->Count; j++) {
+
+						double Value = this->SeriesBuffers[i]->YValues[j];
+						if (System::Double::IsNaN(Value)) { continue; }
+
+						if (Found == false || Value < LowestValue) { LowestValue = Value; }
+						if (Found == false || Value > HighestValue) { HighestValue = Value; }
+						Found = true;
+
+					}
+
+				}
+
+				if (Found == true && HighestValue > LowestValue) {
+
+					RangeMinimum = LowestValue;
+					RangeMaximum = HighestValue;
+					return true;
+
+				}
+
+			}
+			catch (System::Exception^) {}
+
+			return false;
+
+		}
+
+		System::Void ZoomAxisByButton(bool IsTimeAxis, bool ZoomIn) {
+
+			// One click of a zoom button: the visible range of one axis becomes smaller (zoom in) or larger (zoom out), around its middle, and stays inside the whole range
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::Axis^ TheAxis = (IsTimeAxis == true) ? this->LogChart->ChartAreas[0]->AxisX : this->LogChart->ChartAreas[0]->AxisY;
+
+				double FullMinimum = 0.0;
+				double FullMaximum = 0.0;
+
+				if (this->GetAxisFullRange(IsTimeAxis, FullMinimum, FullMaximum) == false) { return; }
+
+				double FullSize = FullMaximum - FullMinimum;
+				bool Zoomed = (TheAxis->ScaleView->IsZoomed == true);
+
+				// Nothing to zoom out when the whole range is shown already
+				if (ZoomIn == false && Zoomed == false) { return; }
+
+				double ViewMinimum = (Zoomed == true) ? TheAxis->ScaleView->ViewMinimum : FullMinimum;
+				double ViewMaximum = (Zoomed == true) ? TheAxis->ScaleView->ViewMaximum : FullMaximum;
+				double ViewSize = ViewMaximum - ViewMinimum;
+
+				if (System::Double::IsNaN(ViewSize) || ViewSize <= 0.0) { return; }
+
+				double SmallestSize = (IsTimeAxis == true) ? (_DataLogZoomButton_MinTimeMilliSec / 86400000.0) : _DataLogZoomButton_MinTemperatureRange;
+
+				if (ZoomIn == true && ViewSize <= SmallestSize * 1.001) { return; }
+
+				double NewSize = (ZoomIn == true) ? (ViewSize * _DataLogZoomButton_Factor) : (ViewSize / _DataLogZoomButton_Factor);
+				if (NewSize < SmallestSize) { NewSize = SmallestSize; }
+
+				if (ZoomIn == false && NewSize >= FullSize * 0.999) {
+
+					// The whole range again
+					TheAxis->ScaleView->ZoomReset(0);
+
+				}
+				else {
+
+					double Middle = ViewMinimum + (ViewSize / 2.0);
+					double NewMinimum = Middle - (NewSize / 2.0);
+					double NewMaximum = NewMinimum + NewSize;
+
+					if (NewMinimum < FullMinimum) { NewMinimum = FullMinimum; NewMaximum = NewMinimum + NewSize; }
+					if (NewMaximum > FullMaximum) { NewMaximum = FullMaximum; NewMinimum = NewMaximum - NewSize; }
+
+					TheAxis->ScaleView->Zoom(NewMinimum, NewMaximum);
+
+				}
+
+				// The same updates as after a zoom rectangle: scroll steps, ticks, plot area and the orange border of Reset Zoom
+				this->UpdateScrollSteps();
+				this->ApplyAxisSettings();
+				this->UpdateZoomIndicator();
+				this->LogChart->Invalidate();
+
+			}
+			catch (System::Exception^) {}
 
 		}
 
