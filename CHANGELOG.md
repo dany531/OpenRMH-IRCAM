@@ -5,10 +5,13 @@ the number counts builds of this repository.
 
 ## Unreleased
 
-- **Fix (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_29`, not tested yet, not compiled yet): the suggested file name of Export Graph is now different for every export.** It was the session file name + `_graph`
-  (for example `DataLogSession_21Nov2026_12-57-55_graph`; the date and time in it are those of the session start), so a second export of the same session got the same name and the save window asked to overwrite the
-  first image. It is now the session file name + `_graph_` + the time of the export, for example `DataLogSession_21Nov2026_12-57-55_graph_12-59-55`. Without a session file name it is still `DataLogGraph_` + date and
-  time. Change in `ExportGraphButton_Click` (`DataLogGUI.h`) only.
+- **New (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_29`, not tested yet, not compiled yet): markers in the Data Log graph ("changed power", "opened door").** Changes in a test setup could not be written
+  down in the graph, only remembered. New **Add Marker** button in the Data Log window (adds a marker at the current time of the data logging, while logging runs: the time of the newest logged sample) and, in the
+  right-click menu of the graph, **Add Marker Here...** (at the time where you right-click, also for a log that has stopped), **Delete Marker: ...** (only shown when you right-click on a marker) and
+  **Delete All Markers**. A marker is a vertical orange line with its time (h:mm:ss) and, **below the time**, its text (up to 60 characters; the text can be empty). **Drag a marker with the mouse** (its line or its text),
+  like the cursors of the two-cursor measurement: the mouse cursor changes to a horizontal arrow and the zoom rectangle is off while the mouse is on a marker. Texts that would cover each other are put in rows below
+  each other. Markers are drawn on the chart itself, so they follow zoom and resizing and are **part of an exported image**. They belong to the data of the graph: **Clear Graph** and a new log session remove them,
+  and they are **not saved in the log file** yet. Change in `DataLogGUI.h` only.
 
 - **Fix (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_29`, not tested yet, not compiled yet): the cursor temperature label showed `Temperature: N/A` while the mouse was on a cursor line of the two-cursor
   measurement.** The cursor lines are annotations of the chart. The label (`UpdateCursorLabel`) decided with the hit test of the chart, which over an annotation reports an annotation without a chart area, so on a
