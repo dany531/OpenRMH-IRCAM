@@ -725,14 +725,9 @@ namespace IRCAMThermalViewer {
 
 			try {
 
-				System::Windows::Forms::DataVisualization::Charting::HitTestResult^ Hit = this->LogChart->HitTest(MouseX, MouseY);
-				System::Windows::Forms::DataVisualization::Charting::ChartElementType Element = Hit->ChartElementType;
-
-				// Only inside the plot area of the graph (not on the axes, the legend or outside the graph)
-				if (Hit->ChartArea != nullptr && (Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::PlottingArea ||
-					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::DataPoint ||
-					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::Gridlines ||
-					Element == System::Windows::Forms::DataVisualization::Charting::ChartElementType::StripLines)) {
+				// Only inside the plot area of the graph (not on the axes, the legend or outside the graph). A cursor line of the two-cursor measurement counts as plot area
+				// (it is an annotation of the chart), so the label also works while the mouse is on a cursor line.
+				if (this->IsPointInPlotArea(MouseX, MouseY) == true) {
 
 					double TemperatureValue = this->LogChart->ChartAreas[0]->AxisY->PixelPositionToValue((double)MouseY);
 					double TimeValue = this->LogChart->ChartAreas[0]->AxisX->PixelPositionToValue((double)MouseX);
