@@ -5,12 +5,13 @@ the number counts builds of this repository.
 
 ## Unreleased
 
-- **New (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_31`, not tested yet, not compiled yet): zoom buttons for each axis of the Data Log graph.** The zoom rectangle always zooms both axes, and once the graph was zoomed it
-  was not possible to zoom only the time axis or only the temperature axis further. Four buttons now zoom **one axis at a time**: **Y+ / Y-** in a strip left of the graph (temperature axis) and **X- / X+** in a strip
-  below the graph (time axis). One click on **+** shows **70 %** of the range that is shown (around its middle), **-** shows about 143 % and ends at the whole range (the scroll bar of that axis then disappears). They
-  work from the full view and after a zoom rectangle, in any order. The smallest range is 10 ms (time) and 0.01 (temperature). The strips are outside the chart, so nothing is covered, but the graph is about 40 pixels
-  narrower and 32 pixels lower. Reset Zoom, the scroll bars, the markers and the cursors work as before. The settings `_DataLogZoomButton_Factor`, `_DataLogZoomButton_MinTimeMilliSec` and
-  `_DataLogZoomButton_MinTemperatureRange` are at the top of `DataLogGUI.h`. Change in `DataLogGUI.h` only. The notes file is now `README_IRCAM-for-T2Splus_V2_2Dplots_expansion_31.md`.
+- **New (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_31`, not tested yet, not compiled yet): zoom buttons on the scroll bars of the zoomed Data Log graph.** The zoom rectangle always zooms both axes, and once the graph was
+  zoomed it was not possible to zoom only the time axis or only the temperature axis further. Small **+** and **-** buttons now appear **only while the graph is zoomed**, for the axis that is zoomed, **on its scroll bar next to
+  the arrows** (time axis: left of the right arrow; temperature axis: below the up arrow), and zoom **that axis only**. One click on **+** shows **70 %** of the range that is shown (around its middle), **-** shows about 143 %
+  and ends at the whole range (the scroll bar and the buttons of that axis then disappear). They work after a zoom rectangle, in any order. The smallest range is 10 ms (time) and 0.01 (temperature). When the graph is not
+  zoomed it has its old size and nothing is added. Reset Zoom, the scroll bars, the markers and the cursors work as before; the buttons are not in an exported image. The settings `_DataLogZoomButton_Factor`,
+  `_DataLogZoomButton_MinTimeMilliSec` and `_DataLogZoomButton_MinTemperatureRange` are at the top of `DataLogGUI.h`. Change in `DataLogGUI.h` only. The notes file is now
+  `README_IRCAM-for-T2Splus_V2_2Dplots_expansion_31.md`.
 - **New (branch `IRCAM-for-T2Splus_V2_2Dplots_expansion_31`, not tested in detail yet): markers in the Data Log graph ("changed power", "opened door").** Changes in a test setup could not be written
   down in the graph, only remembered. New **Add Marker** button in the Data Log window (adds a marker at the current time of the data logging, while logging runs: the time of the newest logged sample) and, in the
   right-click menu of the graph, **Add Marker Here...** (at the time where you right-click, also for a log that has stopped), **Delete Marker: ...** (only shown when you right-click on a marker) and
