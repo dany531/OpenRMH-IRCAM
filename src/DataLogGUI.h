@@ -37,7 +37,7 @@ namespace IRCAMThermalViewer {
 	// Graph markers: the longest text of a marker (characters)
 	#define _DataLogMarker_MaxTextLength 60
 
-	// Zoom buttons beside the axes of the graph (X+ X- Y+ Y-):
+	// Zoom buttons on the scroll bars of the zoomed graph (+ and - for the time axis and for the temperature axis):
 	// - _DataLogZoomButton_Factor: one click on + shows this part of the visible range (0.7 = 70 %); one click on - shows 1 / this part (about 143 %). Smaller = bigger steps.
 	// - _DataLogZoomButton_MinTimeMilliSec: the smallest time range that + zooms to (milliseconds).
 	// - _DataLogZoomButton_MinTemperatureRange: the smallest temperature range that + zooms to.
@@ -392,9 +392,7 @@ namespace IRCAMThermalViewer {
 		double MarkerMenuTime;                       // Time (days) where the graph was right clicked
 		GraphMarker^ MarkerMenuTarget;               // The marker that was right clicked (nullptr = none)
 
-		// Zoom buttons beside the axes of the graph
-		System::Windows::Forms::Panel^ YZoomStrip;
-		System::Windows::Forms::Panel^ XZoomStrip;
+		// Zoom buttons on the scroll bars of the graph (shown only while that axis is zoomed)
 		System::Windows::Forms::Button^ YZoomInButton;
 		System::Windows::Forms::Button^ YZoomOutButton;
 		System::Windows::Forms::Button^ XZoomInButton;
@@ -602,8 +600,7 @@ namespace IRCAMThermalViewer {
 			ViewSplit->Panel2->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
 			ViewSplit->Panel1->Controls->Add(this->LogChart);
 
-			// Zoom buttons beside the axes: a strip left of the graph (temperature axis) and a strip below it (time axis). They are outside the graph, so they never cover
-			// the axes, the scroll bars or the markers. They are added before the check boxes above the graph, so they dock between those and the graph.
+			// Zoom buttons on the scroll bars of the zoomed graph (small buttons on the graph, shown only while an axis is zoomed)
 			this->BuildZoomButtons();
 
 			// Check boxes above the graph - one per graph line, in the color of the line (replaces the legend of the graph)
@@ -876,91 +873,121 @@ namespace IRCAMThermalViewer {
 
 		}
 
-		// ------------------------- Zoom buttons beside the axes ------------------------- //
+		// ------------------------- Zoom buttons on the scroll bars ------------------------- //
 
 		// The zoom rectangle always zooms both axes at once. The buttons zoom one axis only (X = time axis, Y = temperature axis), in steps, also when the graph is
-		// zoomed already: + shows a smaller part of the axis, - a larger part (back to the whole range at the end, which also hides the scroll bar of that axis).
-		// The zoom is around the middle of what is shown now. The scroll bars and the Reset Zoom button work as before.
+		// zoomed already: + shows a smaller part of the axis, - a larger part (back to the whole range at the end, which also hides the scroll bar of that axis and
+		// the buttons of that axis). The buttons only exist on the scroll bar of a zoomed axis. The zoom is around the middle of what is shown now.
+		// The scroll bars and the Reset Zoom button work as before.
 
 		System::Void StyleZoomButton(System::Windows::Forms::Button^ ZoomButton, System::String^ ButtonText, System::String^ HintText) {
 
-			this->StyleButton(ZoomButton, ButtonText, 0, 36);
-			ZoomButton->Size = System::Drawing::Size(36, 26);
-			ZoomButton->Font = gcnew System::Drawing::Font("Arial", 9.0f, System::Drawing::FontStyle::Bold);
+			// A small button in the colors of the scroll bar buttons (_DataLogScrollBar_... at the top of this file)
+			ZoomButton->Text = ButtonText;
+			ZoomButton->Size = System::Drawing::Size(13, 13);
+			ZoomButton->Padding = System::Windows::Forms::Padding(0);
+			ZoomButton->Margin = System::Windows::Forms::Padding(0);
+			ZoomButton->TextAlign = System::Drawing::ContentAlignment::MiddleCenter;
+			ZoomButton->FlatStyle = System::Windows::Forms::FlatStyle::Flat;
+			ZoomButton->BackColor = _DataLogScrollBar_ButtonColor;
+			ZoomButton->ForeColor = _DataLogScrollBar_LineColor;
+			ZoomButton->FlatAppearance->BorderColor = _DataLogScrollBar_LineColor;
+			ZoomButton->FlatAppearance->BorderSize = 1;
+			ZoomButton->FlatAppearance->MouseOverBackColor = System::Drawing::Color::FromArgb(235, 235, 235);
+			ZoomButton->Font = gcnew System::Drawing::Font("Arial", 7.0f, System::Drawing::FontStyle::Bold);
 			ZoomButton->TabStop = false;
+			ZoomButton->Visible = false;
 			this->HintToolTip->SetToolTip(ZoomButton, HintText);
 
 		}
 
 		System::Void BuildZoomButtons() {
 
-			this->YZoomStrip = gcnew System::Windows::Forms::Panel();
-			this->YZoomStrip->Dock = System::Windows::Forms::DockStyle::Left;
-			this->YZoomStrip->Width = 40;
-			this->YZoomStrip->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
-
-			this->XZoomStrip = gcnew System::Windows::Forms::Panel();
-			this->XZoomStrip->Dock = System::Windows::Forms::DockStyle::Bottom;
-			this->XZoomStrip->Height = 32;
-			this->XZoomStrip->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
-
-			this->YZoomInButton = gcnew System::Windows::Forms::Button();
-			this->StyleZoomButton(this->YZoomInButton, "Y+", "Zoom in the temperature axis (Y): shows a smaller temperature range");
-			this->YZoomInButton->Click += gcnew System::EventHandler(this, &DataLogGUI::YZoomInButton_Click);
-
-			this->YZoomOutButton = gcnew System::Windows::Forms::Button();
-			this->StyleZoomButton(this->YZoomOutButton, "Y-", "Zoom out the temperature axis (Y): shows a larger temperature range");
-			this->YZoomOutButton->Click += gcnew System::EventHandler(this, &DataLogGUI::YZoomOutButton_Click);
-
+			// Four small buttons on the graph, over the scroll bars of the zoomed axes (see UpdateZoomButtons): on the time axis scroll bar (below the graph) - and + next to
+			// the right arrow, on the temperature axis scroll bar (left of the graph) + and - below the up arrow.
 			this->XZoomOutButton = gcnew System::Windows::Forms::Button();
-			this->StyleZoomButton(this->XZoomOutButton, "X-", "Zoom out the time axis (X): shows a longer time");
+			this->StyleZoomButton(this->XZoomOutButton, "-", "Zoom out the time axis (X): shows a longer time");
 			this->XZoomOutButton->Click += gcnew System::EventHandler(this, &DataLogGUI::XZoomOutButton_Click);
 
 			this->XZoomInButton = gcnew System::Windows::Forms::Button();
-			this->StyleZoomButton(this->XZoomInButton, "X+", "Zoom in the time axis (X): shows a shorter time");
+			this->StyleZoomButton(this->XZoomInButton, "+", "Zoom in the time axis (X): shows a shorter time");
 			this->XZoomInButton->Click += gcnew System::EventHandler(this, &DataLogGUI::XZoomInButton_Click);
 
-			this->YZoomStrip->Controls->Add(this->YZoomInButton);
-			this->YZoomStrip->Controls->Add(this->YZoomOutButton);
-			this->XZoomStrip->Controls->Add(this->XZoomOutButton);
-			this->XZoomStrip->Controls->Add(this->XZoomInButton);
+			this->YZoomInButton = gcnew System::Windows::Forms::Button();
+			this->StyleZoomButton(this->YZoomInButton, "+", "Zoom in the temperature axis (Y): shows a smaller temperature range");
+			this->YZoomInButton->Click += gcnew System::EventHandler(this, &DataLogGUI::YZoomInButton_Click);
 
-			this->YZoomStrip->SizeChanged += gcnew System::EventHandler(this, &DataLogGUI::ZoomStrip_SizeChanged);
-			this->XZoomStrip->SizeChanged += gcnew System::EventHandler(this, &DataLogGUI::ZoomStrip_SizeChanged);
+			this->YZoomOutButton = gcnew System::Windows::Forms::Button();
+			this->StyleZoomButton(this->YZoomOutButton, "-", "Zoom out the temperature axis (Y): shows a larger temperature range");
+			this->YZoomOutButton->Click += gcnew System::EventHandler(this, &DataLogGUI::YZoomOutButton_Click);
 
-			ViewSplit->Panel1->Controls->Add(this->YZoomStrip);
-			ViewSplit->Panel1->Controls->Add(this->XZoomStrip);
-
-			this->LayoutZoomButtons();
-
-		}
-
-		System::Void ZoomStrip_SizeChanged(System::Object^ sender, System::EventArgs^ e) {
-
-			this->LayoutZoomButtons();
+			this->LogChart->Controls->Add(this->XZoomOutButton);
+			this->LogChart->Controls->Add(this->XZoomInButton);
+			this->LogChart->Controls->Add(this->YZoomInButton);
+			this->LogChart->Controls->Add(this->YZoomOutButton);
 
 		}
 
-		System::Void LayoutZoomButtons() {
+		System::Void SetZoomButtonPlace(System::Windows::Forms::Button^ ZoomButton, int ButtonLeft, int ButtonTop, bool ShowButton) {
 
-			// The buttons are in the middle of their strip: the two Y buttons below each other, the two X buttons next to each other
-			if (this->YZoomStrip == nullptr || this->XZoomStrip == nullptr) { return; }
+			// Only written when it changes (this is called at every drawing of the graph)
+			if (ZoomButton->Left != ButtonLeft || ZoomButton->Top != ButtonTop) { ZoomButton->Location = System::Drawing::Point(ButtonLeft, ButtonTop); }
+			if (ZoomButton->Visible != ShowButton) { ZoomButton->Visible = ShowButton; }
+			if (ShowButton == true) { ZoomButton->BringToFront(); }
 
-			int YLeft = (this->YZoomStrip->ClientSize.Width - this->YZoomInButton->Width) / 2;
-			int YTop = (this->YZoomStrip->ClientSize.Height - (this->YZoomInButton->Height + 4 + this->YZoomOutButton->Height)) / 2;
-			if (YLeft < 0) { YLeft = 0; }
-			if (YTop < 0) { YTop = 0; }
+		}
 
-			this->YZoomInButton->Location = System::Drawing::Point(YLeft, YTop);
-			this->YZoomOutButton->Location = System::Drawing::Point(YLeft, YTop + this->YZoomInButton->Height + 4);
+		System::Void UpdateZoomButtons() {
 
-			int XLeft = (this->XZoomStrip->ClientSize.Width - (this->XZoomOutButton->Width + 4 + this->XZoomInButton->Width)) / 2;
-			int XTop = (this->XZoomStrip->ClientSize.Height - this->XZoomOutButton->Height) / 2;
-			if (XLeft < 0) { XLeft = 0; }
-			if (XTop < 0) { XTop = 0; }
+			// Shows the buttons of an axis only while that axis is zoomed, on its scroll bar. The scroll bars are drawn by the chart: they are about 14 pixels thick and
+			// lie against the plot area - the time axis one below it, with the Reset Zoom button and the left arrow at its left end and the right arrow at its right end,
+			// the temperature axis one left of it, with the Reset Zoom button and the up arrow at its top end. The buttons are put next to the arrows on the bar.
+			if (this->XZoomInButton == nullptr || this->XZoomOutButton == nullptr || this->YZoomInButton == nullptr || this->YZoomOutButton == nullptr) { return; }
 
-			this->XZoomOutButton->Location = System::Drawing::Point(XLeft, XTop);
-			this->XZoomInButton->Location = System::Drawing::Point(XLeft + this->XZoomOutButton->Width + 4, XTop);
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::ChartArea^ Area = this->LogChart->ChartAreas[0];
+
+				System::Drawing::RectangleF PlotRect;
+				double XMinimum = 0.0;
+				double XMaximum = 0.0;
+
+				bool Ready = this->GetPlotAreaRect(PlotRect, XMinimum, XMaximum);
+				bool ShowX = (Ready == true && Area->AxisX->ScaleView->IsZoomed == true);
+				bool ShowY = (Ready == true && Area->AxisY->ScaleView->IsZoomed == true);
+
+				if (Ready == false) {
+
+					if (this->XZoomInButton->Visible == true) { this->XZoomInButton->Visible = false; }
+					if (this->XZoomOutButton->Visible == true) { this->XZoomOutButton->Visible = false; }
+					if (this->YZoomInButton->Visible == true) { this->YZoomInButton->Visible = false; }
+					if (this->YZoomOutButton->Visible == true) { this->YZoomOutButton->Visible = false; }
+					return;
+
+				}
+
+				int BarSize = (int)System::Math::Round(Area->AxisX->ScrollBar->Size);
+				if (BarSize < 10 || BarSize > 40) { BarSize = 14; }
+
+				int ButtonSize = this->XZoomInButton->Width;
+
+				// Time axis: the bar is below the plot area; - and + are left of the right arrow
+				int XButtonTop = (int)System::Math::Round(PlotRect.Bottom) + (BarSize - ButtonSize) / 2;
+				int XInLeft = (int)System::Math::Round(PlotRect.Right) - BarSize - 2 - ButtonSize;
+				int XOutLeft = XInLeft - 1 - ButtonSize;
+
+				// Temperature axis: the bar is left of the plot area; + and - are below the up arrow (the Reset Zoom button and the up arrow take two bar sizes)
+				int YButtonLeft = (int)System::Math::Round(PlotRect.Left) - BarSize + (BarSize - ButtonSize) / 2;
+				int YInTop = (int)System::Math::Round(PlotRect.Top) + (2 * BarSize) + 2;
+				int YOutTop = YInTop + ButtonSize + 1;
+
+				this->SetZoomButtonPlace(this->XZoomOutButton, XOutLeft, XButtonTop, ShowX);
+				this->SetZoomButtonPlace(this->XZoomInButton, XInLeft, XButtonTop, ShowX);
+				this->SetZoomButtonPlace(this->YZoomInButton, YButtonLeft, YInTop, ShowY);
+				this->SetZoomButtonPlace(this->YZoomOutButton, YButtonLeft, YOutTop, ShowY);
+
+			}
+			catch (System::Exception^) {}
 
 		}
 
@@ -1358,9 +1385,13 @@ namespace IRCAMThermalViewer {
 
 		System::Void LogChart_PostPaint(System::Object^ sender, System::Windows::Forms::DataVisualization::Charting::ChartPaintEventArgs^ e) {
 
+			if (dynamic_cast<System::Windows::Forms::DataVisualization::Charting::ChartArea^>(e->ChartElement) == nullptr) { return; }
+
+			// The zoom buttons follow the plot area and the zoom (the positions are known after the plot area is drawn)
+			this->UpdateZoomButtons();
+
 			// The markers are drawn after the plot area (so they are also in an exported image)
 			if (this->GraphMarkers->Count == 0) { return; }
-			if (dynamic_cast<System::Windows::Forms::DataVisualization::Charting::ChartArea^>(e->ChartElement) == nullptr) { return; }
 
 			try { this->DrawMarkers(e->ChartGraphics->Graphics); }
 			catch (System::Exception^) {}
