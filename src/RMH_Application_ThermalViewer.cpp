@@ -5637,3 +5637,119 @@ void RMH_ThermalViewer_UpdateLiveView(unsigned int LiveViewPanelWidth, unsigned 
 }
 
 // ------------------------------------------------------------------------------------------ //
+
+// ------------------ Live View Measurements In A Session File (Session Menu) ------------------ //
+
+System::Collections::Generic::List<System::String^>^ RMH_ThermalViewer_GetLiveViewMeasurementsForSession() {
+
+	// This routine returns the active temperature measurements (crosshairs), temperature lines and ROIs of the live view as text entries, for a session file:
+	//   "TM;slot;x;y"    "LINE;slot;x0;y0;x1;y1"    "ROI;slot;x;y;width;height"
+	// (slot = number of the measurement minus one, positions in image pixels)
+
+	System::Collections::Generic::List<System::String^>^ Entries = gcnew System::Collections::Generic::List<System::String^>();
+
+	if (GlobalVariables::OpenGLRender == nullptr) { return Entries; }
+
+	cli::array<double>^ Values = gcnew cli::array<double>(4);
+	System::Globalization::CultureInfo^ Culture = System::Globalization::CultureInfo::InvariantCulture;
+
+	for (int s = 0; s < _MaxNumberOfMovableCrosshairs; s++) {
+		if (ActiveTempMeasEnableFlags[s] == true && GlobalVariables::OpenGLRender->RMH_OpenGL_GetMovableObjectPosition(0, s + 1, Values) == true) {
+			Entries->Add("TM;" + s.ToString(Culture) + ";" + Values[0].ToString("R", Culture) + ";" + Values[1].ToString("R", Culture));
+		}
+	}
+
+	for (int s = 0; s < _MaxNumberOfMovableLines; s++) {
+		if (ActiveTempLineEnableFlags[s] == true && GlobalVariables::OpenGLRender->RMH_OpenGL_GetMovableObjectPosition(1, s + 1, Values) == true) {
+			Entries->Add("LINE;" + s.ToString(Culture) + ";" + Values[0].ToString("R", Culture) + ";" + Values[1].ToString("R", Culture) + ";" + Values[2].ToString("R", Culture) + ";" + Values[3].ToString("R", Culture));
+		}
+	}
+
+	// The ROI rendering order is slot + 3 (1 = color palette ROI, 2 = zoom ROI)
+	for (int s = 0; s < _MaxNumberOfMovableRectangles - _NumberOfNonMainLiveViewROIs; s++) {
+		if (ActiveROIEnableFlags[s] == true && GlobalVariables::OpenGLRender->RMH_OpenGL_GetMovableObjectPosition(2, s + 3, Values) == true) {
+			Entries->Add("ROI;" + s.ToString(Culture) + ";" + Values[0].ToString("R", Culture) + ";" + Values[1].ToString("R", Culture) + ";" + Values[2].ToString("R", Culture) + ";" + Values[3].ToString("R", Culture));
+		}
+	}
+
+	return Entries;
+
+}
+
+int RMH_ThermalViewer_SetLiveViewMeasurementsFromSession(System::Collections::Generic::List<System::String^>^ Entries) {
+
+	// This routine replaces the temperature measurements, temperature lines and ROIs of the live view with those of a session file (see
+	// RMH_ThermalViewer_GetLiveViewMeasurementsForSession). They are created with the normal Add routines (so menus, button colors and counters are right) and
+	// the unwanted slots are deleted again, so a measurement keeps its number (TM3 stays TM3). Returns the number of objects that were set.
+
+	if (Entries == nullptr || GlobalVariables::OpenGLRender == nullptr) { return 0; }
+
+	const int NumberOfROISlots = _MaxNumberOfMovableRectangles - _NumberOfNonMainLiveViewROIs;
+
+	System::Globalization::CultureInfo^ Culture = System::Globalization::CultureInfo::InvariantCulture;
+
+	// Wanted slots and their positions
+	cli::array<bool>^ WantTM = gcnew cli::array<bool>(_MaxNumberOfMovableCrosshairs);
+	cli::array<bool>^ WantLine = gcnew cli::array<bool>(_MaxNumberOfMovableLines);
+	cli::array<bool>^ WantROI = gcnew cli::array<bool>(NumberOfROISlots);
+	cli::array<cli::array<double>^>^ TMValues = gcnew cli::array<cli::array<double>^>(_MaxNumberOfMovableCrosshairs);
+	cli::array<cli::array<double>^>^ LineValues = gcnew cli::array<cli::array<double>^>(_MaxNumberOfMovableLines);
+	cli::array<cli::array<double>^>^ ROIValues = gcnew cli::array<cli::array<double>^>(NumberOfROISlots);
+
+	for (int e = 0; e < Entries->Count; e++) {
+
+		cli::array<System::String^>^ Parts = Entries[e]->Split(';');
+		if (Parts->Length < 4) { continue; }
+
+		int Slot = -1;
+		if (System::Int32::TryParse(Parts[1], System::Globalization::NumberStyles::Integer, Culture, Slot) == false || Slot < 0) { continue; }
+
+		int NumberCount = Parts->Length - 2;
+		cli::array<double>^ Numbers = gcnew cli::array<double>(4);
+		bool NumbersOK = true;
+
+		for (int n = 0; n < NumberCount && n < 4; n++) {
+			double Parsed = 0.0;
+			if (System::Double::TryParse(Parts[2 + n], System::Globalization::NumberStyles::Float, Culture, Parsed) == false) { NumbersOK = false; }
+			Numbers[n] = Parsed;
+		}
+
+		if (NumbersOK == false) { continue; }
+
+		if (Parts[0] == "TM" && NumberCount == 2 && Slot < _MaxNumberOfMovableCrosshairs) { WantTM[Slot] = true; TMValues[Slot] = Numbers; }
+		else if (Parts[0] == "LINE" && NumberCount == 4 && Slot < _MaxNumberOfMovableLines) { WantLine[Slot] = true; LineValues[Slot] = Numbers; }
+		else if (Parts[0] == "ROI" && NumberCount == 4 && Slot < NumberOfROISlots) { WantROI[Slot] = true; ROIValues[Slot] = Numbers; }
+
+	}
+
+	// Remove what is on the live view now
+	RMH_ThermalViewer_DeleteAllTemperatureMeasurementFromLiveView();
+	RMH_ThermalViewer_DeleteAllRegionOfInterestBoxFromLiveView();
+	RMH_ThermalViewer_DeleteAllTemperatureLinesFromLiveView();
+
+	int SetCount = 0;
+
+	// Temperature measurements: add up to the highest wanted slot, delete the slots in between that are not wanted, then set the positions
+	int Highest = -1;
+	for (int s = 0; s < _MaxNumberOfMovableCrosshairs; s++) { if (WantTM[s] == true) { Highest = s; } }
+	for (int s = 0; s <= Highest; s++) { RMH_ThermalViewer_AddTemperatureMeasurementToLiveView(); }
+	for (int s = 0; s <= Highest; s++) { if (WantTM[s] == false) { RMH_ThermalViewer_DeleteTemperatureMeasurementFromLiveView(GlobalVariables::GlobaldeleteTempLabelToolStripMenuItem->DropDownItems[s]); } }
+	for (int s = 0; s <= Highest; s++) { if (WantTM[s] == true && GlobalVariables::OpenGLRender->RMH_OpenGL_SetMovableObjectPosition(0, s + 1, TMValues[s]) == true) { SetCount++; } }
+
+	// Temperature lines
+	Highest = -1;
+	for (int s = 0; s < _MaxNumberOfMovableLines; s++) { if (WantLine[s] == true) { Highest = s; } }
+	for (int s = 0; s <= Highest; s++) { RMH_ThermalViewer_AddTemperatureLineToLiveView(); }
+	for (int s = 0; s <= Highest; s++) { if (WantLine[s] == false) { RMH_ThermalViewer_DeleteTemperatureLineFromLiveView(GlobalVariables::GlobaldeleteLineToolStripMenuItem->DropDownItems[s]); } }
+	for (int s = 0; s <= Highest; s++) { if (WantLine[s] == true && GlobalVariables::OpenGLRender->RMH_OpenGL_SetMovableObjectPosition(1, s + 1, LineValues[s]) == true) { SetCount++; } }
+
+	// ROIs
+	Highest = -1;
+	for (int s = 0; s < NumberOfROISlots; s++) { if (WantROI[s] == true) { Highest = s; } }
+	for (int s = 0; s <= Highest; s++) { RMH_ThermalViewer_AddRegionOfInterestBoxToLiveView(); }
+	for (int s = 0; s <= Highest; s++) { if (WantROI[s] == false) { RMH_ThermalViewer_DeleteRegionOfInterestBoxFromLiveView(GlobalVariables::GlobaldeleteROIToolStripMenuItem->DropDownItems[s]); } }
+	for (int s = 0; s <= Highest; s++) { if (WantROI[s] == true && GlobalVariables::OpenGLRender->RMH_OpenGL_SetMovableObjectPosition(2, s + 3, ROIValues[s]) == true) { SetCount++; } }
+
+	return SetCount;
+
+}

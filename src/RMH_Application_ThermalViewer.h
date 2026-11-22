@@ -175,6 +175,8 @@ void RMH_ThermalViewer_UpdateTempMeasurementsRenderingOrder();
 void RMH_ThermalViewer_AddTemperatureMeasurementToLiveView();
 void RMH_ThermalViewer_DeleteTemperatureMeasurementFromLiveView(System::Object^ sender);
 void RMH_ThermalViewer_DeleteAllTemperatureMeasurementFromLiveView();
+System::Collections::Generic::List<System::String^>^ RMH_ThermalViewer_GetLiveViewMeasurementsForSession();
+int RMH_ThermalViewer_SetLiveViewMeasurementsFromSession(System::Collections::Generic::List<System::String^>^ Entries);
 
 // --------------------- ROI Temperature Tracking Handling Routines ---------------------- //
 

@@ -13,7 +13,8 @@
  *    app.NNN         the application configuration lines (see RMH_Application_BuildSessionConfigLines)
  *    ui.*            the window and the page that was shown
  *    FormName.Ctrl   the value of a control of a form (check box, number box, drop-down list, text box, track bar)
- *    datalog.*       the Data Log graph settings
+ *    datalog.*       the Data Log graph settings, markers, cursors and the logged data (datalog.file.gz = GZip + Base64 of the log CSV file)
+ *    lv.*            the temperature crosshairs, lines and ROIs of the live view
  *
  *  The routines here do not know the forms of the program: the main window gives them the forms to walk through.
  *
@@ -281,6 +282,65 @@ public:
 		}
 
 		return SetCount;
+
+	}
+
+	// ---------------------------- Compressed Binary Data (Logged Data Of A Session) ---------------------------- //
+
+	// The largest log file that is stored inside a session file (bigger files are only referred to by their path)
+	literal long long MaxEmbeddedFileBytes = 52428800;
+
+	// Compresses bytes (GZip) and returns them as text (Base64), so a log file can be stored on one line of the session file
+	static System::String^ CompressToBase64(cli::array<System::Byte>^ Data) {
+
+		System::IO::MemoryStream^ Output = gcnew System::IO::MemoryStream();
+		System::IO::Compression::GZipStream^ Zip = gcnew System::IO::Compression::GZipStream(Output, System::IO::Compression::CompressionMode::Compress, true);
+		Zip->Write(Data, 0, Data->Length);
+		Zip->Close();
+
+		return System::Convert::ToBase64String(Output->ToArray());
+
+	}
+
+	static cli::array<System::Byte>^ DecompressFromBase64(System::String^ Text) {
+
+		cli::array<System::Byte>^ Packed = System::Convert::FromBase64String(Text);
+
+		System::IO::MemoryStream^ Input = gcnew System::IO::MemoryStream(Packed);
+		System::IO::Compression::GZipStream^ Zip = gcnew System::IO::Compression::GZipStream(Input, System::IO::Compression::CompressionMode::Decompress);
+		System::IO::MemoryStream^ Output = gcnew System::IO::MemoryStream();
+
+		cli::array<System::Byte>^ Block = gcnew cli::array<System::Byte>(65536);
+		int BytesRead = 0;
+
+		while ((BytesRead = Zip->Read(Block, 0, Block->Length)) > 0) { Output->Write(Block, 0, BytesRead); }
+
+		Zip->Close();
+
+		return Output->ToArray();
+
+	}
+
+	// Reads a whole file, also when another part of the program still writes to it (a running data logging session)
+	static cli::array<System::Byte>^ ReadSharedFile(System::String^ FilePath) {
+
+		System::IO::FileStream^ Stream = gcnew System::IO::FileStream(FilePath, System::IO::FileMode::Open, System::IO::FileAccess::Read, System::IO::FileShare::ReadWrite);
+
+		try {
+
+			cli::array<System::Byte>^ Data = gcnew cli::array<System::Byte>((int)Stream->Length);
+			int Position = 0;
+
+			while (Position < Data->Length) {
+				int BytesRead = Stream->Read(Data, Position, Data->Length - Position);
+				if (BytesRead <= 0) { break; }
+				Position = Position + BytesRead;
+			}
+
+			return Data;
+
+		}
+		finally { Stream->Close(); }
 
 	}
 

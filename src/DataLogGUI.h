@@ -314,6 +314,12 @@ namespace IRCAMThermalViewer {
 			this->MarkerFont = nullptr;
 			this->MeasurePanelPositioned = false;
 			this->MeasurePanelDragging = false;
+			this->SessionStatePending = false;
+			this->SessionStateFilePath = nullptr;
+			this->SessionStateMarkers = nullptr;
+			this->SessionStateCursorA = System::Double::NaN;
+			this->SessionStateCursorB = System::Double::NaN;
+			this->SessionStateMeasureMode = false;
 			this->XTickCount = 0;
 			this->YTickCount = 0;
 			this->YRangeLocked = false;
@@ -374,10 +380,77 @@ namespace IRCAMThermalViewer {
 			Values["datalog.YRangeMin"] = SessionFile::DoubleText(this->YLockedMinimum);
 			Values["datalog.YRangeMax"] = SessionFile::DoubleText(this->YLockedMaximum);
 
+			// Markers (time in milliseconds of the log session | text) and the two measurement cursors (time in days, NaN = not placed)
+			Values["datalog.MarkerCount"] = this->GraphMarkers->Count.ToString(System::Globalization::CultureInfo::InvariantCulture);
+			for (int i = 0; i < this->GraphMarkers->Count; i++) {
+				Values["datalog.marker." + i.ToString("000", System::Globalization::CultureInfo::InvariantCulture)] = SessionFile::DoubleText(this->GraphMarkers[i]->ElapsedMilliSec) + "|" + this->GraphMarkers[i]->Text;
+			}
+			Values["datalog.CursorA"] = SessionFile::DoubleText(this->MeasureTimeA);
+			Values["datalog.CursorB"] = SessionFile::DoubleText(this->MeasureTimeB);
+			Values["datalog.MeasureMode"] = SessionFile::BoolText(this->MeasureModeEnabled);
+
+		}
+
+		// The log file that the window shows or follows now (the running session, or the session file that was logged last), nullptr when there is none
+		System::String^ GetSessionLogFilePath() {
+
+			System::String^ FileName = GlobalVariables::DataLoggingSessionFileNameString;
+			if (FileName == nullptr || FileName->Length == 0) { return nullptr; }
+
+			System::String^ FolderPath = (GlobalVariables::DataLoggingSessionFolderString != nullptr) ? GlobalVariables::DataLoggingSessionFolderString : GlobalVariables::LoggingCSVDefaultPath;
+			System::String^ FullPath = System::IO::Path::Combine(FolderPath, FileName);
+
+			return (System::IO::File::Exists(FullPath) == true) ? FullPath : nullptr;
+
+		}
+
+		// The data delimiter of the log file that is shown
+		System::String^ GetSessionLogDelimiter() { return this->GetViewDelimiter(); }
+
+		// Applies the markers and cursors of an opened session file as soon as the log file of the session has been read into the graph
+		// (the graph is cleared when another log file is loaded, so they cannot be set before that)
+		System::Void TryApplyPendingSessionState() {
+
+			if (this->SessionStatePending == false) { return; }
+
+			if (this->SessionStateFilePath != nullptr) {
+				if (this->ViewedFilePath == nullptr || this->ViewedFilePath->Equals(this->SessionStateFilePath, System::StringComparison::OrdinalIgnoreCase) == false || this->LoadingBehind == true) { return; }
+			}
+
+			this->SessionStatePending = false;
+
+			if (this->SessionStateMarkers != nullptr) {
+				this->GraphMarkers->Clear();
+				this->MarkerDragging = -1;
+				this->MarkerMenuTarget = nullptr;
+				for (int i = 0; i < this->SessionStateMarkers->Count; i++) { this->GraphMarkers->Add(this->SessionStateMarkers[i]); }
+			}
+
+			if (this->MeasureLineA != nullptr && this->MeasureLineB != nullptr && this->MeasurePanel != nullptr) {
+
+				this->ClearMeasureCursors();
+				if (System::Double::IsNaN(this->SessionStateCursorA) == false) { this->SetMeasureCursor(0, this->SessionStateCursorA); }
+				if (System::Double::IsNaN(this->SessionStateCursorB) == false) { this->SetMeasureCursor(1, this->SessionStateCursorB); }
+
+				this->MeasureMenuItem->Checked = this->SessionStateMeasureMode;
+				this->MeasureModeEnabled = this->SessionStateMeasureMode;
+				this->ApplyMeasureMode();
+
+			}
+
+			this->LogChart->Invalidate();
+
+		}
+
+		// Opens the log file that came with a session file in the window (the markers and cursors of the session are set when the file has been read)
+		System::Void OpenSessionLogFile(System::String^ FullPath, System::String^ Delimiter) {
+
+			this->OpenRecoveredSession(FullPath, Delimiter);
+
 		}
 
 		// Sets the settings of the Data Log graph from "Values" (a setting that is not in "Values" is not changed)
-		System::Void ApplySessionSettings(System::Collections::Generic::Dictionary<System::String^, System::String^>^ Values) {
+		System::Void ApplySessionSettings(System::Collections::Generic::Dictionary<System::String^, System::String^>^ Values, System::String^ LogFilePath) {
 
 			System::String^ Value = nullptr;
 			double NumberValue = 0.0;
@@ -418,6 +491,41 @@ namespace IRCAMThermalViewer {
 			this->LogChart->ChartAreas[0]->AxisY->ScaleView->ZoomReset(0);
 
 			this->ApplyAxisSettings();
+
+			// Markers and measurement cursors (only when the file has them). They are set at once when no log file came with the session,
+			// else when the log file has been read into the graph
+			if (Values->TryGetValue("datalog.MarkerCount", Value) == true) {
+
+				this->SessionStateMarkers = gcnew System::Collections::Generic::List<GraphMarker^>();
+
+				for (int i = 0; i < 1000; i++) {
+
+					System::String^ MarkerText = nullptr;
+					if (Values->TryGetValue("datalog.marker." + i.ToString("000", System::Globalization::CultureInfo::InvariantCulture), MarkerText) == false) { break; }
+
+					int Bar = MarkerText->IndexOf('|');
+					double MarkerTime = 0.0;
+
+					if (Bar > 0 && SessionFile::TextToDouble(MarkerText->Substring(0, Bar), MarkerTime) == true) {
+						GraphMarker^ NewMarker = gcnew GraphMarker();
+						NewMarker->ElapsedMilliSec = MarkerTime;
+						NewMarker->Text = MarkerText->Substring(Bar + 1);
+						this->SessionStateMarkers->Add(NewMarker);
+					}
+
+				}
+
+				this->SessionStateCursorA = System::Double::NaN;
+				this->SessionStateCursorB = System::Double::NaN;
+				if (Values->TryGetValue("datalog.CursorA", Value) == true && SessionFile::TextToDouble(Value, NumberValue) == true) { this->SessionStateCursorA = NumberValue; }
+				if (Values->TryGetValue("datalog.CursorB", Value) == true && SessionFile::TextToDouble(Value, NumberValue) == true) { this->SessionStateCursorB = NumberValue; }
+				this->SessionStateMeasureMode = (Values->TryGetValue("datalog.MeasureMode", Value) == true && SessionFile::TextToBool(Value) == true);
+
+				this->SessionStateFilePath = LogFilePath;
+				this->SessionStatePending = true;
+				this->TryApplyPendingSessionState();
+
+			}
 
 		}
 
@@ -511,6 +619,14 @@ namespace IRCAMThermalViewer {
 		bool SuppressNoticeOnce;                     // True: the notice about the session duration is not shown the next time the window opens (a recovered session file is opened)
 		System::String^ ViewDelimiter;               // Data delimiter of the viewed file when it differs from the setting of the program (recovered session file), else nullptr
 		System::String^ ViewDelimiterFilePath;       // The file that ViewDelimiter belongs to
+
+		// Markers and measurement cursors of an opened session file, set when the log file of the session has been read (see ApplySessionSettings)
+		bool SessionStatePending;
+		System::String^ SessionStateFilePath;        // The log file that the markers and cursors belong to (nullptr = no log file came with the session)
+		System::Collections::Generic::List<GraphMarker^>^ SessionStateMarkers;
+		double SessionStateCursorA;
+		double SessionStateCursorB;
+		bool SessionStateMeasureMode;
 		System::Windows::Forms::Button^ StartLoggingButton;
 		System::Windows::Forms::Button^ StopLoggingButton;
 		System::Windows::Forms::Button^ OpenFolderButton;
@@ -4783,6 +4899,9 @@ namespace IRCAMThermalViewer {
 				this->ApplyLiveStyleChanges();
 				this->UpdateAxisTitles();
 				this->ApplyAxisSettings();
+
+				// Markers and cursors of an opened session file
+				this->TryApplyPendingSessionState();
 
 			}
 

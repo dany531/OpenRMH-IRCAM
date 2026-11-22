@@ -387,6 +387,69 @@ namespace OpenGLWinForms {
 
 		}
 
+		// ---------------- Position Access For Saved Sessions (Session Menu) ---------------- //
+
+		// Reads the position of a position-adjustable object into "Values" (4 elements). ObjectType 0 = temperature measurement crosshair (X, Y), 1 = temperature line
+		// (X0, Y0, X1, Y1), 2 = ROI rectangle (X, Y, width, height). "Tag" is the order priority that the object is rendered with (the same number that is given to
+		// RMH_OpenGL_RenderMovableCrossHairWithLabel / RMH_OpenGL_RenderMovableLine / RMH_OpenGL_RenderMovableRectangle). Returns false for a wrong type or tag.
+		bool RMH_OpenGL_GetMovableObjectPosition(int ObjectType, int Tag, cli::array<double>^ Values) {
+
+			if (Values == nullptr || Values->Length < 4) { return false; }
+
+			if (ObjectType == 0 && Tag >= 1 && Tag <= _MaxNumberOfMovableCrosshairs) {
+				Values[0] = CrosshairX0[Tag]; Values[1] = CrosshairY0[Tag]; Values[2] = 0.0; Values[3] = 0.0;
+				return true;
+			}
+			if (ObjectType == 1 && Tag >= 1 && Tag <= _MaxNumberOfMovableLines) {
+				Values[0] = MovableLineX0[Tag]; Values[1] = MovableLineY0[Tag]; Values[2] = MovableLineX1[Tag]; Values[3] = MovableLineY1[Tag];
+				return true;
+			}
+			if (ObjectType == 2 && Tag >= 1 && Tag <= _MaxNumberOfMovableRectangles) {
+				Values[0] = RectX0[Tag]; Values[1] = RectY0[Tag]; Values[2] = RectWidth[Tag]; Values[3] = RectHeight[Tag];
+				return true;
+			}
+
+			return false;
+
+		}
+
+		// Sets the position of a position-adjustable object (see RMH_OpenGL_GetMovableObjectPosition). The values are kept inside the image (a session file can
+		// come from a camera with another image size). Returns false for a wrong type or tag, or for values that are not numbers.
+		bool RMH_OpenGL_SetMovableObjectPosition(int ObjectType, int Tag, cli::array<double>^ Values) {
+
+			if (Values == nullptr || Values->Length < 4) { return false; }
+
+			for (int i = 0; i < 4; i++) { if (System::Double::IsNaN(Values[i]) || System::Double::IsInfinity(Values[i])) { return false; } }
+
+			double MaxX = (ImageDataPixelWidth > 2.0) ? (double)ImageDataPixelWidth : 1.0e9;
+			double MaxY = (ImageDataPixelHeight > 2.0) ? (double)ImageDataPixelHeight : 1.0e9;
+
+			if (ObjectType == 0 && Tag >= 1 && Tag <= _MaxNumberOfMovableCrosshairs) {
+				CrosshairX0[Tag] = System::Math::Min(System::Math::Max(Values[0], 1.0), MaxX);
+				CrosshairY0[Tag] = System::Math::Min(System::Math::Max(Values[1], 1.0), MaxY);
+				return true;
+			}
+			if (ObjectType == 1 && Tag >= 1 && Tag <= _MaxNumberOfMovableLines) {
+				MovableLineX0[Tag] = System::Math::Min(System::Math::Max(Values[0], 1.0), MaxX);
+				MovableLineY0[Tag] = System::Math::Min(System::Math::Max(Values[1], 1.0), MaxY);
+				MovableLineX1[Tag] = System::Math::Min(System::Math::Max(Values[2], 1.0), MaxX);
+				MovableLineY1[Tag] = System::Math::Min(System::Math::Max(Values[3], 1.0), MaxY);
+				return true;
+			}
+			if (ObjectType == 2 && Tag >= 1 && Tag <= _MaxNumberOfMovableRectangles) {
+				double NewWidth = System::Math::Min(System::Math::Max(Values[2], 2.0), MaxX - 1.0);
+				double NewHeight = System::Math::Min(System::Math::Max(Values[3], 2.0), MaxY - 1.0);
+				RectX0[Tag] = System::Math::Min(System::Math::Max(Values[0], 0.0), MaxX - NewWidth);
+				RectY0[Tag] = System::Math::Min(System::Math::Max(Values[1], 0.0), MaxY - NewHeight);
+				RectWidth[Tag] = NewWidth;
+				RectHeight[Tag] = NewHeight;
+				return true;
+			}
+
+			return false;
+
+		}
+
 		GLvoid RMH_OpenGL_InitArray(GLdouble *Array, unsigned short ArraySize, GLdouble Value) {
 
 			// This routine writes a given value "value" to all positions of a given array

@@ -1203,6 +1203,7 @@ namespace IRCAMThermalViewer {
 		// Session menu (menu bar at the top of the window) and the file of the current session
 		private: System::Windows::Forms::MenuStrip^ SessionMenuStrip;
 		private: System::String^ CurrentSessionPath;
+		private: System::String^ SessionSaveNote;
 		private: System::Windows::Forms::Button^ DataLogUndockButton;
 
 
@@ -1320,6 +1321,70 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		// The six pages of the main window that can be pulled out into a window of their own (names as in the session file, see GetShownPageName)
+		private: cli::array<System::String^>^ GetSessionPageNames() { return gcnew cli::array<System::String^>{ "LiveView", "ThermalCamera", "TempMeas", "SurfacePlot", "DataLog", "Emissivity" }; }
+
+		private: System::Windows::Forms::Form^ GetPageFormForSession(System::String^ PageName) {
+
+			if (PageName == "LiveView") { return ManagedLocals::LiveViewStreamForm; }
+			if (PageName == "ThermalCamera") { return ManagedLocals::ThermalCameraGUIForm; }
+			if (PageName == "TempMeas") { return ManagedLocals::TempMeasurementsGUIForm; }
+			if (PageName == "SurfacePlot") { return ManagedLocals::SurfacePlotGUIForm; }
+			if (PageName == "DataLog") { return ManagedLocals::DataLogGUIForm; }
+			if (PageName == "Emissivity") { return ManagedLocals::EmissivityTableGUIForm; }
+			return nullptr;
+
+		}
+
+		// True when the page is shown in a window of its own (undocked)
+		private: bool IsPageUndockedForSession(System::String^ PageName) {
+
+			if (PageName == "LiveView") { return (isLiveViewStreamFormOpen == true && isLiveViewStreamFormUndocked == true); }
+			if (PageName == "ThermalCamera") { return (isThermalCameraFormOpen == true && isThermalCameraFormUndocked == true); }
+			if (PageName == "TempMeas") { return (isTempMeasurementsFormOpen == true && isTempMeasurementsFormUndocked == true); }
+			if (PageName == "SurfacePlot") { return (isSurfacePlotFormOpen == true && isSurfacePlotFormUndocked == true); }
+			if (PageName == "DataLog") { return (isDataLogFormOpen == true && isDataLogFormUndocked == true); }
+			if (PageName == "Emissivity") { return (isEmissivityTableFormOpen == true && isEmissivityTableFormUndocked == true); }
+			return false;
+
+		}
+
+		// Pulls the page out into a window of its own (the same as its Undock button)
+		private: System::Void UndockPageForSession(System::String^ PageName) {
+
+			if (PageName == "LiveView") { this->LiveViewUndockButton_Click(nullptr, nullptr); }
+			else if (PageName == "ThermalCamera") { this->ThermalCAMUndockButton_Click(nullptr, nullptr); }
+			else if (PageName == "TempMeas") { this->TempMeasUndockButton_Click(nullptr, nullptr); }
+			else if (PageName == "SurfacePlot") { this->SurfacePlotUndockButton_Click(nullptr, nullptr); }
+			else if (PageName == "DataLog") { this->DataLogUndockButton_Click(nullptr, nullptr); }
+			else if (PageName == "Emissivity") { this->EmissivityUndockButton_Click(nullptr, nullptr); }
+
+		}
+
+		// True when the rectangle is on one of the connected screens (a session file can come from a computer with other monitors)
+		private: bool IsRectangleOnScreenForSession(System::Drawing::Rectangle WantedBounds) {
+
+			for (int i = 0; i < System::Windows::Forms::Screen::AllScreens->Length; i++) {
+				if (System::Windows::Forms::Screen::AllScreens[i]->WorkingArea.IntersectsWith(WantedBounds) == true) { return true; }
+			}
+			return false;
+
+		}
+
+		private: bool TextToRectangleForSession(System::String^ Text, System::Drawing::Rectangle% Result) {
+
+			cli::array<System::String^>^ Parts = Text->Split(',');
+			int X = 0, Y = 0, W = 0, H = 0;
+
+			if (Parts->Length == 4 && SessionFile::TextToInt(Parts[0], X) && SessionFile::TextToInt(Parts[1], Y) && SessionFile::TextToInt(Parts[2], W) && SessionFile::TextToInt(Parts[3], H) && W > 200 && H > 200) {
+				Result = System::Drawing::Rectangle(X, Y, W, H);
+				return true;
+			}
+
+			return false;
+
+		}
+
 		private: System::Windows::Forms::Form^ GetLiveViewToolsFormForSession() {
 
 			// The live view tools form is created inside the live view form. It is found through one of its own controls
@@ -1361,8 +1426,50 @@ namespace IRCAMThermalViewer {
 				SessionFile::CollectControls(ManagedLocals::LiveViewStreamForm, "LiveViewStream", Values);
 				SessionFile::CollectControls(this->GetLiveViewToolsFormForSession(), "LiveViewTools", Values);
 
-				// Data Log graph settings
+				// Data Log graph settings, markers and cursors
 				ManagedLocals::DataLogGUIForm->GetSessionSettings(Values);
+
+				// Logged data: the log file that the Data Log window shows is stored inside the session file (compressed). A file that is bigger than
+				// SessionFile::MaxEmbeddedFileBytes is only referred to by its path.
+				this->SessionSaveNote = "";
+				System::String^ LogFilePath = ManagedLocals::DataLogGUIForm->GetSessionLogFilePath();
+
+				if (LogFilePath != nullptr) {
+
+					long long LogFileLength = (gcnew System::IO::FileInfo(LogFilePath))->Length;
+
+					if (LogFileLength <= SessionFile::MaxEmbeddedFileBytes) {
+						Values["datalog.file.delimiter"] = ManagedLocals::DataLogGUIForm->GetSessionLogDelimiter();
+						Values["datalog.file.gz"] = SessionFile::CompressToBase64(SessionFile::ReadSharedFile(LogFilePath));
+					}
+					else {
+						Values["datalog.file.path"] = LogFilePath;
+						this->SessionSaveNote = " The logged data is too big to be stored in the session file: only the path of its file was saved.";
+					}
+
+				}
+
+				// Window layout: the pages that are pulled out into a window of their own, with the position and size of the window
+				cli::array<System::String^>^ PageNames = this->GetSessionPageNames();
+
+				for (int i = 0; i < PageNames->Length; i++) {
+
+					System::Windows::Forms::Form^ PageForm = this->GetPageFormForSession(PageNames[i]);
+					bool Undocked = this->IsPageUndockedForSession(PageNames[i]);
+
+					Values["ui.win." + PageNames[i] + ".Undocked"] = SessionFile::BoolText(Undocked);
+
+					if (Undocked == true && PageForm != nullptr) {
+						System::Drawing::Rectangle WindowBounds = (PageForm->WindowState == System::Windows::Forms::FormWindowState::Normal) ? PageForm->Bounds : PageForm->RestoreBounds;
+						Values["ui.win." + PageNames[i] + ".Bounds"] = WindowBounds.X.ToString() + "," + WindowBounds.Y.ToString() + "," + WindowBounds.Width.ToString() + "," + WindowBounds.Height.ToString();
+					}
+
+				}
+
+				// Live view measurements: temperature crosshairs, temperature lines and ROIs
+				System::Collections::Generic::List<System::String^>^ LiveViewEntries = RMH_ThermalViewer_GetLiveViewMeasurementsForSession();
+				Values["lv.count"] = LiveViewEntries->Count.ToString(System::Globalization::CultureInfo::InvariantCulture);
+				for (int i = 0; i < LiveViewEntries->Count; i++) { Values["lv." + i.ToString("000", System::Globalization::CultureInfo::InvariantCulture)] = LiveViewEntries[i]; }
 
 				return SessionFile::WriteFile(FilePath, Values);
 
@@ -1431,8 +1538,78 @@ namespace IRCAMThermalViewer {
 				SetCount += SessionFile::ApplyControls(ManagedLocals::SurfacePlotGUIForm, "SurfacePlotGUI", Values, SkippedCount);
 				SetCount += SessionFile::ApplyControls(ManagedLocals::EmissivityTableGUIForm, "EmissivityTableGUI", Values, SkippedCount);
 
-				// Data Log graph settings
-				ManagedLocals::DataLogGUIForm->ApplySessionSettings(Values);
+				// Logged data: the log file of the session is written next to the session file and opened in the Data Log window
+				System::String^ OpenedLogFilePath = nullptr;
+				System::String^ PackedLogData = nullptr;
+				System::String^ LogDelimiter = nullptr;
+				Values->TryGetValue("datalog.file.delimiter", LogDelimiter);
+
+				if (Values->TryGetValue("datalog.file.gz", PackedLogData) == true) {
+
+					try {
+
+						System::String^ LogTarget = System::IO::Path::Combine(System::IO::Path::GetDirectoryName(FilePath), System::IO::Path::GetFileNameWithoutExtension(FilePath) + "_DataLog.csv");
+						System::IO::File::WriteAllBytes(LogTarget, SessionFile::DecompressFromBase64(PackedLogData));
+						OpenedLogFilePath = LogTarget;
+
+					}
+					catch (System::Exception^ LogEx) { this->WriteSessionStatus("Session File: The Logged Data Could Not Be Restored (" + LogEx->Message + ")", _StatusMessageType_Warning); }
+
+				}
+				else if (Values->TryGetValue("datalog.file.path", PackedLogData) == true && System::IO::File::Exists(PackedLogData) == true) { OpenedLogFilePath = PackedLogData; }
+
+				if (OpenedLogFilePath != nullptr) {
+					if (LogDelimiter == nullptr || LogDelimiter->Length == 0) { LogDelimiter = GlobalVariables::DataLoggingCSVDelimiterString; }
+					ManagedLocals::DataLogGUIForm->OpenSessionLogFile(OpenedLogFilePath, LogDelimiter);
+				}
+
+				// Data Log graph settings, markers and cursors
+				ManagedLocals::DataLogGUIForm->ApplySessionSettings(Values, OpenedLogFilePath);
+
+				// Live view measurements (only when the session file has them)
+				System::String^ LiveViewCountText = nullptr;
+
+				if (Values->TryGetValue("lv.count", LiveViewCountText) == true) {
+
+					System::Collections::Generic::List<System::String^>^ LiveViewEntries = gcnew System::Collections::Generic::List<System::String^>();
+
+					for (int i = 0; i < 1000; i++) {
+						System::String^ Entry = nullptr;
+						if (Values->TryGetValue("lv." + i.ToString("000", System::Globalization::CultureInfo::InvariantCulture), Entry) == false) { break; }
+						LiveViewEntries->Add(Entry);
+					}
+
+					SetCount += RMH_ThermalViewer_SetLiveViewMeasurementsFromSession(LiveViewEntries);
+
+				}
+
+				// Windows that were pulled out of the main window: pulled out again (when the page is available) and put where they were. A window that is
+				// pulled out now but was docked in the session file is left as it is.
+				cli::array<System::String^>^ PageNames = this->GetSessionPageNames();
+
+				for (int i = 0; i < PageNames->Length; i++) {
+
+					System::String^ UndockedText = nullptr;
+					if (Values->TryGetValue("ui.win." + PageNames[i] + ".Undocked", UndockedText) == false || SessionFile::TextToBool(UndockedText) == false) { continue; }
+
+					System::Windows::Forms::Button^ PageButton = this->GetPageMenuButton(PageNames[i]);
+
+					if (this->IsPageUndockedForSession(PageNames[i]) == false && PageButton != nullptr && PageButton->Enabled == true) { this->UndockPageForSession(PageNames[i]); }
+
+					System::Windows::Forms::Form^ PageForm = this->GetPageFormForSession(PageNames[i]);
+					System::String^ WindowBoundsText = nullptr;
+					System::Drawing::Rectangle WindowBounds;
+
+					if (PageForm != nullptr && this->IsPageUndockedForSession(PageNames[i]) == true && Values->TryGetValue("ui.win." + PageNames[i] + ".Bounds", WindowBoundsText) == true &&
+						this->TextToRectangleForSession(WindowBoundsText, WindowBounds) == true && this->IsRectangleOnScreenForSession(WindowBounds) == true) {
+
+						PageForm->WindowState = System::Windows::Forms::FormWindowState::Normal;
+						PageForm->StartPosition = System::Windows::Forms::FormStartPosition::Manual;
+						PageForm->Bounds = WindowBounds;
+
+					}
+
+				}
 
 				// Window: size and position (only a normal window; the maximized state is brought back)
 				System::String^ WindowStateText = nullptr;
@@ -1511,7 +1688,7 @@ namespace IRCAMThermalViewer {
 
 			this->CurrentSessionPath = FilePath;
 			this->UpdateSessionTitleBar();
-			this->WriteSessionStatus("Session Saved: " + System::IO::Path::GetFileName(FilePath), _StatusMessageType_Success);
+			this->WriteSessionStatus("Session Saved: " + System::IO::Path::GetFileName(FilePath) + this->SessionSaveNote, _StatusMessageType_Success);
 
 		}
 
