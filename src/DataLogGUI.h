@@ -882,8 +882,11 @@ namespace IRCAMThermalViewer {
 
 		System::Void StyleZoomButton(System::Windows::Forms::Button^ ZoomButton, System::String^ ButtonText, System::String^ HintText) {
 
-			// A small button in the colors of the scroll bar buttons (_DataLogScrollBar_... at the top of this file)
-			ZoomButton->Text = ButtonText;
+			// A small button in the colors of the scroll bar buttons (_DataLogScrollBar_... at the top of this file). Its + or - is drawn by ZoomButton_Paint (the text
+			// of a button this small is not drawn reliably), the symbol is kept in its Tag.
+			ZoomButton->Text = "";
+			ZoomButton->Tag = ButtonText;
+			ZoomButton->Paint += gcnew System::Windows::Forms::PaintEventHandler(this, &DataLogGUI::ZoomButton_Paint);
 			ZoomButton->Size = System::Drawing::Size(13, 13);
 			ZoomButton->Padding = System::Windows::Forms::Padding(0);
 			ZoomButton->Margin = System::Windows::Forms::Padding(0);
@@ -894,17 +897,38 @@ namespace IRCAMThermalViewer {
 			ZoomButton->FlatAppearance->BorderColor = _DataLogScrollBar_LineColor;
 			ZoomButton->FlatAppearance->BorderSize = 1;
 			ZoomButton->FlatAppearance->MouseOverBackColor = System::Drawing::Color::FromArgb(235, 235, 235);
-			ZoomButton->Font = gcnew System::Drawing::Font("Arial", 7.0f, System::Drawing::FontStyle::Bold);
 			ZoomButton->TabStop = false;
 			ZoomButton->Visible = false;
 			this->HintToolTip->SetToolTip(ZoomButton, HintText);
 
 		}
 
+		System::Void ZoomButton_Paint(System::Object^ sender, System::Windows::Forms::PaintEventArgs^ e) {
+
+			// Draws the + (two lines) or the - (one line) in the middle of the button
+			System::Windows::Forms::Button^ ZoomButton = dynamic_cast<System::Windows::Forms::Button^>(sender);
+			if (ZoomButton == nullptr) { return; }
+
+			System::String^ Symbol = dynamic_cast<System::String^>(ZoomButton->Tag);
+			if (Symbol == nullptr) { return; }
+
+			float CenterX = (float)ZoomButton->ClientSize.Width / 2.0f;
+			float CenterY = (float)ZoomButton->ClientSize.Height / 2.0f;
+
+			System::Drawing::Pen^ SymbolPen = gcnew System::Drawing::Pen(_DataLogScrollBar_LineColor, 2.0f);
+
+			e->Graphics->DrawLine(SymbolPen, CenterX - 3.0f, CenterY, CenterX + 3.0f, CenterY);
+			if (Symbol->Equals("+")) { e->Graphics->DrawLine(SymbolPen, CenterX, CenterY - 3.0f, CenterX, CenterY + 3.0f); }
+
+			delete SymbolPen;
+
+		}
+
 		System::Void BuildZoomButtons() {
 
-			// Four small buttons on the graph, over the scroll bars of the zoomed axes (see UpdateZoomButtons): on the time axis scroll bar (below the graph) - and + next to
-			// the right arrow, on the temperature axis scroll bar (left of the graph) + and - below the up arrow.
+			// Four small buttons on the graph, at the ends of the scroll bars of the zoomed axes (see UpdateZoomButtons): at the time axis scroll bar (below the graph) - and +
+			// right of the right arrow, at the temperature axis scroll bar (left of the graph) + and - below the down arrow. They are beyond the ends of the bars, like the
+			// Reset Zoom button at the other end, so the scroll bar thumb never goes under them.
 			this->XZoomOutButton = gcnew System::Windows::Forms::Button();
 			this->StyleZoomButton(this->XZoomOutButton, "-", "Zoom out the time axis (X): shows a longer time");
 			this->XZoomOutButton->Click += gcnew System::EventHandler(this, &DataLogGUI::XZoomOutButton_Click);
@@ -939,9 +963,10 @@ namespace IRCAMThermalViewer {
 
 		System::Void UpdateZoomButtons() {
 
-			// Shows the buttons of an axis only while that axis is zoomed, on its scroll bar. The scroll bars are drawn by the chart: they are about 14 pixels thick and
-			// lie against the plot area - the time axis one below it, with the Reset Zoom button and the left arrow at its left end and the right arrow at its right end,
-			// the temperature axis one left of it, with the Reset Zoom button and the up arrow at its top end. The buttons are put next to the arrows on the bar.
+			// Shows the buttons of an axis only while that axis is zoomed, at the end of its scroll bar. The scroll bars are drawn by the chart: they are about 14 pixels
+			// thick and lie against the plot area - the time axis one below it, with the Reset Zoom button and the left arrow at its left end and the right arrow at its
+			// right end, the temperature axis one left of it, with the Reset Zoom button and the up arrow at its top end and the down arrow at its bottom end. The buttons are
+			// put beyond the end of the bar, behind the arrow at the end that has no Reset Zoom button (right end / bottom end), so they never cover the track.
 			if (this->XZoomInButton == nullptr || this->XZoomOutButton == nullptr || this->YZoomInButton == nullptr || this->YZoomOutButton == nullptr) { return; }
 
 			try {
@@ -971,14 +996,21 @@ namespace IRCAMThermalViewer {
 
 				int ButtonSize = this->XZoomInButton->Width;
 
-				// Time axis: the bar is below the plot area; - and + are left of the right arrow
+				// Time axis: the bar is below the plot area; - and + are right of its right arrow (moved left when the graph has no room there)
 				int XButtonTop = (int)System::Math::Round(PlotRect.Bottom) + (BarSize - ButtonSize) / 2;
-				int XInLeft = (int)System::Math::Round(PlotRect.Right) - BarSize - 2 - ButtonSize;
-				int XOutLeft = XInLeft - 1 - ButtonSize;
+				int XOutLeft = (int)System::Math::Round(PlotRect.Right) + 3;
+				int XInLeft = XOutLeft + ButtonSize + 1;
 
-				// Temperature axis: the bar is left of the plot area; + and - are below the up arrow (the Reset Zoom button and the up arrow take two bar sizes)
+				if (XInLeft + ButtonSize > this->LogChart->ClientSize.Width) {
+
+					XInLeft = this->LogChart->ClientSize.Width - ButtonSize;
+					XOutLeft = XInLeft - 1 - ButtonSize;
+
+				}
+
+				// Temperature axis: the bar is left of the plot area; + and - are below its down arrow (in the corner below the bar)
 				int YButtonLeft = (int)System::Math::Round(PlotRect.Left) - BarSize + (BarSize - ButtonSize) / 2;
-				int YInTop = (int)System::Math::Round(PlotRect.Top) + (2 * BarSize) + 2;
+				int YInTop = (int)System::Math::Round(PlotRect.Bottom) + 2;
 				int YOutTop = YInTop + ButtonSize + 1;
 
 				this->SetZoomButtonPlace(this->XZoomOutButton, XOutLeft, XButtonTop, ShowX);
