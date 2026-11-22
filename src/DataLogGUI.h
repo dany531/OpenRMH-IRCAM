@@ -7,6 +7,7 @@
 #include "GlobalObjectsAndVariables.h"
 #include "RMH_Application_ThermalViewer.h"
 #include "RMH_SupportedIRCameras_Resources.h"	// Names of the supported camera models (camera model in an exported graph image)
+#include "SessionFile.h"								// Conversion routines for the session files (Session menu of the main window)
 
 // Class namespace
 namespace IRCAMThermalViewer {
@@ -348,6 +349,75 @@ namespace IRCAMThermalViewer {
 
 			// The notice about the duration of the next data logging session is not shown when the window opens this time
 			this->SuppressNoticeOnce = true;
+
+		}
+
+		// ------------------------------- Session File (Session Menu Of The Main Window) ------------------------------- //
+
+		// Writes the settings of the Data Log graph into "Values" (keys datalog.*): graph title, notes, ticks, locked ranges, mouse cursor label and auto scroll.
+		// The logged data, the markers and the two measurement cursors belong to one logging session and are not part of the settings.
+		System::Void GetSessionSettings(System::Collections::Generic::SortedDictionary<System::String^, System::String^>^ Values) {
+
+			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
+			if (GraphTitle != nullptr) { Values["datalog.TitleText"] = GraphTitle->Text; }
+
+			Values["datalog.ShowTitle"] = SessionFile::BoolText(this->ShowTitleCheckBox->Checked);
+			Values["datalog.Notes"] = (this->GraphNotes == nullptr) ? gcnew System::String("") : this->GraphNotes;
+			Values["datalog.AutoScroll"] = SessionFile::BoolText(this->AutoScrollCheckBox->Checked);
+			Values["datalog.CursorLabel"] = SessionFile::BoolText(this->CursorLabelEnabled);
+			Values["datalog.XTicks"] = this->XTickCount.ToString(System::Globalization::CultureInfo::InvariantCulture);
+			Values["datalog.YTicks"] = this->YTickCount.ToString(System::Globalization::CultureInfo::InvariantCulture);
+			Values["datalog.XRangeLocked"] = SessionFile::BoolText(this->XRangeLocked);
+			Values["datalog.XRangeMin"] = SessionFile::DoubleText(this->XLockedMinimum);
+			Values["datalog.XRangeMax"] = SessionFile::DoubleText(this->XLockedMaximum);
+			Values["datalog.YRangeLocked"] = SessionFile::BoolText(this->YRangeLocked);
+			Values["datalog.YRangeMin"] = SessionFile::DoubleText(this->YLockedMinimum);
+			Values["datalog.YRangeMax"] = SessionFile::DoubleText(this->YLockedMaximum);
+
+		}
+
+		// Sets the settings of the Data Log graph from "Values" (a setting that is not in "Values" is not changed)
+		System::Void ApplySessionSettings(System::Collections::Generic::Dictionary<System::String^, System::String^>^ Values) {
+
+			System::String^ Value = nullptr;
+			double NumberValue = 0.0;
+			int IntValue = 0;
+
+			// The title text first, then the check box that shows or hides it
+			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
+			if (GraphTitle != nullptr && Values->TryGetValue("datalog.TitleText", Value) == true && Value->Trim()->Length > 0) { GraphTitle->Text = Value->Trim(); }
+			if (Values->TryGetValue("datalog.ShowTitle", Value) == true) {
+				bool NewShow = SessionFile::TextToBool(Value);
+				if (this->ShowTitleCheckBox->Checked != NewShow) { this->ShowTitleCheckBox->Checked = NewShow; }
+				else if (GraphTitle != nullptr) { GraphTitle->Visible = NewShow; }
+			}
+
+			if (Values->TryGetValue("datalog.Notes", Value) == true) { this->GraphNotes = Value; }
+			if (Values->TryGetValue("datalog.AutoScroll", Value) == true) { this->AutoScrollCheckBox->Checked = SessionFile::TextToBool(Value); }
+
+			if (Values->TryGetValue("datalog.CursorLabel", Value) == true) {
+				this->CursorLabelEnabled = SessionFile::TextToBool(Value);
+				this->CursorTempMenuItem->Checked = this->CursorLabelEnabled;
+				if (this->CursorLabelEnabled == false) { this->CursorLabel->Visible = false; }
+			}
+
+			if (Values->TryGetValue("datalog.XTicks", Value) == true && SessionFile::TextToInt(Value, IntValue) == true && IntValue >= 0) { this->XTickCount = IntValue; }
+			if (Values->TryGetValue("datalog.YTicks", Value) == true && SessionFile::TextToInt(Value, IntValue) == true && IntValue >= 0) { this->YTickCount = IntValue; }
+
+			if (Values->TryGetValue("datalog.XRangeMin", Value) == true && SessionFile::TextToDouble(Value, NumberValue) == true) { this->XLockedMinimum = NumberValue; }
+			if (Values->TryGetValue("datalog.XRangeMax", Value) == true && SessionFile::TextToDouble(Value, NumberValue) == true) { this->XLockedMaximum = NumberValue; }
+			if (Values->TryGetValue("datalog.YRangeMin", Value) == true && SessionFile::TextToDouble(Value, NumberValue) == true) { this->YLockedMinimum = NumberValue; }
+			if (Values->TryGetValue("datalog.YRangeMax", Value) == true && SessionFile::TextToDouble(Value, NumberValue) == true) { this->YLockedMaximum = NumberValue; }
+
+			// A locked range is only used when it is a valid range
+			if (Values->TryGetValue("datalog.XRangeLocked", Value) == true) { this->XRangeLocked = (SessionFile::TextToBool(Value) == true && this->XLockedMaximum > this->XLockedMinimum); }
+			if (Values->TryGetValue("datalog.YRangeLocked", Value) == true) { this->YRangeLocked = (SessionFile::TextToBool(Value) == true && this->YLockedMaximum > this->YLockedMinimum); }
+
+			// A restored view starts without a zoom, so the locked ranges are fully visible
+			this->LogChart->ChartAreas[0]->AxisX->ScaleView->ZoomReset(0);
+			this->LogChart->ChartAreas[0]->AxisY->ScaleView->ZoomReset(0);
+
+			this->ApplyAxisSettings();
 
 		}
 

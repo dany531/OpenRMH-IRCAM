@@ -5,6 +5,7 @@
 #include "RMH_ImageProcessing_Library.h"
 #include "RMH_Application_ThermalViewer.h"
 #include "RMH_Application_SaveSession.h"
+#include "SessionFile.h"
 #include "RMH_MathConversions_Library.h"
 #include "RMH_Winforms_Library.h"
 #include <iostream>
@@ -90,6 +91,8 @@ namespace IRCAMThermalViewer {
 			InitializeComponentArrays();
 			// Add the "Data Log" item to the left menu (between "Plots" and "Emissivity")
 			AddDataLogMenuItem();
+			// Add the "Session" menu (Open Session / Save Session / Save Session As) at the top of the window
+			BuildSessionMenu();
 			// Set global objects from this form for global use
 			InitializeGlobalFormsObjects();
 
@@ -1196,7 +1199,370 @@ namespace IRCAMThermalViewer {
 
 		private: System::Windows::Forms::TableLayoutPanel^ DataLogMenuPanel;
 		private: System::Windows::Forms::Button^ DataLogMenuButton;
+
+		// Session menu (menu bar at the top of the window) and the file of the current session
+		private: System::Windows::Forms::MenuStrip^ SessionMenuStrip;
+		private: System::String^ CurrentSessionPath;
 		private: System::Windows::Forms::Button^ DataLogUndockButton;
+
+
+		// ------------------------------------ Session Files (Session Menu) ------------------------------------ //
+
+		// A session file holds the settings of the whole program: the application configuration (colors, paths, ...), the value of every setting control of the
+		// forms (thermal camera, live view tools, temperature plots, 3D plot, emissivity table), the Data Log graph settings and the window / page that was shown.
+		// See SessionFile.h for the file layout. Measurements that are placed on the live view (crosshairs, ROIs, lines), the logged data and the video / snapshot
+		// files are not part of a session file.
+
+		private: System::Void BuildSessionMenu() {
+
+			SessionMenuColors^ MenuColors = gcnew SessionMenuColors();
+			System::Windows::Forms::ToolStripProfessionalRenderer^ MenuRenderer = gcnew System::Windows::Forms::ToolStripProfessionalRenderer(MenuColors);
+			MenuRenderer->RoundedEdges = false;
+
+			this->SessionMenuStrip = gcnew System::Windows::Forms::MenuStrip();
+			this->SessionMenuStrip->Name = "SessionMenuStrip";
+			this->SessionMenuStrip->Dock = System::Windows::Forms::DockStyle::Top;
+			this->SessionMenuStrip->GripStyle = System::Windows::Forms::ToolStripGripStyle::Hidden;
+			this->SessionMenuStrip->Renderer = MenuRenderer;
+			this->SessionMenuStrip->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			this->SessionMenuStrip->ForeColor = System::Drawing::Color::White;
+
+			System::Windows::Forms::ToolStripMenuItem^ SessionItem = gcnew System::Windows::Forms::ToolStripMenuItem("Session");
+			System::Windows::Forms::ToolStripMenuItem^ OpenItem = gcnew System::Windows::Forms::ToolStripMenuItem("Open Session...");
+			System::Windows::Forms::ToolStripMenuItem^ SaveItem = gcnew System::Windows::Forms::ToolStripMenuItem("Save Session");
+			System::Windows::Forms::ToolStripMenuItem^ SaveAsItem = gcnew System::Windows::Forms::ToolStripMenuItem("Save Session As...");
+			System::Windows::Forms::ToolStripMenuItem^ FolderItem = gcnew System::Windows::Forms::ToolStripMenuItem("Open Sessions Folder");
+
+			OpenItem->ShortcutKeys = (System::Windows::Forms::Keys)((int)System::Windows::Forms::Keys::Control | (int)System::Windows::Forms::Keys::O);
+			SaveItem->ShortcutKeys = (System::Windows::Forms::Keys)((int)System::Windows::Forms::Keys::Control | (int)System::Windows::Forms::Keys::S);
+			SaveAsItem->ShortcutKeys = (System::Windows::Forms::Keys)((int)System::Windows::Forms::Keys::Control | (int)System::Windows::Forms::Keys::Shift | (int)System::Windows::Forms::Keys::S);
+
+			OpenItem->Click += gcnew System::EventHandler(this, &MainGUI::SessionOpenMenuItem_Click);
+			SaveItem->Click += gcnew System::EventHandler(this, &MainGUI::SessionSaveMenuItem_Click);
+			SaveAsItem->Click += gcnew System::EventHandler(this, &MainGUI::SessionSaveAsMenuItem_Click);
+			FolderItem->Click += gcnew System::EventHandler(this, &MainGUI::SessionFolderMenuItem_Click);
+
+			System::Windows::Forms::ToolStripSeparator^ SessionSeparator = gcnew System::Windows::Forms::ToolStripSeparator();
+			SessionSeparator->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			SessionSeparator->ForeColor = System::Drawing::Color::White;
+
+			cli::array<System::Windows::Forms::ToolStripItem^>^ DropDownItems = gcnew cli::array<System::Windows::Forms::ToolStripItem^>(5) { OpenItem, SaveItem, SaveAsItem, SessionSeparator, FolderItem };
+
+			for (int i = 0; i < DropDownItems->Length; i++) {
+				DropDownItems[i]->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+				DropDownItems[i]->ForeColor = System::Drawing::Color::White;
+				SessionItem->DropDownItems->Add(DropDownItems[i]);
+			}
+
+			SessionItem->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			SessionItem->ForeColor = System::Drawing::Color::White;
+			this->SessionMenuStrip->Items->Add(SessionItem);
+
+			// Added last, so the menu bar is docked first (at the very top of the window)
+			this->MainMenuStrip = this->SessionMenuStrip;
+			this->Controls->Add(this->SessionMenuStrip);
+
+		}
+
+		private: System::String^ GetSessionFolder() {
+
+			// Default folder of the session files: "IRCAM Thermal Viewer Sessions" in the Documents folder (created when it does not exist)
+			System::String^ Folder = System::IO::Path::Combine(System::Environment::GetFolderPath(System::Environment::SpecialFolder::MyDocuments), "IRCAM Thermal Viewer Sessions");
+
+			try { System::IO::Directory::CreateDirectory(Folder); }
+			catch (System::Exception^) { Folder = System::Environment::GetFolderPath(System::Environment::SpecialFolder::MyDocuments); }
+
+			return Folder;
+
+		}
+
+		private: System::Void WriteSessionStatus(System::String^ Text, unsigned int MessageType) {
+
+			RMH_Winforms_RichTextBox_WriteLine(this->GUIInfoTextArea, RMH_Conversion_SystemStringToStdString(Text), MessageType);
+
+		}
+
+		private: System::Void UpdateSessionTitleBar() {
+
+			// The name of the session file is shown in the title bar
+			std::string Title = ApplicationInformationString + _CustomBuild_TitleSuffix;
+
+			if (this->CurrentSessionPath != nullptr) {
+				Title = Title + std::string(" - Session: ") + RMH_Conversion_SystemStringToStdString(System::IO::Path::GetFileNameWithoutExtension(this->CurrentSessionPath));
+			}
+
+			RMH_Winforms_ChangeFormTitleBarText(this, Title);
+
+		}
+
+		private: System::String^ GetShownPageName() {
+
+			// The page (left menu item) that is shown in the main window now, "" when none of the pages that a session file brings back is shown
+			if (isLiveViewStreamFormOpen == true && isLiveViewStreamFormUndocked == false) { return "LiveView"; }
+			if (isThermalCameraFormOpen == true && isThermalCameraFormUndocked == false) { return "ThermalCamera"; }
+			if (isTempMeasurementsFormOpen == true && isTempMeasurementsFormUndocked == false) { return "TempMeas"; }
+			if (isSurfacePlotFormOpen == true && isSurfacePlotFormUndocked == false) { return "SurfacePlot"; }
+			if (isDataLogFormOpen == true && isDataLogFormUndocked == false) { return "DataLog"; }
+			if (isEmissivityTableFormOpen == true && isEmissivityTableFormUndocked == false) { return "Emissivity"; }
+			return "";
+
+		}
+
+		private: System::Windows::Forms::Button^ GetPageMenuButton(System::String^ PageName) {
+
+			if (PageName == "LiveView") { return this->LiveViewMenuButton; }
+			if (PageName == "ThermalCamera") { return this->ThermalCAMMenuButton; }
+			if (PageName == "TempMeas") { return this->TempMeasMenuButton; }
+			if (PageName == "SurfacePlot") { return this->SurfacePlotMenuButton; }
+			if (PageName == "DataLog") { return this->DataLogMenuButton; }
+			if (PageName == "Emissivity") { return this->EmissivityMenuButton; }
+			return nullptr;
+
+		}
+
+		private: System::Windows::Forms::Form^ GetLiveViewToolsFormForSession() {
+
+			// The live view tools form is created inside the live view form. It is found through one of its own controls
+			if (GlobalVariables::GlobalColorPaletteComboBox == nullptr) { return nullptr; }
+			return GlobalVariables::GlobalColorPaletteComboBox->FindForm();
+
+		}
+
+		// Saves the session to a file. Returns an empty text when it worked, else the error text
+		private: System::String^ SaveSessionToFile(System::String^ FilePath) {
+
+			try {
+
+				System::Collections::Generic::SortedDictionary<System::String^, System::String^>^ Values = gcnew System::Collections::Generic::SortedDictionary<System::String^, System::String^>();
+
+				// Update the session parameters that live in the thermal camera form into the global variables
+				ManagedLocals::ThermalCameraGUIForm->SaveFormSessionSettings();
+
+				Values["meta.format"] = SessionFile::FormatVersion;
+				Values["meta.program"] = RMH_Conversion_StdStringToSystemString(ApplicationInformationString);
+				Values["meta.saved"] = System::DateTime::Now.ToString("yyyy-MM-dd HH:mm:ss", System::Globalization::CultureInfo::InvariantCulture);
+
+				// Application configuration
+				std::vector<std::string> ConfigLines = RMH_Application_BuildSessionConfigLines();
+				for (int i = 0; i < (int)ConfigLines.size(); i++) {
+					Values["app." + i.ToString("000", System::Globalization::CultureInfo::InvariantCulture)] = RMH_Conversion_StdStringToSystemString(ConfigLines[i]);
+				}
+
+				// Window and page
+				Values["ui.WindowState"] = this->WindowState.ToString();
+				Values["ui.Bounds"] = this->RestoreBounds.X.ToString() + "," + this->RestoreBounds.Y.ToString() + "," + this->RestoreBounds.Width.ToString() + "," + this->RestoreBounds.Height.ToString();
+				Values["ui.Page"] = this->GetShownPageName();
+
+				// Value controls of the forms
+				SessionFile::CollectControls(ManagedLocals::ThermalCameraGUIForm, "ThermalCameraGUI", Values);
+				SessionFile::CollectControls(ManagedLocals::TempMeasurementsGUIForm, "TempMeasGUI", Values);
+				SessionFile::CollectControls(ManagedLocals::SurfacePlotGUIForm, "SurfacePlotGUI", Values);
+				SessionFile::CollectControls(ManagedLocals::EmissivityTableGUIForm, "EmissivityTableGUI", Values);
+				SessionFile::CollectControls(ManagedLocals::LiveViewStreamForm, "LiveViewStream", Values);
+				SessionFile::CollectControls(this->GetLiveViewToolsFormForSession(), "LiveViewTools", Values);
+
+				// Data Log graph settings
+				ManagedLocals::DataLogGUIForm->GetSessionSettings(Values);
+
+				return SessionFile::WriteFile(FilePath, Values);
+
+			}
+			catch (System::Exception^ Ex) { return Ex->Message; }
+
+		}
+
+		// Opens a session file and sets the program to it
+		private: System::Void OpenSessionFromFile(System::String^ FilePath) {
+
+			// The settings that run a data logging session cannot be changed while it logs
+			if (DataLoggingIsRunningFlag == true) {
+				System::Windows::Forms::MessageBox::Show(this, "Data logging is running. Stop the data logging before a session is opened.", "Open Session", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Information);
+				return;
+			}
+
+			System::Collections::Generic::Dictionary<System::String^, System::String^>^ Values = gcnew System::Collections::Generic::Dictionary<System::String^, System::String^>();
+			System::String^ ErrorText = SessionFile::ReadFile(FilePath, Values);
+
+			if (ErrorText->Length > 0) {
+				System::Windows::Forms::MessageBox::Show(this, "The session file could not be opened:\n" + ErrorText, "Open Session", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Warning);
+				this->WriteSessionStatus("Session File Could Not Be Opened!", _StatusMessageType_Error);
+				return;
+			}
+
+			System::Windows::Forms::Cursor::Current = System::Windows::Forms::Cursors::WaitCursor;
+
+			int SetCount = 0;
+			int SkippedCount = 0;
+
+			try {
+
+				// Application configuration (only when the file has the same number of lines as this program version writes)
+				std::vector<std::string> ConfigLines;
+				for (int i = 0; i < 1000; i++) {
+					System::String^ Line = nullptr;
+					if (Values->TryGetValue("app." + i.ToString("000", System::Globalization::CultureInfo::InvariantCulture), Line) == false) { break; }
+					ConfigLines.push_back(RMH_Conversion_SystemStringToStdString(Line));
+				}
+
+				std::vector<std::string> CurrentLines = RMH_Application_BuildSessionConfigLines();
+
+				if (ConfigLines.size() == CurrentLines.size()) {
+
+					RMH_Application_ApplySessionConfigLines(ConfigLines, true);
+
+					// The 2D plot line colors are shown by the color panels of the thermal camera form
+					RMH_ThermalViewer_Load2DPlotSavedSessionLineColorData();
+
+					// Settings that a button of the live view tools switches (the button is clicked only when its setting is different)
+					if (RMH_Conversion_StdStringToBoolean(ConfigLines[4]) != FixedLiveViewAspectRatio && GlobalVariables::GlobalFixedAspectRatioButton != nullptr && GlobalVariables::GlobalFixedAspectRatioButton->Enabled == true) { GlobalVariables::GlobalFixedAspectRatioButton->PerformClick(); }
+					if (RMH_Conversion_StdStringToBoolean(ConfigLines[6]) != EnhancedResEnableFlag && GlobalVariables::GlobalEnhancedResButton != nullptr && GlobalVariables::GlobalEnhancedResButton->Enabled == true) { GlobalVariables::GlobalEnhancedResButton->PerformClick(); }
+					if (RMH_Conversion_StdStringToBoolean(ConfigLines[78]) != UltraResolutionEnableFlag && GlobalVariables::GlobalUltraResolutionButton != nullptr && GlobalVariables::GlobalUltraResolutionButton->Enabled == true) { GlobalVariables::GlobalUltraResolutionButton->PerformClick(); }
+
+				}
+				else {
+					this->WriteSessionStatus("Session File: The Application Configuration Has Another Layout And Was Not Set!", _StatusMessageType_Warning);
+				}
+
+				// Value controls of the forms (the live view tools first, they hold the color palettes)
+				SetCount += SessionFile::ApplyControls(this->GetLiveViewToolsFormForSession(), "LiveViewTools", Values, SkippedCount);
+				SetCount += SessionFile::ApplyControls(ManagedLocals::LiveViewStreamForm, "LiveViewStream", Values, SkippedCount);
+				SetCount += SessionFile::ApplyControls(ManagedLocals::ThermalCameraGUIForm, "ThermalCameraGUI", Values, SkippedCount);
+				SetCount += SessionFile::ApplyControls(ManagedLocals::TempMeasurementsGUIForm, "TempMeasGUI", Values, SkippedCount);
+				SetCount += SessionFile::ApplyControls(ManagedLocals::SurfacePlotGUIForm, "SurfacePlotGUI", Values, SkippedCount);
+				SetCount += SessionFile::ApplyControls(ManagedLocals::EmissivityTableGUIForm, "EmissivityTableGUI", Values, SkippedCount);
+
+				// Data Log graph settings
+				ManagedLocals::DataLogGUIForm->ApplySessionSettings(Values);
+
+				// Window: size and position (only a normal window; the maximized state is brought back)
+				System::String^ WindowStateText = nullptr;
+				System::String^ BoundsText = nullptr;
+
+				if (Values->TryGetValue("ui.WindowState", WindowStateText) == true) {
+
+					if (WindowStateText == "Maximized") { this->WindowState = System::Windows::Forms::FormWindowState::Maximized; }
+					else if (WindowStateText == "Normal") {
+
+						this->WindowState = System::Windows::Forms::FormWindowState::Normal;
+
+						if (Values->TryGetValue("ui.Bounds", BoundsText) == true) {
+
+							cli::array<System::String^>^ Parts = BoundsText->Split(',');
+							int X = 0, Y = 0, W = 0, H = 0;
+
+							if (Parts->Length == 4 && SessionFile::TextToInt(Parts[0], X) && SessionFile::TextToInt(Parts[1], Y) && SessionFile::TextToInt(Parts[2], W) && SessionFile::TextToInt(Parts[3], H) && W > 200 && H > 200) {
+
+								// Only a window that is on a connected screen is brought back (the monitors can differ from the computer of the session file)
+								System::Drawing::Rectangle WantedBounds = System::Drawing::Rectangle(X, Y, W, H);
+								bool OnScreen = false;
+								for (int i = 0; i < System::Windows::Forms::Screen::AllScreens->Length; i++) {
+									if (System::Windows::Forms::Screen::AllScreens[i]->WorkingArea.IntersectsWith(WantedBounds) == true) { OnScreen = true; }
+								}
+								if (OnScreen == true) { this->Bounds = WantedBounds; }
+
+							}
+
+						}
+
+					}
+
+				}
+
+				// Page: the page of the session file is shown (only when it is available and not shown already)
+				System::String^ PageName = nullptr;
+
+				if (Values->TryGetValue("ui.Page", PageName) == true && PageName->Length > 0 && PageName != this->GetShownPageName()) {
+
+					System::Windows::Forms::Button^ PageButton = this->GetPageMenuButton(PageName);
+					if (PageButton != nullptr && PageButton->Enabled == true) { PageButton->PerformClick(); }
+
+				}
+
+				System::Windows::Forms::Cursor::Current = System::Windows::Forms::Cursors::Default;
+
+				this->CurrentSessionPath = FilePath;
+				this->UpdateSessionTitleBar();
+
+				System::String^ Summary = "Session Opened: " + System::IO::Path::GetFileName(FilePath) + " (" + SetCount.ToString() + " Settings Set";
+				if (SkippedCount > 0) { Summary = Summary + ", " + SkippedCount.ToString() + " Not Available Now"; }
+				Summary = Summary + ").";
+				this->WriteSessionStatus(Summary, _StatusMessageType_Success);
+
+			}
+			catch (System::Exception^ Ex) {
+
+				System::Windows::Forms::Cursor::Current = System::Windows::Forms::Cursors::Default;
+				System::Windows::Forms::MessageBox::Show(this, "The session could not be set completely:\n" + Ex->Message, "Open Session", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Warning);
+				this->WriteSessionStatus("Session Could Not Be Set Completely!", _StatusMessageType_Error);
+
+			}
+
+		}
+
+		private: System::Void SaveSessionAndReport(System::String^ FilePath) {
+
+			System::String^ ErrorText = this->SaveSessionToFile(FilePath);
+
+			if (ErrorText->Length > 0) {
+				System::Windows::Forms::MessageBox::Show(this, "The session could not be saved:\n" + ErrorText, "Save Session", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Warning);
+				this->WriteSessionStatus("Session Could Not Be Saved!", _StatusMessageType_Error);
+				return;
+			}
+
+			this->CurrentSessionPath = FilePath;
+			this->UpdateSessionTitleBar();
+			this->WriteSessionStatus("Session Saved: " + System::IO::Path::GetFileName(FilePath), _StatusMessageType_Success);
+
+		}
+
+		private: System::Void SessionOpenMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			System::Windows::Forms::OpenFileDialog^ OpenDialog = gcnew System::Windows::Forms::OpenFileDialog();
+			OpenDialog->Title = "Open Session";
+			OpenDialog->Filter = "IRCAM session (*.ircamsession)|*.ircamsession|All files (*.*)|*.*";
+			OpenDialog->InitialDirectory = (this->CurrentSessionPath != nullptr) ? System::IO::Path::GetDirectoryName(this->CurrentSessionPath) : this->GetSessionFolder();
+
+			if (OpenDialog->ShowDialog(this) == System::Windows::Forms::DialogResult::OK) { this->OpenSessionFromFile(OpenDialog->FileName); }
+
+		}
+
+		private: System::Void SessionSaveAsMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			System::Windows::Forms::SaveFileDialog^ SaveDialog = gcnew System::Windows::Forms::SaveFileDialog();
+			SaveDialog->Title = "Save Session As";
+			SaveDialog->Filter = "IRCAM session (*.ircamsession)|*.ircamsession";
+			SaveDialog->DefaultExt = "ircamsession";
+			SaveDialog->AddExtension = true;
+			SaveDialog->OverwritePrompt = true;
+
+			if (this->CurrentSessionPath != nullptr) {
+				SaveDialog->InitialDirectory = System::IO::Path::GetDirectoryName(this->CurrentSessionPath);
+				SaveDialog->FileName = System::IO::Path::GetFileName(this->CurrentSessionPath);
+			}
+			else {
+				SaveDialog->InitialDirectory = this->GetSessionFolder();
+				SaveDialog->FileName = "Session_" + System::DateTime::Now.ToString("ddMMMyyyy_HH-mm-ss", System::Globalization::CultureInfo::InvariantCulture);
+			}
+
+			if (SaveDialog->ShowDialog(this) == System::Windows::Forms::DialogResult::OK) { this->SaveSessionAndReport(SaveDialog->FileName); }
+
+		}
+
+		private: System::Void SessionSaveMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			// Without a session file the first save asks for a name
+			if (this->CurrentSessionPath == nullptr) { this->SessionSaveAsMenuItem_Click(sender, e); return; }
+
+			this->SaveSessionAndReport(this->CurrentSessionPath);
+
+		}
+
+		private: System::Void SessionFolderMenuItem_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			try { System::Diagnostics::Process::Start("explorer.exe", "\"" + ((this->CurrentSessionPath != nullptr) ? System::IO::Path::GetDirectoryName(this->CurrentSessionPath) : this->GetSessionFolder()) + "\""); }
+			catch (System::Exception^) {}
+
+		}
 
 		private: System::Void AddDataLogMenuItem() {
 
