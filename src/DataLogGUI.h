@@ -42,6 +42,12 @@ namespace IRCAMThermalViewer {
 	// - _DataLogZoomButton_MinTimeMilliSec: the smallest time range that + zooms to (milliseconds).
 	// - _DataLogZoomButton_MinTemperatureRange: the smallest temperature range that + zooms to.
 	#define _DataLogZoomButton_Factor 0.7
+
+	// Plot area of the Data Log graph while it is zoomed (UpdatePlotAreaLayout): the zoom scroll bars and the zoom buttons need room around the plot area.
+	// - 1 = the plot area always has those larger margins, so it never changes size when the graph is zoomed, zoomed further or reset (the graph is a little smaller
+	//   than before, about 35 pixels narrower and 33 pixels lower, also when it is not zoomed).
+	// - 0 = the plot area has the smaller margins while the graph is not zoomed and the larger margins while it is zoomed (it changes size once, when zooming starts and ends).
+	#define _DataLogPlotArea_ReserveZoomRoom 1
 	#define _DataLogZoomButton_MinTimeMilliSec 10.0
 	#define _DataLogZoomButton_MinTemperatureRange 0.01
 
@@ -927,7 +933,7 @@ namespace IRCAMThermalViewer {
 		System::Void BuildZoomButtons() {
 
 			// Four small buttons on the graph, at the ends of the scroll bars of the zoomed axes (see UpdateZoomButtons): at the time axis scroll bar (below the graph) - and +
-			// right of the right arrow, at the temperature axis scroll bar (left of the graph) + and - below the down arrow. They are beyond the ends of the bars, like the
+			// right of the right arrow, at the temperature axis scroll bar (left of the graph) + and - above its top end. They are beyond the ends of the bars, like the
 			// Reset Zoom button at the other end, so the scroll bar thumb never goes under them.
 			this->XZoomOutButton = gcnew System::Windows::Forms::Button();
 			this->StyleZoomButton(this->XZoomOutButton, "-", "Zoom out the time axis (X): shows a longer time");
@@ -966,7 +972,8 @@ namespace IRCAMThermalViewer {
 			// Shows the buttons of an axis only while that axis is zoomed, at the end of its scroll bar. The scroll bars are drawn by the chart: they are about 14 pixels
 			// thick and lie against the plot area - the time axis one below it, with the Reset Zoom button and the left arrow at its left end and the right arrow at its
 			// right end, the temperature axis one left of it, with the Reset Zoom button and the up arrow at its top end and the down arrow at its bottom end. The buttons are
-			// put beyond the end of the bar, behind the arrow at the end that has no Reset Zoom button (right end / bottom end), so they never cover the track.
+			// put beyond the end of the bar (the time axis ones right of the right arrow, the temperature axis ones above the top end), in the margins that
+			// UpdatePlotAreaLayout keeps free, so they never cover the track, the labels or the plot area.
 			if (this->XZoomInButton == nullptr || this->XZoomOutButton == nullptr || this->YZoomInButton == nullptr || this->YZoomOutButton == nullptr) { return; }
 
 			try {
@@ -1008,15 +1015,16 @@ namespace IRCAMThermalViewer {
 
 				}
 
-				// Temperature axis: the bar is left of the plot area; + and - are below its down arrow (in the corner below the bar)
-				int YButtonLeft = (int)System::Math::Round(PlotRect.Left) - BarSize + (BarSize - ButtonSize) / 2;
-				int YInTop = (int)System::Math::Round(PlotRect.Bottom) + 2;
-				int YOutTop = YInTop + ButtonSize + 1;
+				// Temperature axis: the bar is left of the plot area; + and - are next to each other above the top of the bar (above its Reset Zoom button), in the top
+				// margin of the plot area (so they never cover the labels of the time axis)
+				int YButtonTop = (int)System::Math::Round(PlotRect.Top) - ButtonSize - 2;
+				int YInLeft = (int)System::Math::Round(PlotRect.Left) - BarSize;
+				int YOutLeft = YInLeft + ButtonSize + 1;
 
 				this->SetZoomButtonPlace(this->XZoomOutButton, XOutLeft, XButtonTop, ShowX);
 				this->SetZoomButtonPlace(this->XZoomInButton, XInLeft, XButtonTop, ShowX);
-				this->SetZoomButtonPlace(this->YZoomInButton, YButtonLeft, YInTop, ShowY);
-				this->SetZoomButtonPlace(this->YZoomOutButton, YButtonLeft, YOutTop, ShowY);
+				this->SetZoomButtonPlace(this->YZoomInButton, YInLeft, YButtonTop, ShowY);
+				this->SetZoomButtonPlace(this->YZoomOutButton, YOutLeft, YButtonTop, ShowY);
 
 			}
 			catch (System::Exception^) {}
@@ -3340,12 +3348,16 @@ namespace IRCAMThermalViewer {
 			// Gives the plot area (the part inside the axes) a fixed size, in pixels from each side of the graph, instead of the automatic layout of the chart.
 			// With the automatic layout the chart makes the plot area smaller or larger whenever the width of a label changes (a time label on the right end of the
 			// time axis that comes and goes while the log grows, a temperature label that gets another digit): the graph then jumps horizontally at every such change.
-			// While the graph is zoomed the automatic layout is used (the zoom scroll bars need room), the plot area does not change by itself then.
-			// Tune the margins below if a label or an axis title is cut off.
+			// While the graph is zoomed the same fixed layout is used, with larger margins: the zoom scroll bars (14 pixels thick, against the plot area) and the zoom buttons
+			// need room, and a temperature label has more digits when the graph is zoomed in. With the automatic layout the plot area changed size at every such change.
+			// See _DataLogPlotArea_ReserveZoomRoom (at the top of this file). Tune the margins below if a label or an axis title is cut off.
 			const double LeftMarginPixels = 75.0;		// Temperature axis title and labels
-			const double RightMarginPixels = 40.0;		// Room for half of the last time label
+			const double RightMarginPixels = 40.0;		// Room for half of the last time label, and for the zoom buttons right of the time axis scroll bar
 			const double TopMarginPixels = 12.0;
 			const double BottomMarginPixels = 55.0;		// Time axis labels and title
+			const double ZoomLeftMarginPixels = 110.0;	// With the temperature axis scroll bar and labels with more digits
+			const double ZoomTopMarginPixels = 28.0;	// Room for the zoom buttons of the temperature axis, above its scroll bar
+			const double ZoomBottomMarginPixels = 72.0;	// With the time axis scroll bar
 			const double TitleHeightPixels = 30.0;		// Height that the graph title takes when it is shown
 
 			try {
@@ -3358,17 +3370,24 @@ namespace IRCAMThermalViewer {
 
 				if (this->LogChart->Titles->Count > 0 && this->LogChart->Titles[0]->Visible == true) { ChartHeight = ChartHeight - TitleHeightPixels; }
 
-				if (Zoomed == true || ChartWidth < LeftMarginPixels + RightMarginPixels + 100.0 || ChartHeight < TopMarginPixels + BottomMarginPixels + 60.0) {
+				bool ReserveZoomRoom = (_DataLogPlotArea_ReserveZoomRoom == 1 || Zoomed == true);
+
+				double UseLeft = (ReserveZoomRoom == true) ? ZoomLeftMarginPixels : LeftMarginPixels;
+				double UseTop = (ReserveZoomRoom == true) ? ZoomTopMarginPixels : TopMarginPixels;
+				double UseBottom = (ReserveZoomRoom == true) ? ZoomBottomMarginPixels : BottomMarginPixels;
+
+				// A graph too small for fixed margins gets the automatic layout of the chart
+				if (ChartWidth < UseLeft + RightMarginPixels + 100.0 || ChartHeight < UseTop + UseBottom + 60.0) {
 
 					if (Area->InnerPlotPosition->Auto == false) { Area->InnerPlotPosition->Auto = true; }
 					return;
 
 				}
 
-				float WantedX = (float)(LeftMarginPixels / ChartWidth * 100.0);
-				float WantedY = (float)(TopMarginPixels / ChartHeight * 100.0);
-				float WantedWidth = (float)((ChartWidth - LeftMarginPixels - RightMarginPixels) / ChartWidth * 100.0);
-				float WantedHeight = (float)((ChartHeight - TopMarginPixels - BottomMarginPixels) / ChartHeight * 100.0);
+				float WantedX = (float)(UseLeft / ChartWidth * 100.0);
+				float WantedY = (float)(UseTop / ChartHeight * 100.0);
+				float WantedWidth = (float)((ChartWidth - UseLeft - RightMarginPixels) / ChartWidth * 100.0);
+				float WantedHeight = (float)((ChartHeight - UseTop - UseBottom) / ChartHeight * 100.0);
 
 				// Only written when it changes, so the chart is not laid out again at every refresh
 				System::Windows::Forms::DataVisualization::Charting::ElementPosition^ Inner = Area->InnerPlotPosition;
