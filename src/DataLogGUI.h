@@ -51,6 +51,11 @@ namespace IRCAMThermalViewer {
 	#define _DataLogZoomButton_MinTimeMilliSec 10.0
 	#define _DataLogZoomButton_MinTemperatureRange 0.01
 
+	// Size of the table below the graph when the Data Log window is first shown (the divider can still be dragged with the mouse):
+	// - _DataLogView_DefaultVisibleRows: number of table rows that are visible at first (3 = the last 3 values; the graph gets the rest of the height).
+	//   Before branch 32 the table was 220 pixels high (about 8 rows).
+	#define _DataLogView_DefaultVisibleRows 3
+
 	#define _DataLogExport_ResolutionScale 3
 	#define _DataLogExport_UseVectorChart 1
 	#define _DataLogExport_JpegQuality 95
@@ -2541,7 +2546,13 @@ namespace IRCAMThermalViewer {
 			System::Windows::Forms::ToolStripSeparator^ Separator1 = gcnew System::Windows::Forms::ToolStripSeparator();
 			System::Windows::Forms::ToolStripSeparator^ Separator2 = gcnew System::Windows::Forms::ToolStripSeparator();
 
+			// Separator line between "Temperature At The Cursor" and "Measure With Two Cursors" (white line on the dark menu)
+			System::Windows::Forms::ToolStripSeparator^ CursorSeparator = gcnew System::Windows::Forms::ToolStripSeparator();
+			CursorSeparator->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
+			CursorSeparator->ForeColor = System::Drawing::Color::White;
+
 			this->ChartContextMenu->Items->Add(this->CursorTempMenuItem);
+			this->ChartContextMenu->Items->Add(CursorSeparator);
 			this->ChartContextMenu->Items->Add(this->MeasureMenuItem);
 			this->ChartContextMenu->Items->Add(this->SetCursorTimesMenuItem);
 			this->ChartContextMenu->Items->Add(this->ClearCursorsMenuItem);
@@ -4837,14 +4848,15 @@ namespace IRCAMThermalViewer {
 			// Only refresh while the window is visible
 			this->RefreshTimer->Enabled = this->Visible;
 
-			// The first time the window is shown - the table gets a height of about 220 pixels, the graph gets the rest
+			// The first time the window is shown - the table gets the height of its column header plus _DataLogView_DefaultVisibleRows rows, the graph gets the rest
 			if (this->Visible == true && this->SplitDistanceSet == false) {
 
 				this->SplitDistanceSet = true;
 
 				try {
 
-					int GraphHeight = this->ViewSplit->Height - 220 - this->ViewSplit->SplitterWidth;
+					int TableHeight = this->LogGrid->ColumnHeadersHeight + (_DataLogView_DefaultVisibleRows * this->LogGrid->RowTemplate->Height) + 2;
+					int GraphHeight = this->ViewSplit->Height - TableHeight - this->ViewSplit->SplitterWidth;
 					if (GraphHeight > 120) { this->ViewSplit->SplitterDistance = GraphHeight; }
 
 				}
