@@ -321,6 +321,9 @@ namespace IRCAMThermalViewer {
 			this->SessionStatePending = false;
 			this->SessionStateHasMarkers = false;
 			this->FileStateMarkers = gcnew System::Collections::Generic::List<GraphMarker^>();
+			this->FileStateHidden = gcnew System::Collections::Generic::List<int>();
+			this->SessionStateHidden = gcnew System::Collections::Generic::List<int>();
+			this->SessionStateHasHidden = false;
 			this->ClearFileState();
 			this->SessionZoomTries = 0;
 			this->SessionStateZoomX = false;
@@ -383,6 +386,7 @@ namespace IRCAMThermalViewer {
 
 			Values["datalog.ShowTitle"] = SessionFile::BoolText(this->ShowTitleCheckBox->Checked);
 			Values["datalog.Notes"] = (this->GraphNotes == nullptr) ? gcnew System::String("") : this->GraphNotes;
+			Values["datalog.HiddenLines"] = this->GetHiddenLinesText();
 			Values["datalog.AutoScroll"] = SessionFile::BoolText(this->AutoScrollCheckBox->Checked);
 			Values["datalog.CursorLabel"] = SessionFile::BoolText(this->CursorLabelEnabled);
 			Values["datalog.XTicks"] = this->XTickCount.ToString(System::Globalization::CultureInfo::InvariantCulture);
@@ -475,6 +479,9 @@ namespace IRCAMThermalViewer {
 				this->ApplyMeasureMode();
 
 			}
+
+			// Hidden lines (before the zoom: the range of the axes follows the lines that are shown)
+			if (this->SessionStateHasHidden == true) { this->ApplyHiddenLines(this->SessionStateHidden); this->SessionStateHasHidden = false; }
 
 			// Zoom of the session file (after the data is in the graph, so the whole range of the axes is known)
 			this->ApplySessionZoom();
@@ -570,6 +577,14 @@ namespace IRCAMThermalViewer {
 		System::Void ClearFileState() {
 
 			this->FileStatePending = false;
+			this->FileStateHasTitle = false;
+			this->FileStateTitle = "";
+			this->FileStateHasShowTitle = false;
+			this->FileStateShowTitle = false;
+			this->FileStateHasNotes = false;
+			this->FileStateNotes = "";
+			this->FileStateHasHidden = false;
+			this->FileStateHidden->Clear();
 			this->FileStateHasMarkers = false;
 			this->FileStateMarkers->Clear();
 			this->FileStateCursorA = System::Double::NaN;
@@ -581,6 +596,86 @@ namespace IRCAMThermalViewer {
 			this->FileStateZoomY = false;
 			this->FileStateZoomYMin = 0.0;
 			this->FileStateZoomYMax = 0.0;
+
+		}
+
+		// A text on one line of a log file: \ becomes \\ and a new line becomes \n
+		System::String^ EscapeGraphText(System::String^ Text) {
+
+			if (Text == nullptr) { return ""; }
+			return Text->Replace("\r\n", "\n")->Replace("\r", "\n")->Replace("\\", "\\\\")->Replace("\n", "\\n");
+
+		}
+
+		System::String^ UnescapeGraphText(System::String^ Text) {
+
+			System::Text::StringBuilder^ Result = gcnew System::Text::StringBuilder();
+
+			for (int i = 0; i < Text->Length; i++) {
+
+				if (Text[i] == L'\\' && (i + 1) < Text->Length) {
+
+					i = i + 1;
+					if (Text[i] == L'n') { Result->Append(L'\n'); } else { Result->Append(Text[i]); }
+
+				}
+				else { Result->Append(Text[i]); }
+
+			}
+
+			return Result->ToString();
+
+		}
+
+		// The lines that are hidden (unchecked check box) as the series indexes in a text: "2,5" (empty: all lines are shown)
+		System::String^ GetHiddenLinesText() {
+
+			System::Text::StringBuilder^ Result = gcnew System::Text::StringBuilder();
+
+			for (int i = 0; i < this->LineChecksPanel->Controls->Count; i++) {
+
+				System::Windows::Forms::CheckBox^ LineCheck = dynamic_cast<System::Windows::Forms::CheckBox^>(this->LineChecksPanel->Controls[i]);
+				if (LineCheck == nullptr || LineCheck->Checked == true) { continue; }
+
+				if (Result->Length > 0) { Result->Append(","); }
+				Result->Append(System::Convert::ToString(LineCheck->Tag));
+
+			}
+
+			return Result->ToString();
+
+		}
+
+		System::Collections::Generic::List<int>^ ParseHiddenLinesText(System::String^ Text) {
+
+			System::Collections::Generic::List<int>^ Indexes = gcnew System::Collections::Generic::List<int>();
+			if (Text == nullptr) { return Indexes; }
+
+			cli::array<System::String^>^ Parts = Text->Split(L',');
+
+			for (int i = 0; i < Parts->Length; i++) {
+
+				int Index = 0;
+				if (System::Int32::TryParse(Parts[i]->Trim(), Index) == true && Index >= 0) { Indexes->Add(Index); }
+
+			}
+
+			return Indexes;
+
+		}
+
+		// Shows the lines again, except the ones in the list (series indexes)
+		System::Void ApplyHiddenLines(System::Collections::Generic::List<int>^ Hidden) {
+
+			for (int i = 0; i < this->LineChecksPanel->Controls->Count; i++) {
+
+				System::Windows::Forms::CheckBox^ LineCheck = dynamic_cast<System::Windows::Forms::CheckBox^>(this->LineChecksPanel->Controls[i]);
+				if (LineCheck == nullptr) { continue; }
+
+				bool Show = (Hidden->Contains(System::Convert::ToInt32(LineCheck->Tag)) == false);
+				if (LineCheck->Checked != Show) { LineCheck->Checked = Show; }
+
+			}
 
 		}
 
@@ -617,6 +712,30 @@ namespace IRCAMThermalViewer {
 				this->FileStateHasMarkers = true;
 
 			}
+			else if (Key == "title") {
+
+				this->FileStateTitle = this->UnescapeGraphText(Value);
+				this->FileStateHasTitle = true;
+
+			}
+			else if (Key == "showTitle") {
+
+				this->FileStateShowTitle = (Value->Trim() == "1");
+				this->FileStateHasShowTitle = true;
+
+			}
+			else if (Key == "notes") {
+
+				this->FileStateNotes = this->UnescapeGraphText(Value);
+				this->FileStateHasNotes = true;
+
+			}
+			else if (Key == "hidden") {
+
+				this->FileStateHidden = this->ParseHiddenLinesText(Value);
+				this->FileStateHasHidden = true;
+
+			}
 			else if (Key == "measure") {
 
 				this->FileStateMeasure = (Value->Trim() == "1");
@@ -640,6 +759,20 @@ namespace IRCAMThermalViewer {
 
 		// Sets the markers, cursors and zoom that the log file had in its "#graph." lines (the file has been read completely)
 		System::Void ApplyFileState() {
+
+			// Title and notes of the graph
+			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
+			if (GraphTitle != nullptr && this->FileStateHasTitle == true && this->FileStateTitle->Trim()->Length > 0) { GraphTitle->Text = this->FileStateTitle->Trim(); }
+
+			if (this->FileStateHasShowTitle == true) {
+				if (this->ShowTitleCheckBox->Checked != this->FileStateShowTitle) { this->ShowTitleCheckBox->Checked = this->FileStateShowTitle; }
+				else if (GraphTitle != nullptr) { GraphTitle->Visible = this->FileStateShowTitle; }
+			}
+
+			if (this->FileStateHasNotes == true) { this->GraphNotes = this->FileStateNotes; }
+
+			// Hidden lines (before the zoom: the range of the axes follows the lines that are shown)
+			if (this->FileStateHasHidden == true) { this->ApplyHiddenLines(this->FileStateHidden); }
 
 			if (this->FileStateHasMarkers == true) {
 
@@ -686,6 +819,13 @@ namespace IRCAMThermalViewer {
 			System::Collections::Generic::List<System::String^>^ Lines = gcnew System::Collections::Generic::List<System::String^>();
 			double StartDay = this->ChartStartTime.ToOADate();
 			bool HasCursor = false;
+
+			// Title, notes and the lines that are hidden
+			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
+			if (GraphTitle != nullptr) { Lines->Add("#graph.title=" + this->EscapeGraphText(GraphTitle->Text)); }
+			Lines->Add("#graph.showTitle=" + SessionFile::BoolText(this->ShowTitleCheckBox->Checked));
+			Lines->Add("#graph.notes=" + this->EscapeGraphText(this->GraphNotes));
+			Lines->Add("#graph.hidden=" + this->GetHiddenLinesText());
 
 			for (int i = 0; i < this->GraphMarkers->Count; i++) {
 
@@ -942,6 +1082,10 @@ namespace IRCAMThermalViewer {
 				if (this->SessionStateZoomY == true) { this->SessionStateZoomYMax = NumberValue; }
 			}
 
+			// The lines that are hidden (set when the log file has been read, the check boxes of the lines are made then)
+			this->SessionStateHasHidden = (Values->TryGetValue("datalog.HiddenLines", Value) == true);
+			this->SessionStateHidden = this->ParseHiddenLinesText(this->SessionStateHasHidden == true ? Value : gcnew System::String(""));
+
 			this->SessionStateHasMarkers = (Values->TryGetValue("datalog.MarkerCount", Value) == true);
 
 			if (this->SessionStateHasMarkers == true) {
@@ -973,7 +1117,7 @@ namespace IRCAMThermalViewer {
 
 			}
 
-			if (this->SessionStateHasMarkers == true || this->SessionStateZoomX == true || this->SessionStateZoomY == true) {
+			if (this->SessionStateHasMarkers == true || this->SessionStateHasHidden == true || this->SessionStateZoomX == true || this->SessionStateZoomY == true) {
 
 				this->SessionStateFilePath = LogFilePath;
 				this->SessionStatePending = true;
@@ -1028,7 +1172,6 @@ namespace IRCAMThermalViewer {
 		int MarkerDragging;                          // -1 = no marker is being dragged, otherwise the index of the marker
 		bool MarkerHoverActive;                      // The mouse is on a marker (arrow cursor, zoom rectangle off)
 		System::Drawing::Font^ MarkerFont;
-		System::Windows::Forms::Button^ AddMarkerButton;
 		System::Windows::Forms::ToolStripMenuItem^ AddMarkerMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ DeleteMarkerMenuItem;
 		System::Windows::Forms::ToolStripMenuItem^ DeleteAllMarkersMenuItem;
@@ -1087,6 +1230,16 @@ namespace IRCAMThermalViewer {
 		// Zoom of an opened session file (elapsed seconds of the time axis, temperature values of the temperature axis), set when the log file has been read
 		// Markers, cursors and zoom that a log file has in its "#graph." lines (written by Save Log File), set when the file has been read
 		bool FileStatePending;
+		bool FileStateHasTitle;
+		System::String^ FileStateTitle;
+		bool FileStateHasShowTitle;
+		bool FileStateShowTitle;
+		bool FileStateHasNotes;
+		System::String^ FileStateNotes;
+		bool FileStateHasHidden;
+		System::Collections::Generic::List<int>^ FileStateHidden;       // Series indexes of the lines that were hidden
+		bool SessionStateHasHidden;                  // The session file says which lines are hidden
+		System::Collections::Generic::List<int>^ SessionStateHidden;
 		bool FileStateHasMarkers;
 		System::Collections::Generic::List<GraphMarker^>^ FileStateMarkers;
 		double FileStateCursorA;
@@ -1108,7 +1261,6 @@ namespace IRCAMThermalViewer {
 		System::Windows::Forms::Button^ StartLoggingButton;
 		System::Windows::Forms::Button^ StopLoggingButton;
 		System::Windows::Forms::Button^ OpenFolderButton;
-		System::Windows::Forms::Button^ ClearViewButton;
 		System::Windows::Forms::CheckBox^ AutoScrollCheckBox;
 		System::Windows::Forms::CheckBox^ ShowTitleCheckBox;     // Shows / hides the graph title on the graph and in an exported image (the title text is kept)
 		System::Windows::Forms::TextBox^ TitleEditBox;           // Text box on the title of the graph for editing the title directly (double-click on the title)
@@ -1204,28 +1356,18 @@ namespace IRCAMThermalViewer {
 			this->SaveLogButton->Click += gcnew System::EventHandler(this, &DataLogGUI::SaveLogButton_Click);
 			TopPanel->Controls->Add(this->SaveLogButton);
 
-			this->ClearViewButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->ClearViewButton, "Clear Graph", 645, 100);
-			this->ClearViewButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ClearViewButton_Click);
-			TopPanel->Controls->Add(this->ClearViewButton);
-
 			this->ResetZoomButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->ResetZoomButton, "Reset Zoom", 750, 100);
+			this->StyleButton(this->ResetZoomButton, "Reset Zoom", 645, 100);
 			this->ResetZoomButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ResetZoomButton_Click);
 			TopPanel->Controls->Add(this->ResetZoomButton);
 
 			this->AddNotesButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->AddNotesButton, "Add Notes", 855, 95);
+			this->StyleButton(this->AddNotesButton, "Add Notes", 750, 95);
 			this->AddNotesButton->Click += gcnew System::EventHandler(this, &DataLogGUI::AddNotesButton_Click);
 			TopPanel->Controls->Add(this->AddNotesButton);
 
-			this->AddMarkerButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->AddMarkerButton, "Add Marker", 955, 105);
-			this->AddMarkerButton->Click += gcnew System::EventHandler(this, &DataLogGUI::AddMarkerButton_Click);
-			TopPanel->Controls->Add(this->AddMarkerButton);
-
 			this->ExportGraphButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->ExportGraphButton, "Export Graph", 1065, 115);
+			this->StyleButton(this->ExportGraphButton, "Export Graph", 855, 115);
 			this->ExportGraphButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ExportGraphButton_Click);
 			TopPanel->Controls->Add(this->ExportGraphButton);
 
@@ -1233,13 +1375,12 @@ namespace IRCAMThermalViewer {
 			this->ShowTitleCheckBox->Text = "Show Graph Title";
 			this->ShowTitleCheckBox->Checked = false;
 			this->ShowTitleCheckBox->AutoSize = true;
-			this->ShowTitleCheckBox->Location = System::Drawing::Point(1188, 43);
+			this->ShowTitleCheckBox->Location = System::Drawing::Point(980, 43);
 			this->ShowTitleCheckBox->ForeColor = System::Drawing::Color::White;
 			this->ShowTitleCheckBox->CheckedChanged += gcnew System::EventHandler(this, &DataLogGUI::ShowTitleCheckBox_CheckedChanged);
 			TopPanel->Controls->Add(this->ShowTitleCheckBox);
 
 			this->HintToolTip = gcnew System::Windows::Forms::ToolTip();
-			this->HintToolTip->SetToolTip(this->AddMarkerButton, "Adds a marker (a vertical line with the time and a text) at the current time of the data logging. To add a marker at another time, right-click the graph. Markers can be dragged with the mouse.");
 			this->HintToolTip->SetToolTip(this->OpenLogButton, "Opens a log file (.csv or .txt, as written by the data logging) in the graph and the table. Markers, cursors and zoom that the file has (see Save Log File) are set as well.");
 			this->HintToolTip->SetToolTip(this->SaveLogButton, "Saves the log file of the graph (also when the data logging session was not saved). The markers, cursors and zoom of the graph are saved in the file too, so Open Log File shows the graph as it is now; choose 'data only' to save the plain data.");
 			this->HintToolTip->SetToolTip(this->ShowTitleCheckBox, "Shows the title above the graph and in an exported image. Double-click the title on the graph to edit it.");
@@ -1248,7 +1389,7 @@ namespace IRCAMThermalViewer {
 			this->AutoScrollCheckBox->Text = "Auto-scroll table to newest";
 			this->AutoScrollCheckBox->Checked = true;
 			this->AutoScrollCheckBox->AutoSize = true;
-			this->AutoScrollCheckBox->Location = System::Drawing::Point(1320, 43);
+			this->AutoScrollCheckBox->Location = System::Drawing::Point(1112, 43);
 			this->AutoScrollCheckBox->ForeColor = System::Drawing::Color::White;
 			TopPanel->Controls->Add(this->AutoScrollCheckBox);
 
@@ -2008,26 +2149,6 @@ namespace IRCAMThermalViewer {
 			else { this->GraphMarkers->Remove(NewMarker); }
 
 			this->LogChart->Invalidate();
-
-		}
-
-		System::Void AddMarkerButton_Click(System::Object^ sender, System::EventArgs^ e) {
-
-			// A marker at the current time: the time of the newest logged sample
-			if (DataLoggingIsRunningFlag == false) {
-
-				System::Windows::Forms::MessageBox::Show(this, "The Add Marker button adds a marker at the current time of the data logging, so data logging must be running.\r\n\r\nTo add a marker at another time (also for a log that has stopped), right-click the graph at that time and choose Add Marker Here.",
-					"Add Marker", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Information);
-				return;
-
-			}
-
-			// Bring the graph up to date first, so that the newest logged sample is known
-			this->RefreshLogView();
-
-			if (this->ViewedSampleRows == 0) { return; }
-
-			this->AddMarkerAt(this->LastElapsedMilliSec);
 
 		}
 
@@ -5634,41 +5755,6 @@ namespace IRCAMThermalViewer {
 
 			}
 			catch (System::Exception^) {}
-
-		}
-
-		System::Void ClearViewButton_Click(System::Object^ sender, System::EventArgs^ e) {
-
-			System::Windows::Forms::DialogResult Answer = System::Windows::Forms::MessageBox::Show(this,
-				"Are you sure you want to clear the graph and the table?", "Clear Graph",
-				System::Windows::Forms::MessageBoxButtons::YesNo, System::Windows::Forms::MessageBoxIcon::Question, System::Windows::Forms::MessageBoxDefaultButton::Button2);
-
-			// "No": close the window and keep the view
-			if (Answer != System::Windows::Forms::DialogResult::Yes) { return; }
-
-			// Clears the table and the graph - only data that is logged from now on is shown (the file is not changed)
-			this->LogGrid->Rows->Clear();
-			this->ClearChartData();
-			this->PendingLines->Clear();
-			this->ViewDecoder->Reset();
-			this->LoadingBehind = false;
-			this->ViewHasNewData = false;
-			this->ViewedSampleRows = 0;
-			this->PartialLine = "";
-
-			try {
-
-				if (this->ViewedFilePath != nullptr) {
-
-					System::IO::FileInfo^ Info = gcnew System::IO::FileInfo(this->ViewedFilePath);
-					if (Info->Exists) { this->ViewedFilePosition = Info->Length; }
-
-				}
-
-			}
-			catch (System::Exception^) {}
-
-			this->UpdateStatusText();
 
 		}
 
