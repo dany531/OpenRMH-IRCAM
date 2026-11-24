@@ -1463,6 +1463,25 @@ static void RMH_ThermalViewer_AskToSaveDataLoggingSession() {
 
 }
 
+bool RMH_ThermalViewer_FileIsInDataLoggingGraphCache(System::String^ FilePath) {
+
+	// True when the file is the data of a data logging session that was not saved (kept in the graph cache for the graph and for the IRCAM session files)
+	if (FilePath == nullptr || FilePath->Length == 0) { return false; }
+
+	try {
+
+		System::String^ FileFolder = System::IO::Path::GetFullPath(System::IO::Path::GetDirectoryName(FilePath))->TrimEnd(gcnew cli::array<wchar_t>{ L'\\', L'/' });
+		System::String^ CacheFolder = System::IO::Path::GetFullPath(RMH_ThermalViewer_GetDataLoggingGraphCacheFolder())->TrimEnd(gcnew cli::array<wchar_t>{ L'\\', L'/' });
+
+		return FileFolder->Equals(CacheFolder, System::StringComparison::OrdinalIgnoreCase);
+
+	}
+	catch (System::Exception^) {}
+
+	return false;
+
+}
+
 void RMH_ThermalViewer_FinishDataLoggingSession() {
 
 	// This routine is called (on the GUI thread) when the data logging thread has finished - manual stop, alarm / trigger stop or end of the session duration.

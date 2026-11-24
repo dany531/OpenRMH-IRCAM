@@ -184,6 +184,7 @@ System::Collections::Generic::List<System::String^>^ RMH_ThermalViewer_GetPlotDa
 int RMH_ThermalViewer_SetPlotDataSetSourcesFromSession(System::Collections::Generic::List<System::String^>^ Entries);
 System::Collections::Generic::List<System::String^>^ RMH_ThermalViewer_GetTemperatureTrackingForSession();
 int RMH_ThermalViewer_SetTemperatureTrackingFromSession(System::Collections::Generic::List<System::String^>^ Entries);
+bool RMH_ThermalViewer_FileIsInDataLoggingGraphCache(System::String^ FilePath);
 
 // --------------------- ROI Temperature Tracking Handling Routines ---------------------- //
 

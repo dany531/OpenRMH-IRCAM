@@ -7,6 +7,7 @@
 #include "GlobalObjectsAndVariables.h"
 #include "RMH_Application_ThermalViewer.h"
 #include "RMH_SupportedIRCameras_Resources.h"	// Names of the supported camera models (camera model in an exported graph image)
+#include "CrashRecoveryDialog.h"					// RecoveredSessionInfo: the delimiter and the number of samples of a log file (Open Log File)
 #include "SessionFile.h"								// Conversion routines for the session files (Session menu of the main window)
 
 // Class namespace
@@ -319,6 +320,8 @@ namespace IRCAMThermalViewer {
 			this->MeasurePanelDragging = false;
 			this->SessionStatePending = false;
 			this->SessionStateHasMarkers = false;
+			this->FileStateMarkers = gcnew System::Collections::Generic::List<GraphMarker^>();
+			this->ClearFileState();
 			this->SessionZoomTries = 0;
 			this->SessionStateZoomX = false;
 			this->SessionStateZoomXMin = 0.0;
@@ -562,6 +565,313 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		// ------------------------------- Save Log File / Open Log File ------------------------------- //
+
+		System::Void ClearFileState() {
+
+			this->FileStatePending = false;
+			this->FileStateHasMarkers = false;
+			this->FileStateMarkers->Clear();
+			this->FileStateCursorA = System::Double::NaN;
+			this->FileStateCursorB = System::Double::NaN;
+			this->FileStateMeasure = false;
+			this->FileStateZoomX = false;
+			this->FileStateZoomXMin = 0.0;
+			this->FileStateZoomXMax = 0.0;
+			this->FileStateZoomY = false;
+			this->FileStateZoomYMin = 0.0;
+			this->FileStateZoomYMax = 0.0;
+
+		}
+
+		// Reads one "#graph." line of a log file: #graph.marker=<elapsed ms>|<text>, #graph.cursorA=<elapsed ms>, #graph.cursorB=<elapsed ms>, #graph.measure=0/1,
+		// #graph.zoomX=<min s>|<max s> (elapsed seconds), #graph.zoomY=<min>|<max> (temperature). A line that is not understood is ignored.
+		System::Void ReadGraphStateLine(System::String^ Line) {
+
+			int EqualsPos = Line->IndexOf(L'=');
+			if (EqualsPos <= 7) { return; }
+
+			System::String^ Key = Line->Substring(7, EqualsPos - 7)->Trim();
+			System::String^ Value = Line->Substring(EqualsPos + 1);
+			double First = 0.0;
+			double Second = 0.0;
+
+			if (Key == "marker") {
+
+				int Bar = Value->IndexOf(L'|');
+				if (Bar < 1 || SessionFile::TextToDouble(Value->Substring(0, Bar)->Trim(), First) == false) { return; }
+
+				GraphMarker^ NewMarker = gcnew GraphMarker();
+				NewMarker->ElapsedMilliSec = First;
+				NewMarker->Text = Value->Substring(Bar + 1);
+				this->FileStateMarkers->Add(NewMarker);
+				this->FileStateHasMarkers = true;
+
+			}
+			else if (Key == "cursorA" || Key == "cursorB") {
+
+				if (SessionFile::TextToDouble(Value->Trim(), First) == false) { return; }
+
+				double Day = this->ChartStartTime.AddMilliseconds(First).ToOADate();
+				if (Key == "cursorA") { this->FileStateCursorA = Day; } else { this->FileStateCursorB = Day; }
+				this->FileStateHasMarkers = true;
+
+			}
+			else if (Key == "measure") {
+
+				this->FileStateMeasure = (Value->Trim() == "1");
+				this->FileStateHasMarkers = true;
+
+			}
+			else if (Key == "zoomX" || Key == "zoomY") {
+
+				int Bar = Value->IndexOf(L'|');
+				if (Bar < 1 || SessionFile::TextToDouble(Value->Substring(0, Bar)->Trim(), First) == false || SessionFile::TextToDouble(Value->Substring(Bar + 1)->Trim(), Second) == false) { return; }
+
+				if (Key == "zoomX") { this->FileStateZoomX = true; this->FileStateZoomXMin = First; this->FileStateZoomXMax = Second; }
+				else { this->FileStateZoomY = true; this->FileStateZoomYMin = First; this->FileStateZoomYMax = Second; }
+
+			}
+			else { return; }
+
+			this->FileStatePending = true;
+
+		}
+
+		// Sets the markers, cursors and zoom that the log file had in its "#graph." lines (the file has been read completely)
+		System::Void ApplyFileState() {
+
+			if (this->FileStateHasMarkers == true) {
+
+				this->GraphMarkers->Clear();
+				this->MarkerDragging = -1;
+				this->MarkerMenuTarget = nullptr;
+				for (int i = 0; i < this->FileStateMarkers->Count; i++) { this->GraphMarkers->Add(this->FileStateMarkers[i]); }
+				this->FileStateMarkers->Clear();
+
+				if (this->MeasureLineA != nullptr && this->MeasureLineB != nullptr && this->MeasurePanel != nullptr) {
+
+					this->ClearMeasureCursors();
+					if (System::Double::IsNaN(this->FileStateCursorA) == false) { this->SetMeasureCursor(0, this->FileStateCursorA); }
+					if (System::Double::IsNaN(this->FileStateCursorB) == false) { this->SetMeasureCursor(1, this->FileStateCursorB); }
+
+					this->MeasureMenuItem->Checked = this->FileStateMeasure;
+					this->MeasureModeEnabled = this->FileStateMeasure;
+					this->ApplyMeasureMode();
+
+				}
+
+			}
+
+			if (this->FileStateZoomX == true || this->FileStateZoomY == true) {
+
+				this->SessionStateZoomX = this->FileStateZoomX;
+				this->SessionStateZoomXMin = this->FileStateZoomXMin;
+				this->SessionStateZoomXMax = this->FileStateZoomXMax;
+				this->SessionStateZoomY = this->FileStateZoomY;
+				this->SessionStateZoomYMin = this->FileStateZoomYMin;
+				this->SessionStateZoomYMax = this->FileStateZoomYMax;
+				this->SessionZoomTries = 0;
+				this->ApplySessionZoom();
+
+			}
+
+			this->LogChart->Invalidate();
+
+		}
+
+		// The "#graph." lines for the markers, cursors and zoom of the graph as it is now (elapsed times, so the file can be shown again at any time)
+		System::Collections::Generic::List<System::String^>^ BuildGraphStateLines() {
+
+			System::Collections::Generic::List<System::String^>^ Lines = gcnew System::Collections::Generic::List<System::String^>();
+			double StartDay = this->ChartStartTime.ToOADate();
+			bool HasCursor = false;
+
+			for (int i = 0; i < this->GraphMarkers->Count; i++) {
+
+				System::String^ MarkerText = (this->GraphMarkers[i]->Text != nullptr) ? this->GraphMarkers[i]->Text->Replace("\r", " ")->Replace("\n", " ") : "";
+				Lines->Add("#graph.marker=" + SessionFile::DoubleText(this->GraphMarkers[i]->ElapsedMilliSec) + "|" + MarkerText);
+
+			}
+
+			if (System::Double::IsNaN(this->MeasureTimeA) == false) { Lines->Add("#graph.cursorA=" + SessionFile::DoubleText((this->MeasureTimeA - StartDay) * 86400000.0)); HasCursor = true; }
+			if (System::Double::IsNaN(this->MeasureTimeB) == false) { Lines->Add("#graph.cursorB=" + SessionFile::DoubleText((this->MeasureTimeB - StartDay) * 86400000.0)); HasCursor = true; }
+
+			if (HasCursor == true || this->GraphMarkers->Count > 0) { Lines->Add("#graph.measure=" + SessionFile::BoolText(this->MeasureModeEnabled)); }
+
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::ChartArea^ Area = this->LogChart->ChartAreas[0];
+
+				if (Area->AxisX->ScaleView->IsZoomed == true) {
+					Lines->Add("#graph.zoomX=" + SessionFile::DoubleText((Area->AxisX->ScaleView->ViewMinimum - StartDay) * 86400.0) + "|" + SessionFile::DoubleText((Area->AxisX->ScaleView->ViewMaximum - StartDay) * 86400.0));
+				}
+
+				if (Area->AxisY->ScaleView->IsZoomed == true) {
+					Lines->Add("#graph.zoomY=" + SessionFile::DoubleText(Area->AxisY->ScaleView->ViewMinimum) + "|" + SessionFile::DoubleText(Area->AxisY->ScaleView->ViewMaximum));
+				}
+
+			}
+			catch (System::Exception^) {}
+
+			return Lines;
+
+		}
+
+		System::Void ShowLogFileStatus(System::String^ Text, unsigned int MessageType) {
+
+			if (GlobalVariables::GlobalGUIInfoTextArea != nullptr) { RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, RMH_Conversion_SystemStringToStdString(Text), MessageType); }
+
+		}
+
+		// Saves the log file that the graph follows to a file of the user's choice. Returns true when the file was saved.
+		bool SaveLogFileWithDialog() {
+
+			System::String^ SourcePath = this->GetSessionLogFilePath();
+
+			if (SourcePath == nullptr) {
+
+				System::Windows::Forms::MessageBox::Show(this, "There is no log file to save yet. Start a data logging session or open a log file first.", "Save Log File", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Information);
+				return false;
+
+			}
+
+			System::Windows::Forms::SaveFileDialog^ Dialog = gcnew System::Windows::Forms::SaveFileDialog();
+			Dialog->Title = "Save Log File";
+			Dialog->Filter = "Log file with markers, cursors and zoom (*.csv)|*.csv|Log file, data only (*.csv)|*.csv|Log file with markers, cursors and zoom (*.txt)|*.txt|Log file, data only (*.txt)|*.txt";
+			Dialog->FilterIndex = SourcePath->EndsWith(".txt", System::StringComparison::OrdinalIgnoreCase) ? 3 : 1;
+			Dialog->FileName = System::IO::Path::GetFileNameWithoutExtension(SourcePath);
+			Dialog->OverwritePrompt = true;
+
+			if (GlobalVariables::LoggingCSVDefaultPath != nullptr && System::IO::Directory::Exists(GlobalVariables::LoggingCSVDefaultPath)) { Dialog->InitialDirectory = GlobalVariables::LoggingCSVDefaultPath; }
+
+			if (Dialog->ShowDialog(this) != System::Windows::Forms::DialogResult::OK) { return false; }
+
+			System::String^ TargetPath = Dialog->FileName;
+			bool WithGraphState = (Dialog->FilterIndex == 1 || Dialog->FilterIndex == 3);
+
+			if (System::IO::Path::GetFullPath(TargetPath)->Equals(System::IO::Path::GetFullPath(SourcePath), System::StringComparison::OrdinalIgnoreCase)) {
+
+				System::Windows::Forms::MessageBox::Show(this, "This is the file that the graph shows. Choose another file name.", "Save Log File", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Warning);
+				return false;
+
+			}
+
+			try {
+
+				// The file is copied line by line (it can be very long, and a running data logging session still writes to it); the "#graph." lines of an earlier save are left out
+				System::IO::FileStream^ SourceStream = gcnew System::IO::FileStream(SourcePath, System::IO::FileMode::Open, System::IO::FileAccess::Read, System::IO::FileShare::ReadWrite);
+
+				try {
+
+					bool HasBom = false;
+					cli::array<System::Byte>^ Start = gcnew cli::array<System::Byte>(3);
+					if (SourceStream->Read(Start, 0, 3) == 3 && Start[0] == 0xEF && Start[1] == 0xBB && Start[2] == 0xBF) { HasBom = true; }
+					SourceStream->Seek(0, System::IO::SeekOrigin::Begin);
+
+					System::IO::StreamReader^ Reader = gcnew System::IO::StreamReader(SourceStream, gcnew System::Text::UTF8Encoding(false), true);
+					System::IO::StreamWriter^ Writer = gcnew System::IO::StreamWriter(TargetPath, false, gcnew System::Text::UTF8Encoding(HasBom));
+					Writer->NewLine = "\r\n";
+
+					try {
+
+						System::String^ Line = nullptr;
+
+						while ((Line = Reader->ReadLine()) != nullptr) {
+
+							if (Line->StartsWith("#graph.", System::StringComparison::Ordinal)) { continue; }
+							Writer->WriteLine(Line);
+
+						}
+
+						if (WithGraphState == true) {
+
+							System::Collections::Generic::List<System::String^>^ StateLines = this->BuildGraphStateLines();
+							for (int i = 0; i < StateLines->Count; i++) { Writer->WriteLine(StateLines[i]); }
+
+						}
+
+					}
+					finally { Writer->Close(); }
+
+				}
+				finally { SourceStream->Close(); }
+
+				this->ShowLogFileStatus("Log File Saved: " + TargetPath, _StatusMessageType_Success);
+				return true;
+
+			}
+			catch (System::Exception^ Ex) {
+
+				System::Windows::Forms::MessageBox::Show(this, "The log file could not be saved:\n" + Ex->Message, "Save Log File", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Error);
+				return false;
+
+			}
+
+		}
+
+		System::Void SaveLogButton_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			this->SaveLogFileWithDialog();
+
+		}
+
+		System::Void OpenLogButton_Click(System::Object^ sender, System::EventArgs^ e) {
+
+			if (DataLoggingIsRunningFlag == true) {
+
+				System::Windows::Forms::MessageBox::Show(this, "A data logging session is running. Stop the data logging before you open a log file.", "Open Log File", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Information);
+				return;
+
+			}
+
+			// The data of a data logging session that was not saved (answer No) is only in the graph cache: the graph is going to be replaced
+			System::String^ CurrentPath = this->GetSessionLogFilePath();
+
+			if (CurrentPath != nullptr && RMH_ThermalViewer_FileIsInDataLoggingGraphCache(CurrentPath) == true) {
+
+				System::Windows::Forms::DialogResult Answer = System::Windows::Forms::MessageBox::Show(this,
+					"The data of the last data logging session is not saved. It is lost when another log file is opened.\n\nDo you want to save it first?",
+					"Open Log File", System::Windows::Forms::MessageBoxButtons::YesNoCancel, System::Windows::Forms::MessageBoxIcon::Question);
+
+				if (Answer == System::Windows::Forms::DialogResult::Cancel) { return; }
+				if (Answer == System::Windows::Forms::DialogResult::Yes && this->SaveLogFileWithDialog() == false) { return; }
+
+			}
+
+			System::Windows::Forms::OpenFileDialog^ Dialog = gcnew System::Windows::Forms::OpenFileDialog();
+			Dialog->Title = "Open Log File";
+			Dialog->Filter = "Log files (*.csv;*.txt)|*.csv;*.txt|All files (*.*)|*.*";
+			Dialog->CheckFileExists = true;
+
+			if (GlobalVariables::LoggingCSVDefaultPath != nullptr && System::IO::Directory::Exists(GlobalVariables::LoggingCSVDefaultPath)) { Dialog->InitialDirectory = GlobalVariables::LoggingCSVDefaultPath; }
+
+			if (Dialog->ShowDialog(this) != System::Windows::Forms::DialogResult::OK) { return; }
+
+			// The delimiter is found in the header line; a file without the header line of a log file of this program is not shown
+			IRCAMThermalViewer::RecoveredSessionInfo^ Info = IRCAMThermalViewer::RecoveredSessionInfo::Analyse(Dialog->FileName, GlobalVariables::DataLoggingCSVDelimiterString);
+
+			if (Info->ReadFailed == true) {
+
+				System::Windows::Forms::MessageBox::Show(this, "The file could not be read.", "Open Log File", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Error);
+				return;
+
+			}
+
+			if (Info->DelimiterKnown == false || Info->SampleCount == 0) {
+
+				System::Windows::Forms::MessageBox::Show(this, "This is not a log file of the data logging, or it has no samples.\n\nThe first line of a log file is the header line (Sample, Time(ms), ...).", "Open Log File", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Warning);
+				return;
+
+			}
+
+			this->OpenRecoveredSession(Info->FullPath, Info->Delimiter);
+			this->RefreshLogView();
+
+			this->ShowLogFileStatus("Log File Opened: " + Info->FullPath, _StatusMessageType_Success);
+
+		}
+
 		// Opens the log file that came with a session file in the window (the markers and cursors of the session are set when the file has been read)
 		System::Void OpenSessionLogFile(System::String^ FullPath, System::String^ Delimiter) {
 
@@ -686,6 +996,8 @@ namespace IRCAMThermalViewer {
 		bool SplitDistanceSet;
 		System::Windows::Forms::Button^ ResetZoomButton;
 		System::Windows::Forms::Button^ ExportGraphButton;
+		System::Windows::Forms::Button^ OpenLogButton;               // Open Log File: loads a log file in the graph
+		System::Windows::Forms::Button^ SaveLogButton;               // Save Log File: saves the log file of the graph (with the markers, cursors and zoom)
 		System::Windows::Forms::Button^ AddNotesButton;
 		System::String^ GraphNotes;     // Notes about the logging, written in the table below the graph of an exported image (like the graph title, they stay until changed)
 		System::DateTime ChartStartTime;
@@ -773,6 +1085,19 @@ namespace IRCAMThermalViewer {
 		bool SessionStateMeasureMode;
 		bool SessionStateHasMarkers;                 // True: the session file has markers / cursors (older files do not, then the markers and cursors are left as they are)
 		// Zoom of an opened session file (elapsed seconds of the time axis, temperature values of the temperature axis), set when the log file has been read
+		// Markers, cursors and zoom that a log file has in its "#graph." lines (written by Save Log File), set when the file has been read
+		bool FileStatePending;
+		bool FileStateHasMarkers;
+		System::Collections::Generic::List<GraphMarker^>^ FileStateMarkers;
+		double FileStateCursorA;
+		double FileStateCursorB;
+		bool FileStateMeasure;
+		bool FileStateZoomX;
+		double FileStateZoomXMin;
+		double FileStateZoomXMax;
+		bool FileStateZoomY;
+		double FileStateZoomYMin;
+		double FileStateZoomYMax;
 		int SessionZoomTries;                        // Number of times the zoom of the session file was tried
 		bool SessionStateZoomX;
 		double SessionStateZoomXMin;
@@ -869,28 +1194,38 @@ namespace IRCAMThermalViewer {
 			this->OpenFolderButton->Click += gcnew System::EventHandler(this, &DataLogGUI::OpenFolderButton_Click);
 			TopPanel->Controls->Add(this->OpenFolderButton);
 
+			this->OpenLogButton = gcnew System::Windows::Forms::Button();
+			this->StyleButton(this->OpenLogButton, "Open Log File", 385, 125);
+			this->OpenLogButton->Click += gcnew System::EventHandler(this, &DataLogGUI::OpenLogButton_Click);
+			TopPanel->Controls->Add(this->OpenLogButton);
+
+			this->SaveLogButton = gcnew System::Windows::Forms::Button();
+			this->StyleButton(this->SaveLogButton, "Save Log File", 515, 125);
+			this->SaveLogButton->Click += gcnew System::EventHandler(this, &DataLogGUI::SaveLogButton_Click);
+			TopPanel->Controls->Add(this->SaveLogButton);
+
 			this->ClearViewButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->ClearViewButton, "Clear Graph", 385, 100);
+			this->StyleButton(this->ClearViewButton, "Clear Graph", 645, 100);
 			this->ClearViewButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ClearViewButton_Click);
 			TopPanel->Controls->Add(this->ClearViewButton);
 
 			this->ResetZoomButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->ResetZoomButton, "Reset Zoom", 490, 100);
+			this->StyleButton(this->ResetZoomButton, "Reset Zoom", 750, 100);
 			this->ResetZoomButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ResetZoomButton_Click);
 			TopPanel->Controls->Add(this->ResetZoomButton);
 
 			this->AddNotesButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->AddNotesButton, "Add Notes", 595, 95);
+			this->StyleButton(this->AddNotesButton, "Add Notes", 855, 95);
 			this->AddNotesButton->Click += gcnew System::EventHandler(this, &DataLogGUI::AddNotesButton_Click);
 			TopPanel->Controls->Add(this->AddNotesButton);
 
 			this->AddMarkerButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->AddMarkerButton, "Add Marker", 695, 105);
+			this->StyleButton(this->AddMarkerButton, "Add Marker", 955, 105);
 			this->AddMarkerButton->Click += gcnew System::EventHandler(this, &DataLogGUI::AddMarkerButton_Click);
 			TopPanel->Controls->Add(this->AddMarkerButton);
 
 			this->ExportGraphButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->ExportGraphButton, "Export Graph", 805, 115);
+			this->StyleButton(this->ExportGraphButton, "Export Graph", 1065, 115);
 			this->ExportGraphButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ExportGraphButton_Click);
 			TopPanel->Controls->Add(this->ExportGraphButton);
 
@@ -898,20 +1233,22 @@ namespace IRCAMThermalViewer {
 			this->ShowTitleCheckBox->Text = "Show Graph Title";
 			this->ShowTitleCheckBox->Checked = false;
 			this->ShowTitleCheckBox->AutoSize = true;
-			this->ShowTitleCheckBox->Location = System::Drawing::Point(928, 43);
+			this->ShowTitleCheckBox->Location = System::Drawing::Point(1188, 43);
 			this->ShowTitleCheckBox->ForeColor = System::Drawing::Color::White;
 			this->ShowTitleCheckBox->CheckedChanged += gcnew System::EventHandler(this, &DataLogGUI::ShowTitleCheckBox_CheckedChanged);
 			TopPanel->Controls->Add(this->ShowTitleCheckBox);
 
 			this->HintToolTip = gcnew System::Windows::Forms::ToolTip();
 			this->HintToolTip->SetToolTip(this->AddMarkerButton, "Adds a marker (a vertical line with the time and a text) at the current time of the data logging. To add a marker at another time, right-click the graph. Markers can be dragged with the mouse.");
+			this->HintToolTip->SetToolTip(this->OpenLogButton, "Opens a log file (.csv or .txt, as written by the data logging) in the graph and the table. Markers, cursors and zoom that the file has (see Save Log File) are set as well.");
+			this->HintToolTip->SetToolTip(this->SaveLogButton, "Saves the log file of the graph (also when the data logging session was not saved). The markers, cursors and zoom of the graph are saved in the file too, so Open Log File shows the graph as it is now; choose 'data only' to save the plain data.");
 			this->HintToolTip->SetToolTip(this->ShowTitleCheckBox, "Shows the title above the graph and in an exported image. Double-click the title on the graph to edit it.");
 
 			this->AutoScrollCheckBox = gcnew System::Windows::Forms::CheckBox();
 			this->AutoScrollCheckBox->Text = "Auto-scroll table to newest";
 			this->AutoScrollCheckBox->Checked = true;
 			this->AutoScrollCheckBox->AutoSize = true;
-			this->AutoScrollCheckBox->Location = System::Drawing::Point(1060, 43);
+			this->AutoScrollCheckBox->Location = System::Drawing::Point(1320, 43);
 			this->AutoScrollCheckBox->ForeColor = System::Drawing::Color::White;
 			TopPanel->Controls->Add(this->AutoScrollCheckBox);
 
@@ -4605,6 +4942,7 @@ namespace IRCAMThermalViewer {
 			this->ViewDecoder->Reset();
 			this->LoadingBehind = false;
 			this->ViewHasNewData = false;
+			this->ClearFileState();
 
 			// A new session (or a restart of the view) starts with the whole graph: a zoomed view of the previous session would show a time range that the new
 			// data has not reached yet (an empty graph). A locked X / Y range is not zoom and stays.
@@ -4815,6 +5153,9 @@ namespace IRCAMThermalViewer {
 				if (Line->Length == 0) { continue; }
 
 				// A note line (#column=name): the source of a column was changed while the session runs - show the new name, it is no sample
+				// A graph line (#graph.marker=..., written by Save Log File): marker, cursor or zoom of the graph, it is no sample
+				if (Line->StartsWith("#graph.", System::StringComparison::Ordinal)) { this->ReadGraphStateLine(Line); continue; }
+
 				if (Line->StartsWith("#")) { this->ApplySourceChangeNote(Line); continue; }
 
 				cli::array<System::String^>^ Parts = Line->Split(Delimiters, System::StringSplitOptions::None);
@@ -5052,6 +5393,12 @@ namespace IRCAMThermalViewer {
 				this->ApplyLiveStyleChanges();
 				this->UpdateAxisTitles();
 				this->ApplyAxisSettings();
+
+				// Markers, cursors and zoom that are in the log file itself (Save Log File). The ones of an opened IRCAM session win, they are set below.
+				if (this->FileStatePending == true) {
+					this->FileStatePending = false;
+					if (this->SessionStatePending == false) { this->ApplyFileState(); }
+				}
 
 				// Markers and cursors of an opened session file
 				this->TryApplyPendingSessionState();
