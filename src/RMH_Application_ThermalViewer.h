@@ -178,6 +178,13 @@ void RMH_ThermalViewer_DeleteAllTemperatureMeasurementFromLiveView();
 System::Collections::Generic::List<System::String^>^ RMH_ThermalViewer_GetLiveViewMeasurementsForSession();
 int RMH_ThermalViewer_SetLiveViewMeasurementsFromSession(System::Collections::Generic::List<System::String^>^ Entries);
 
+// ------------- Plot Data Set Sources And Temperature Tracking In A Session File ------------- //
+
+System::Collections::Generic::List<System::String^>^ RMH_ThermalViewer_GetPlotDataSetSourcesForSession();
+int RMH_ThermalViewer_SetPlotDataSetSourcesFromSession(System::Collections::Generic::List<System::String^>^ Entries);
+System::Collections::Generic::List<System::String^>^ RMH_ThermalViewer_GetTemperatureTrackingForSession();
+int RMH_ThermalViewer_SetTemperatureTrackingFromSession(System::Collections::Generic::List<System::String^>^ Entries);
+
 // --------------------- ROI Temperature Tracking Handling Routines ---------------------- //
 
 void RMH_ThermalViewer_UpdateROIRenderingOrder();

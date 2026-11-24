@@ -15,6 +15,9 @@
  *    FormName.Ctrl   the value of a control of a form (check box, number box, drop-down list, text box, track bar)
  *    datalog.*       the Data Log graph settings, markers, cursors and the logged data (datalog.file.gz = GZip + Base64 of the log CSV file)
  *    lv.*            the temperature crosshairs, lines and ROIs of the live view
+ *    plot.ds.*       the Data Set Source of the 10 plot data sets (slot;index;name), set again after the controls
+ *    track.*         the tracking buttons of the live view (MAX, MIN, CENTER temperature, mouse CURSOR) as name;0/1
+ *    datalog.Zoom*   zoom of the Data Log graph (time axis: elapsed seconds, temperature axis: values), set when the log file has been read
  *
  *  The routines here do not know the forms of the program: the main window gives them the forms to walk through.
  *

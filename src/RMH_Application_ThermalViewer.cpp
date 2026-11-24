@@ -915,6 +915,34 @@ static System::String^ RMH_ThermalViewer_GetDataLoggingTempFolder() {
 
 }
 
+static System::String^ RMH_ThermalViewer_GetDataLoggingGraphCacheFolder() {
+
+	// Returns the folder where the data of a data logging session is kept when the user answered "No" to the question to save the session. The graph of the
+	// Data Log window still shows that data, so the data is kept here to be stored in an IRCAM session file. It is a sub folder, so the crash recovery at start-up
+	// (which only looks in the folder above it) does not offer it. The folder is emptied by the next data logging session that is not saved and at start-up.
+	return System::IO::Path::Combine(RMH_ThermalViewer_GetDataLoggingTempFolder(), "GraphCache");
+
+}
+
+static void RMH_ThermalViewer_ClearDataLoggingGraphCache() {
+
+	try {
+
+		System::String^ CacheFolder = RMH_ThermalViewer_GetDataLoggingGraphCacheFolder();
+		if (System::IO::Directory::Exists(CacheFolder) == false) { return; }
+
+		cli::array<System::String^>^ CacheFiles = System::IO::Directory::GetFiles(CacheFolder);
+
+		for (int i = 0; i < CacheFiles->Length; i++) {
+			try { System::IO::File::Delete(CacheFiles[i]); }
+			catch (System::Exception^) {}
+		}
+
+	}
+	catch (System::Exception^) {}
+
+}
+
 static void RMH_ThermalViewer_ReleaseDataLoggingSessionLock() {
 
 	// Closes the lock file of the session (the file is deleted by Windows when it is closed). Does nothing when there is no lock.
@@ -1365,8 +1393,11 @@ static void RMH_ThermalViewer_AskToSaveDataLoggingSession() {
 	// Already moved to the save path
 	if (TempFolder->Equals(GlobalVariables::LoggingCSVDefaultPath)) { return; }
 
+	// Already answered "No": the data is kept in the graph cache (see below), nothing to ask
+	if (TempFolder->Equals(RMH_ThermalViewer_GetDataLoggingGraphCacheFolder(), System::StringComparison::OrdinalIgnoreCase)) { return; }
+
 	System::Windows::Forms::DialogResult Answer = System::Windows::Forms::MessageBox::Show(
-		"The data logging session has stopped.\n\nDo you want to save this data logging session?\n\nYes: the file is saved in\n" + GlobalVariables::LoggingCSVDefaultPath + "\n\nNo: the session data is deleted.",
+		"The data logging session has stopped.\n\nDo you want to save this data logging session?\n\nYes: the file is saved in\n" + GlobalVariables::LoggingCSVDefaultPath + "\n\nNo: the file is not saved. The graph keeps showing the data, and the data is still stored when you save an IRCAM session.",
 		"Save Data Logging Session", System::Windows::Forms::MessageBoxButtons::YesNo, System::Windows::Forms::MessageBoxIcon::Question, System::Windows::Forms::MessageBoxDefaultButton::Button1);
 
 	if (Answer == System::Windows::Forms::DialogResult::Yes) {
@@ -1399,10 +1430,34 @@ static void RMH_ThermalViewer_AskToSaveDataLoggingSession() {
 	}
 	else {
 
-		try { System::IO::File::Delete(TempPath); }
+		// The file is not saved, but the graph of the Data Log window still shows its data. The data is moved to the graph cache (a sub folder that crash recovery
+		// does not look in) and the window follows it there, so an IRCAM session that is saved while the graph shows the data holds the data as well.
+		bool Kept = false;
+
+		try {
+
+			RMH_ThermalViewer_ClearDataLoggingGraphCache();
+
+			System::String^ CacheFolder = RMH_ThermalViewer_GetDataLoggingGraphCacheFolder();
+			System::IO::Directory::CreateDirectory(CacheFolder);
+
+			System::IO::File::Copy(TempPath, System::IO::Path::Combine(CacheFolder, FileName), true);
+			System::IO::File::Delete(TempPath);
+
+			GlobalVariables::DataLoggingSessionFolderString = CacheFolder;
+			Kept = true;
+
+		}
 		catch (System::Exception^) {}
 
-		RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Session Was Not Saved (Temporary File Deleted).", _StatusMessageType_Normal);
+		if (Kept == false) {
+
+			try { System::IO::File::Delete(TempPath); }
+			catch (System::Exception^) {}
+
+		}
+
+		RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Session Was Not Saved (The Graph Keeps The Data For An IRCAM Session).", _StatusMessageType_Normal);
 
 	}
 
@@ -1430,6 +1485,9 @@ bool RMH_ThermalViewer_CheckForUnsavedDataLoggingSessions(System::Windows::Forms
 
 	OpenFilePath = nullptr;
 	OpenDelimiter = nullptr;
+
+	// The graph cache of the last run is not needed any more
+	RMH_ThermalViewer_ClearDataLoggingGraphCache();
 
 	try {
 
@@ -5749,6 +5807,142 @@ int RMH_ThermalViewer_SetLiveViewMeasurementsFromSession(System::Collections::Ge
 	for (int s = 0; s <= Highest; s++) { RMH_ThermalViewer_AddRegionOfInterestBoxToLiveView(); }
 	for (int s = 0; s <= Highest; s++) { if (WantROI[s] == false) { RMH_ThermalViewer_DeleteRegionOfInterestBoxFromLiveView(GlobalVariables::GlobaldeleteROIToolStripMenuItem->DropDownItems[s]); } }
 	for (int s = 0; s <= Highest; s++) { if (WantROI[s] == true && GlobalVariables::OpenGLRender->RMH_OpenGL_SetMovableObjectPosition(2, s + 3, ROIValues[s]) == true) { SetCount++; } }
+
+	return SetCount;
+
+}
+
+// ------------- Plot Data Set Sources And Temperature Tracking In A Session File ------------- //
+
+System::Collections::Generic::List<System::String^>^ RMH_ThermalViewer_GetPlotDataSetSourcesForSession() {
+
+	// This routine returns the selected data source of every 'Temperature Plot Data Set Settings' data set (Data Set Source ComboBox) as text entries, for a
+	// session file: "slot;index;name" (slot = data set number minus one, name = the text of the source). The name is saved as well, so the source is found
+	// again even when the list of sources has another order in another program version.
+
+	System::Collections::Generic::List<System::String^>^ Entries = gcnew System::Collections::Generic::List<System::String^>();
+
+	if (GlobalVariables::Plot2DDataSetComboBoxs == nullptr) { return Entries; }
+
+	for (unsigned int i = 0; i < _2DPlotMaxNumberOfDataSets; i++) {
+
+		System::Windows::Forms::ComboBox^ SourceComboBox = GlobalVariables::Plot2DDataSetComboBoxs[i];
+		if (SourceComboBox == nullptr || SourceComboBox->SelectedIndex < 0) { continue; }
+
+		Entries->Add(i.ToString(System::Globalization::CultureInfo::InvariantCulture) + ";" + SourceComboBox->SelectedIndex.ToString(System::Globalization::CultureInfo::InvariantCulture) + ";" +
+			SourceComboBox->GetItemText(SourceComboBox->SelectedItem));
+
+	}
+
+	return Entries;
+
+}
+
+int RMH_ThermalViewer_SetPlotDataSetSourcesFromSession(System::Collections::Generic::List<System::String^>^ Entries) {
+
+	// This routine sets the Data Set Source of the data sets to those of a session file (see RMH_ThermalViewer_GetPlotDataSetSourcesForSession). The source is
+	// found by its name first, then by its index. The data source of the 2D plot (and so of the data logging) is always set, also when the ComboBox shows the
+	// source already or is not enabled at the moment. Returns the number of data sets that were set.
+
+	if (Entries == nullptr || GlobalVariables::Plot2DDataSetComboBoxs == nullptr) { return 0; }
+
+	System::Globalization::CultureInfo^ Culture = System::Globalization::CultureInfo::InvariantCulture;
+	int SetCount = 0;
+
+	for (int e = 0; e < Entries->Count; e++) {
+
+		cli::array<System::String^>^ Parts = Entries[e]->Split(gcnew cli::array<wchar_t>{ ';' }, 3);
+		if (Parts->Length < 2) { continue; }
+
+		int Slot = -1;
+		int SavedIndex = -1;
+		if (System::Int32::TryParse(Parts[0], System::Globalization::NumberStyles::Integer, Culture, Slot) == false || Slot < 0 || Slot >= (int)_2DPlotMaxNumberOfDataSets) { continue; }
+		System::Int32::TryParse(Parts[1], System::Globalization::NumberStyles::Integer, Culture, SavedIndex);
+
+		System::Windows::Forms::ComboBox^ SourceComboBox = GlobalVariables::Plot2DDataSetComboBoxs[Slot];
+		if (SourceComboBox == nullptr) { continue; }
+
+		// The index of the source: by name when the file has the name, else the saved index
+		int WantedIndex = -1;
+
+		if (Parts->Length >= 3 && Parts[2]->Length > 0) {
+
+			for (int k = 0; k < SourceComboBox->Items->Count; k++) {
+				if (SourceComboBox->GetItemText(SourceComboBox->Items[k]) == Parts[2]) { WantedIndex = k; break; }
+			}
+
+		}
+
+		if (WantedIndex < 0 && SavedIndex >= 0 && SavedIndex < SourceComboBox->Items->Count) { WantedIndex = SavedIndex; }
+		if (WantedIndex < 0) { continue; }
+
+		// Show the source (this runs the ComboBox event, which sets the data source of the plot as well)
+		if (SourceComboBox->SelectedIndex != WantedIndex) { SourceComboBox->SelectedIndex = WantedIndex; }
+
+		// Set the data source of the plot also when the ComboBox event did not run
+		RMH_ThermalViewer_Change2DPlotDataSetSource(SourceComboBox);
+
+		SetCount++;
+
+	}
+
+	// The legend of the 2D plot shows the names of the sources
+	if (TempMeasGUIReadyFlag == true) { RMH_ThermalViewer_Update2DPlotLegendLabels(); }
+
+	return SetCount;
+
+}
+
+System::Collections::Generic::List<System::String^>^ RMH_ThermalViewer_GetTemperatureTrackingForSession() {
+
+	// This routine returns the state of the live view tracking buttons (maximum, minimum, center temperature and mouse cursor temperature) for a session
+	// file as "name;0 or 1" entries.
+
+	System::Collections::Generic::List<System::String^>^ Entries = gcnew System::Collections::Generic::List<System::String^>();
+
+	Entries->Add(System::String::Concat("MAX;", MaxTempTrackingEnableFlag == true ? "1" : "0"));
+	Entries->Add(System::String::Concat("MIN;", MinTempTrackingEnableFlag == true ? "1" : "0"));
+	Entries->Add(System::String::Concat("CENTER;", CenterTempTrackingEnableFlag == true ? "1" : "0"));
+	Entries->Add(System::String::Concat("CURSOR;", CursorTempTrackEnableFlag == true ? "1" : "0"));
+
+	return Entries;
+
+}
+
+int RMH_ThermalViewer_SetTemperatureTrackingFromSession(System::Collections::Generic::List<System::String^>^ Entries) {
+
+	// This routine sets the live view tracking buttons (maximum, minimum, center and mouse cursor temperature) to the state of a session file. A toggle routine is
+	// only called when the state is different, so the button border and the tracking work as after a click on the button. Returns the number of buttons that were set.
+
+	if (Entries == nullptr) { return 0; }
+
+	int SetCount = 0;
+
+	for (int e = 0; e < Entries->Count; e++) {
+
+		cli::array<System::String^>^ Parts = Entries[e]->Split(';');
+		if (Parts->Length != 2) { continue; }
+
+		bool Wanted = (Parts[1] == "1");
+
+		if (Parts[0] == "MAX" && GlobalVariables::GlobalMaxTempTrackButton != nullptr) {
+			if (MaxTempTrackingEnableFlag != Wanted) { RMH_ThermalViewer_ToggleMaximumTempTracking(); }
+			SetCount++;
+		}
+		else if (Parts[0] == "MIN" && GlobalVariables::GlobalMinTempTrackButton != nullptr) {
+			if (MinTempTrackingEnableFlag != Wanted) { RMH_ThermalViewer_ToggleMinimumTempTracking(); }
+			SetCount++;
+		}
+		else if (Parts[0] == "CENTER" && GlobalVariables::GlobalCenterTempTrackButton != nullptr) {
+			if (CenterTempTrackingEnableFlag != Wanted) { RMH_ThermalViewer_ToggleCenterTempTracking(); }
+			SetCount++;
+		}
+		else if (Parts[0] == "CURSOR" && GlobalVariables::GlobalCursorTempTrackButton != nullptr && GlobalVariables::OpenGLRender != nullptr) {
+			if (CursorTempTrackEnableFlag != Wanted) { RMH_ThermalViewer_ToggleMouseCursorTempTracking(); }
+			SetCount++;
+		}
+
+	}
 
 	return SetCount;
 

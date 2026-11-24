@@ -35,6 +35,9 @@ namespace IRCAMThermalViewer {
 	// - _DataLogExport_UseVectorChart: 1 = the graph is taken as a vector drawing (EMF+) and drawn at the high resolution, so lines and text stay sharp.
 	//   0 = the graph is taken as a picture of the screen size (it is only stretched at a higher resolution; use it to compare or when 1 does not look right).
 	// - _DataLogExport_JpegQuality: quality (0 - 100) of a JPEG image.
+	// Zoom of an opened session file: number of refreshes in which it is tried (it is set as soon as the axes are ready)
+	#define _SessionZoomMaxTries 20
+
 	// Graph markers: the longest text of a marker (characters)
 	#define _DataLogMarker_MaxTextLength 60
 
@@ -42,7 +45,7 @@ namespace IRCAMThermalViewer {
 	// - _DataLogZoomButton_Factor: one click on + shows this part of the visible range (0.7 = 70 %); one click on - shows 1 / this part (about 143 %). Smaller = bigger steps.
 	// - _DataLogZoomButton_MinTimeMilliSec: the smallest time range that + zooms to (milliseconds).
 	// - _DataLogZoomButton_MinTemperatureRange: the smallest temperature range that + zooms to.
-	#define _DataLogZoomButton_Factor 0.7
+#define _DataLogZoomButton_Factor 0.7
 
 	// Plot area of the Data Log graph while it is zoomed (UpdatePlotAreaLayout): the zoom scroll bars and the zoom buttons need room around the plot area.
 	// - 1 = the plot area always has those larger margins, so it never changes size when the graph is zoomed, zoomed further or reset (the graph is a little smaller
@@ -315,6 +318,14 @@ namespace IRCAMThermalViewer {
 			this->MeasurePanelPositioned = false;
 			this->MeasurePanelDragging = false;
 			this->SessionStatePending = false;
+			this->SessionStateHasMarkers = false;
+			this->SessionZoomTries = 0;
+			this->SessionStateZoomX = false;
+			this->SessionStateZoomXMin = 0.0;
+			this->SessionStateZoomXMax = 0.0;
+			this->SessionStateZoomY = false;
+			this->SessionStateZoomYMin = 0.0;
+			this->SessionStateZoomYMax = 0.0;
 			this->SessionStateFilePath = nullptr;
 			this->SessionStateMarkers = nullptr;
 			this->SessionStateCursorA = System::Double::NaN;
@@ -389,6 +400,30 @@ namespace IRCAMThermalViewer {
 			Values["datalog.CursorB"] = SessionFile::DoubleText(this->MeasureTimeB);
 			Values["datalog.MeasureMode"] = SessionFile::BoolText(this->MeasureModeEnabled);
 
+			// Zoom of the graph: the time axis as elapsed seconds since the start of the log, the temperature axis as temperature values (in the unit of the program)
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::ChartArea^ Area = this->LogChart->ChartAreas[0];
+				bool ZoomedX = (Area->AxisX->ScaleView->IsZoomed == true);
+				bool ZoomedY = (Area->AxisY->ScaleView->IsZoomed == true);
+				double StartDay = this->ChartStartTime.ToOADate();
+
+				Values["datalog.ZoomX"] = SessionFile::BoolText(ZoomedX);
+				Values["datalog.ZoomY"] = SessionFile::BoolText(ZoomedY);
+
+				if (ZoomedX == true) {
+					Values["datalog.ZoomXMin"] = SessionFile::DoubleText((Area->AxisX->ScaleView->ViewMinimum - StartDay) * 86400.0);
+					Values["datalog.ZoomXMax"] = SessionFile::DoubleText((Area->AxisX->ScaleView->ViewMaximum - StartDay) * 86400.0);
+				}
+
+				if (ZoomedY == true) {
+					Values["datalog.ZoomYMin"] = SessionFile::DoubleText(Area->AxisY->ScaleView->ViewMinimum);
+					Values["datalog.ZoomYMax"] = SessionFile::DoubleText(Area->AxisY->ScaleView->ViewMaximum);
+				}
+
+			}
+			catch (System::Exception^) {}
+
 		}
 
 		// The log file that the window shows or follows now (the running session, or the session file that was logged last), nullptr when there is none
@@ -419,14 +454,14 @@ namespace IRCAMThermalViewer {
 
 			this->SessionStatePending = false;
 
-			if (this->SessionStateMarkers != nullptr) {
+			if (this->SessionStateHasMarkers == true && this->SessionStateMarkers != nullptr) {
 				this->GraphMarkers->Clear();
 				this->MarkerDragging = -1;
 				this->MarkerMenuTarget = nullptr;
 				for (int i = 0; i < this->SessionStateMarkers->Count; i++) { this->GraphMarkers->Add(this->SessionStateMarkers[i]); }
 			}
 
-			if (this->MeasureLineA != nullptr && this->MeasureLineB != nullptr && this->MeasurePanel != nullptr) {
+			if (this->SessionStateHasMarkers == true && this->MeasureLineA != nullptr && this->MeasureLineB != nullptr && this->MeasurePanel != nullptr) {
 
 				this->ClearMeasureCursors();
 				if (System::Double::IsNaN(this->SessionStateCursorA) == false) { this->SetMeasureCursor(0, this->SessionStateCursorA); }
@@ -438,7 +473,92 @@ namespace IRCAMThermalViewer {
 
 			}
 
+			// Zoom of the session file (after the data is in the graph, so the whole range of the axes is known)
+			this->ApplySessionZoom();
+
 			this->LogChart->Invalidate();
+
+		}
+
+		// Zooms the graph to the zoom of an opened session file. The saved range is kept inside the whole range of the axis; a zoom that lies outside of it, or
+		// that is (almost) the whole range, is left out. The time axis uses the range of the logged data (the automatic range of the axis is not calculated yet
+		// right after the data was put in the graph). An axis whose zoom did not take is tried again at the next refresh (up to _SessionZoomMaxTries times).
+		System::Void ApplySessionZoom() {
+
+			if (this->SessionStateZoomX == false && this->SessionStateZoomY == false) { return; }
+
+			this->SessionZoomTries = this->SessionZoomTries + 1;
+
+			try {
+
+				System::Windows::Forms::DataVisualization::Charting::ChartArea^ Area = this->LogChart->ChartAreas[0];
+
+				// The axes are calculated for the data that is in the graph now
+				Area->RecalculateAxesScale();
+
+				bool Changed = false;
+
+				for (int Axis = 0; Axis < 2; Axis++) {
+
+					bool IsTimeAxis = (Axis == 0);
+					if ((IsTimeAxis == true && this->SessionStateZoomX == false) || (IsTimeAxis == false && this->SessionStateZoomY == false)) { continue; }
+
+					System::Windows::Forms::DataVisualization::Charting::Axis^ TheAxis = (IsTimeAxis == true) ? Area->AxisX : Area->AxisY;
+
+					double FullMinimum = 0.0;
+					double FullMaximum = 0.0;
+					bool HasRange = false;
+
+					if (IsTimeAxis == true) { HasRange = (this->GetMeasureTimeLimits(FullMinimum, FullMaximum) == true && FullMaximum > FullMinimum); }
+					if (HasRange == false) { HasRange = this->GetAxisFullRange(IsTimeAxis, FullMinimum, FullMaximum); }
+
+					// No data yet: tried again at the next refresh
+					if (HasRange == false) { continue; }
+
+					double WantedMinimum = (IsTimeAxis == true) ? (this->ChartStartTime.ToOADate() + this->SessionStateZoomXMin / 86400.0) : this->SessionStateZoomYMin;
+					double WantedMaximum = (IsTimeAxis == true) ? (this->ChartStartTime.ToOADate() + this->SessionStateZoomXMax / 86400.0) : this->SessionStateZoomYMax;
+
+					bool GiveUp = false;
+
+					if (System::Double::IsNaN(WantedMinimum) || System::Double::IsNaN(WantedMaximum) || WantedMaximum <= WantedMinimum) { GiveUp = true; }
+					else if (WantedMaximum <= FullMinimum || WantedMinimum >= FullMaximum) { GiveUp = true; }									// completely outside of the data
+					else if ((WantedMaximum - WantedMinimum) >= (FullMaximum - FullMinimum) * 0.999) { GiveUp = true; }				// the whole range
+
+					if (GiveUp == false) {
+
+						double WantedSize = WantedMaximum - WantedMinimum;
+
+						// Kept inside the whole range (the size of the zoom is kept)
+						if (WantedMinimum < FullMinimum) { WantedMinimum = FullMinimum; WantedMaximum = WantedMinimum + WantedSize; }
+						if (WantedMaximum > FullMaximum) { WantedMaximum = FullMaximum; WantedMinimum = WantedMaximum - WantedSize; }
+
+						TheAxis->ScaleView->Zoom(WantedMinimum, WantedMaximum);
+						Changed = true;
+
+						// Done when the axis shows the zoom; else it is tried again at the next refresh
+						if (TheAxis->ScaleView->IsZoomed == false) { continue; }
+
+					}
+
+					if (IsTimeAxis == true) { this->SessionStateZoomX = false; } else { this->SessionStateZoomY = false; }
+
+				}
+
+				if (Changed == true) {
+
+					// The same updates as after a zoom rectangle: scroll steps, ticks, plot area and the orange border of Reset Zoom
+					this->UpdateScrollSteps();
+					this->ApplyAxisSettings();
+					this->UpdateZoomIndicator();
+					this->LogChart->Invalidate();
+
+				}
+
+			}
+			catch (System::Exception^) {}
+
+			// Not tried again for ever
+			if (this->SessionZoomTries >= _SessionZoomMaxTries) { this->SessionStateZoomX = false; this->SessionStateZoomY = false; }
 
 		}
 
@@ -486,7 +606,7 @@ namespace IRCAMThermalViewer {
 			if (Values->TryGetValue("datalog.XRangeLocked", Value) == true) { this->XRangeLocked = (SessionFile::TextToBool(Value) == true && this->XLockedMaximum > this->XLockedMinimum); }
 			if (Values->TryGetValue("datalog.YRangeLocked", Value) == true) { this->YRangeLocked = (SessionFile::TextToBool(Value) == true && this->YLockedMaximum > this->YLockedMinimum); }
 
-			// A restored view starts without a zoom, so the locked ranges are fully visible
+			// The zoom of the session file is set when the log file has been read (see below); until then the view is not zoomed, so the locked ranges are fully visible
 			this->LogChart->ChartAreas[0]->AxisX->ScaleView->ZoomReset(0);
 			this->LogChart->ChartAreas[0]->AxisY->ScaleView->ZoomReset(0);
 
@@ -494,7 +614,27 @@ namespace IRCAMThermalViewer {
 
 			// Markers and measurement cursors (only when the file has them). They are set at once when no log file came with the session,
 			// else when the log file has been read into the graph
-			if (Values->TryGetValue("datalog.MarkerCount", Value) == true) {
+			this->SessionZoomTries = 0;
+			this->SessionStateZoomX = false;
+			this->SessionStateZoomY = false;
+
+			if (Values->TryGetValue("datalog.ZoomX", Value) == true && SessionFile::TextToBool(Value) == true &&
+				Values->TryGetValue("datalog.ZoomXMin", Value) == true && SessionFile::TextToDouble(Value, NumberValue) == true) {
+				this->SessionStateZoomXMin = NumberValue;
+				this->SessionStateZoomX = (Values->TryGetValue("datalog.ZoomXMax", Value) == true && SessionFile::TextToDouble(Value, NumberValue) == true);
+				if (this->SessionStateZoomX == true) { this->SessionStateZoomXMax = NumberValue; }
+			}
+
+			if (Values->TryGetValue("datalog.ZoomY", Value) == true && SessionFile::TextToBool(Value) == true &&
+				Values->TryGetValue("datalog.ZoomYMin", Value) == true && SessionFile::TextToDouble(Value, NumberValue) == true) {
+				this->SessionStateZoomYMin = NumberValue;
+				this->SessionStateZoomY = (Values->TryGetValue("datalog.ZoomYMax", Value) == true && SessionFile::TextToDouble(Value, NumberValue) == true);
+				if (this->SessionStateZoomY == true) { this->SessionStateZoomYMax = NumberValue; }
+			}
+
+			this->SessionStateHasMarkers = (Values->TryGetValue("datalog.MarkerCount", Value) == true);
+
+			if (this->SessionStateHasMarkers == true) {
 
 				this->SessionStateMarkers = gcnew System::Collections::Generic::List<GraphMarker^>();
 
@@ -520,6 +660,10 @@ namespace IRCAMThermalViewer {
 				if (Values->TryGetValue("datalog.CursorA", Value) == true && SessionFile::TextToDouble(Value, NumberValue) == true) { this->SessionStateCursorA = NumberValue; }
 				if (Values->TryGetValue("datalog.CursorB", Value) == true && SessionFile::TextToDouble(Value, NumberValue) == true) { this->SessionStateCursorB = NumberValue; }
 				this->SessionStateMeasureMode = (Values->TryGetValue("datalog.MeasureMode", Value) == true && SessionFile::TextToBool(Value) == true);
+
+			}
+
+			if (this->SessionStateHasMarkers == true || this->SessionStateZoomX == true || this->SessionStateZoomY == true) {
 
 				this->SessionStateFilePath = LogFilePath;
 				this->SessionStatePending = true;
@@ -627,6 +771,15 @@ namespace IRCAMThermalViewer {
 		double SessionStateCursorA;
 		double SessionStateCursorB;
 		bool SessionStateMeasureMode;
+		bool SessionStateHasMarkers;                 // True: the session file has markers / cursors (older files do not, then the markers and cursors are left as they are)
+		// Zoom of an opened session file (elapsed seconds of the time axis, temperature values of the temperature axis), set when the log file has been read
+		int SessionZoomTries;                        // Number of times the zoom of the session file was tried
+		bool SessionStateZoomX;
+		double SessionStateZoomXMin;
+		double SessionStateZoomXMax;
+		bool SessionStateZoomY;
+		double SessionStateZoomYMin;
+		double SessionStateZoomYMax;
 		System::Windows::Forms::Button^ StartLoggingButton;
 		System::Windows::Forms::Button^ StopLoggingButton;
 		System::Windows::Forms::Button^ OpenFolderButton;
@@ -4902,6 +5055,9 @@ namespace IRCAMThermalViewer {
 
 				// Markers and cursors of an opened session file
 				this->TryApplyPendingSessionState();
+
+				// Zoom of an opened session file that did not take at the first try (the axes were not ready)
+				if (this->SessionStatePending == false && (this->SessionStateZoomX == true || this->SessionStateZoomY == true)) { this->ApplySessionZoom(); }
 
 			}
 

@@ -1471,6 +1471,15 @@ namespace IRCAMThermalViewer {
 				Values["lv.count"] = LiveViewEntries->Count.ToString(System::Globalization::CultureInfo::InvariantCulture);
 				for (int i = 0; i < LiveViewEntries->Count; i++) { Values["lv." + i.ToString("000", System::Globalization::CultureInfo::InvariantCulture)] = LiveViewEntries[i]; }
 
+				// Data Set Source of every plot data set (Temperature Plot Data Set Settings) and the tracking buttons of the live view (maximum, minimum, center, mouse cursor)
+				System::Collections::Generic::List<System::String^>^ SourceEntries = RMH_ThermalViewer_GetPlotDataSetSourcesForSession();
+				Values["plot.ds.count"] = SourceEntries->Count.ToString(System::Globalization::CultureInfo::InvariantCulture);
+				for (int i = 0; i < SourceEntries->Count; i++) { Values["plot.ds." + i.ToString("000", System::Globalization::CultureInfo::InvariantCulture)] = SourceEntries[i]; }
+
+				System::Collections::Generic::List<System::String^>^ TrackEntries = RMH_ThermalViewer_GetTemperatureTrackingForSession();
+				Values["track.count"] = TrackEntries->Count.ToString(System::Globalization::CultureInfo::InvariantCulture);
+				for (int i = 0; i < TrackEntries->Count; i++) { Values["track." + i.ToString("000", System::Globalization::CultureInfo::InvariantCulture)] = TrackEntries[i]; }
+
 				return SessionFile::WriteFile(FilePath, Values);
 
 			}
@@ -1580,6 +1589,36 @@ namespace IRCAMThermalViewer {
 					}
 
 					SetCount += RMH_ThermalViewer_SetLiveViewMeasurementsFromSession(LiveViewEntries);
+
+				}
+
+				// Data Set Source of every plot data set (set again after the controls: a source that depends on the measurements of the live view is then set last)
+				if (Values->ContainsKey("plot.ds.count") == true) {
+
+					System::Collections::Generic::List<System::String^>^ SourceEntries = gcnew System::Collections::Generic::List<System::String^>();
+
+					for (int i = 0; i < 1000; i++) {
+						System::String^ Entry = nullptr;
+						if (Values->TryGetValue("plot.ds." + i.ToString("000", System::Globalization::CultureInfo::InvariantCulture), Entry) == false) { break; }
+						SourceEntries->Add(Entry);
+					}
+
+					RMH_ThermalViewer_SetPlotDataSetSourcesFromSession(SourceEntries);
+
+				}
+
+				// Tracking buttons of the live view: maximum, minimum, center and mouse cursor temperature
+				if (Values->ContainsKey("track.count") == true) {
+
+					System::Collections::Generic::List<System::String^>^ TrackEntries = gcnew System::Collections::Generic::List<System::String^>();
+
+					for (int i = 0; i < 100; i++) {
+						System::String^ Entry = nullptr;
+						if (Values->TryGetValue("track." + i.ToString("000", System::Globalization::CultureInfo::InvariantCulture), Entry) == false) { break; }
+						TrackEntries->Add(Entry);
+					}
+
+					SetCount += RMH_ThermalViewer_SetTemperatureTrackingFromSession(TrackEntries);
 
 				}
 
