@@ -1454,7 +1454,22 @@ static void RMH_ThermalViewer_AskToSaveDataLoggingSession() {
 			System::String^ CacheFolder = RMH_ThermalViewer_GetDataLoggingGraphCacheFolder();
 			System::IO::Directory::CreateDirectory(CacheFolder);
 
-			System::IO::File::Copy(TempPath, System::IO::Path::Combine(CacheFolder, FileName), true);
+			System::String^ CachePath = System::IO::Path::Combine(CacheFolder, FileName);
+			System::IO::File::Copy(TempPath, CachePath, true);
+
+			// The graph starts again when it follows the file to the cache folder (it clears the markers and cursors). The cached file gets the markers, cursors, zoom, title,
+			// notes and hidden lines of the graph ("#graph." lines, as Save Log File writes them), so the graph shows the same state again when it has read the file.
+			if (GlobalVariables::DataLoggingGraphStateWriter != nullptr) {
+
+				try { GlobalVariables::DataLoggingGraphStateWriter->Invoke(CachePath); }
+				catch (System::Exception^ GraphStateError) {
+
+					RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "The Graph Markers, Cursors And Zoom Could Not Be Kept: " + RMH_Conversion_SystemStringToStdString(GraphStateError->Message), _StatusMessageType_Warning);
+
+				}
+
+			}
+
 			System::IO::File::Delete(TempPath);
 
 			GlobalVariables::DataLoggingSessionFolderString = CacheFolder;
