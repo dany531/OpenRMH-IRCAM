@@ -1478,8 +1478,18 @@ namespace IRCAMThermalViewer {
 			this->AddNotesButton->Click += gcnew System::EventHandler(this, &DataLogGUI::AddNotesButton_Click);
 			TopPanel->Controls->Add(this->AddNotesButton);
 
+			// The width of the button follows the size of its text: the text is wider with a Windows display scaling of more than 100% (a button text that does not fit is wrapped
+			// and the second line is cut off, so only "Export Graph" was seen). The two check boxes next to it move with it.
+			int ExportButtonWidth = 122;
+			int ExportTextWidth = System::Windows::Forms::TextRenderer::MeasureText("Export Graph Image", this->Font).Width;
+			if (ExportTextWidth + 24 > ExportButtonWidth) { ExportButtonWidth = ExportTextWidth + 24; }
+
+			int ShowTitleX = 855 + ExportButtonWidth + 3;
+			int ShowTitleWidth = System::Windows::Forms::TextRenderer::MeasureText("Show Graph Title", this->Font).Width + 28;
+			int AutoScrollX = ShowTitleX + ((ShowTitleWidth + 8 > 132) ? (ShowTitleWidth + 8) : 132);
+
 			this->ExportGraphButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->ExportGraphButton, "Export Graph Image", 855, 122);
+			this->StyleButton(this->ExportGraphButton, "Export Graph Image", 855, ExportButtonWidth);
 			this->ExportGraphButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ExportGraphButton_Click);
 			TopPanel->Controls->Add(this->ExportGraphButton);
 
@@ -1487,7 +1497,7 @@ namespace IRCAMThermalViewer {
 			this->ShowTitleCheckBox->Text = "Show Graph Title";
 			this->ShowTitleCheckBox->Checked = false;
 			this->ShowTitleCheckBox->AutoSize = true;
-			this->ShowTitleCheckBox->Location = System::Drawing::Point(980, 43);
+			this->ShowTitleCheckBox->Location = System::Drawing::Point(ShowTitleX, 43);
 			this->ShowTitleCheckBox->ForeColor = System::Drawing::Color::White;
 			this->ShowTitleCheckBox->CheckedChanged += gcnew System::EventHandler(this, &DataLogGUI::ShowTitleCheckBox_CheckedChanged);
 			TopPanel->Controls->Add(this->ShowTitleCheckBox);
@@ -1501,7 +1511,7 @@ namespace IRCAMThermalViewer {
 			this->AutoScrollCheckBox->Text = "Auto-scroll table to newest";
 			this->AutoScrollCheckBox->Checked = true;
 			this->AutoScrollCheckBox->AutoSize = true;
-			this->AutoScrollCheckBox->Location = System::Drawing::Point(1112, 43);
+			this->AutoScrollCheckBox->Location = System::Drawing::Point(AutoScrollX, 43);
 			this->AutoScrollCheckBox->ForeColor = System::Drawing::Color::White;
 			TopPanel->Controls->Add(this->AutoScrollCheckBox);
 
