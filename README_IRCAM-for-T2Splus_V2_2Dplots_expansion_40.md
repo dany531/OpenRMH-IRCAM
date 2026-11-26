@@ -799,9 +799,9 @@ The `#graph.` lines (`#graph.marker=<ms>|<text>`, `#graph.cursorA=<ms>`, `#graph
 
 **Not asked** when the graph is empty (nothing logged or opened yet, or after a session without data was opened, 1.48), when a session is already running, and for an **automatic start** (a temperature alarm or a trigger event starts the data logging): nobody is there to answer, and the question would stop the automatic start.
 
-**Export Graph Image.** The button text (1.47, branch 38) is not changed here.
+**Export Graph Image (fixed in this branch).** The button text of branch 38 was not always seen: the button was a fixed 122 pixels wide, but the text is wider with a Windows display scaling of more than 100%, and a button text that does not fit is wrapped on a second line that is cut off, so the button still looked like **Export Graph**. The width is now taken from the size of the text (at least 122 pixels, the text plus 24 pixels), and the **Show Graph Title** and **Auto-scroll table to newest** check boxes next to it move to the right by the same amount. Only the layout of the top row changed; the function of the button is the same.
 
-**Technical notes.** `GlobalObjectsAndVariables.h`: new `GlobalVariables::DataLoggingGraphLogFileGetter` (`System::Func<System::String^>^`). `MainGUI.h`: sets it to `DataLogGUIForm->GetSessionLogFilePath`. `RMH_Application_ThermalViewer.cpp`: `RMH_ThermalViewer_StartDataLogging` asks (only when `AskUserAboutSampleLimit` is true, which is the interactive start) before the sample limit question, and uses `RMH_ThermalViewer_FileIsInDataLoggingGraphCache` to tell a saved file from an unsaved session.
+**Technical notes.** `DataLogGUI.h` `BuildLayout`: `ExportButtonWidth` from `TextRenderer::MeasureText`, `ShowTitleX` and `AutoScrollX` follow it. `GlobalObjectsAndVariables.h`: new `GlobalVariables::DataLoggingGraphLogFileGetter` (`System::Func<System::String^>^`). `MainGUI.h`: sets it to `DataLogGUIForm->GetSessionLogFilePath`. `RMH_Application_ThermalViewer.cpp`: `RMH_ThermalViewer_StartDataLogging` asks (only when `AskUserAboutSampleLimit` is true, which is the interactive start) before the sample limit question, and uses `RMH_ThermalViewer_FileIsInDataLoggingGraphCache` to tell a saved file from an unsaved session.
 
 ---
 
@@ -863,6 +863,7 @@ The `#graph.` lines (`#graph.marker=<ms>|<text>`, `#graph.cursorA=<ms>`, `#graph
 | `DataLogGUI.h` (also, branch 35) | Zoom of the graph in a session file (1.44): zoom keys in `GetSessionSettings` / `ApplySessionSettings`, new `ApplySessionZoom`, `SessionStateZoom...` fields |
 | `SessionFile.h` (also, branch 35) | Description of the new key groups (comment only) |
 | `DataLogGUI.h` (also, branches 38 and 39) | Branch 39: **Save Log File** can replace the file that the graph shows (1.48). Branch 38: | `AppendGraphStateToLogFile` (the saved logging session gets the `#graph.` lines, 1.47); the **Export Graph** button is named **Export Graph Image** (text, width 115 -> 122) |
+| `DataLogGUI.h` (also, branch 40) | The width of the **Export Graph Image** button follows the text size (display scaling), the two check boxes next to it move with it (1.49) |
 | `GlobalObjectsAndVariables.h` (branches 38 and 40) | Branch 40: new `GlobalVariables::DataLoggingGraphLogFileGetter` (1.49). Branch 38: | New `GlobalVariables::DataLoggingGraphStateWriter` (1.47) |
 | `MainGUI.h` (also, branches 38, 39 and 40) | Branch 40: sets `DataLoggingGraphLogFileGetter` (1.49). Branches 38 and 39: | Sets `DataLoggingGraphStateWriter` when the Data Log window is created (1.47). Branch 39: a session without logged data opens with an empty graph (1.48) |
 | `RMH_Application_ThermalViewer.cpp` (also, branches 38, 39 and 40) | Branch 40: **Start Logging** asks before it replaces the log on the graph (1.49). Branches 38 and 39: | Branch 39: **Save Data Logging Session** opens a Save window (1.48). Branch 38: | The Yes branch of `RMH_ThermalViewer_AskToSaveDataLoggingSession` calls the writer after the file was copied to the save folder; the No branch does the same for the graph cache file (1.47) |
@@ -1070,6 +1071,7 @@ Fallbacks: Build #7 (commit `7b355e8`, branch `fix-t2s-v2-temperature`) and the 
 | Start Logging (1.49): after a session that was answered No: the question says it is not saved and the data is lost; Yes starts, No keeps the graph and Save Log File still works | Not tested yet |
 | Start Logging (1.49): empty graph (fresh start, or after a session without data was opened): no question; a long session: the question about the number of samples still comes (after the first one) | Not tested yet |
 | Start Logging (1.49): a temperature alarm / trigger event that starts the data logging while the graph shows a log: no question, the session starts | Not tested yet |
+| Export Graph Image (1.49): at a Windows display scaling of 100%, 125% and 150%: the full text **Export Graph Image** is seen on one line, the button does not touch **Show Graph Title**, which does not touch **Auto-scroll table to newest**; the click works as before | Not tested yet |
 
 ---
 
