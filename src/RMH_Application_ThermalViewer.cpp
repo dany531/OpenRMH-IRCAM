@@ -1411,6 +1411,19 @@ static void RMH_ThermalViewer_AskToSaveDataLoggingSession() {
 			System::IO::File::Copy(TempPath, SavedPath, true);
 			System::IO::File::Delete(TempPath);
 
+			// The saved file gets the markers, cursors, zoom, title, notes and hidden lines of the Data Log graph ("#graph." lines, as Save Log File writes them), so Open Log File
+			// shows the graph as it was when the session was stopped. The session itself is saved at this point: when this fails the file is kept as it is and a warning is shown.
+			if (GlobalVariables::DataLoggingGraphStateWriter != nullptr) {
+
+				try { GlobalVariables::DataLoggingGraphStateWriter->Invoke(SavedPath); }
+				catch (System::Exception^ GraphStateError) {
+
+					RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Session Was Saved, But The Graph Markers, Cursors And Zoom Could Not Be Added To The File: " + RMH_Conversion_SystemStringToStdString(GraphStateError->Message), _StatusMessageType_Warning);
+
+				}
+
+			}
+
 			// From now on the session file is the saved file
 			GlobalVariables::DataLoggingSessionFolderString = GlobalVariables::LoggingCSVDefaultPath;
 

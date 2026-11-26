@@ -343,6 +343,7 @@ ref struct GlobalVariables {
 	static System::String^ DataLoggingSessionFileNameString = nullptr;
 	static System::String^ DataLoggingSessionFolderString = nullptr;   // Folder that currently holds the session file (temp folder while logging, default save path once saved)
 	static System::IO::FileStream^ DataLoggingSessionLockStream = nullptr;   // Lock file of the running session (held open while it runs, so another instance of the program does not offer the temporary session file for crash recovery)
+	static System::Action<System::String^>^ DataLoggingGraphStateWriter = nullptr;   // Set by the main window to the Data Log window: writes the "#graph." lines (markers, cursors, zoom, title, notes, hidden lines) at the end of a log file. Called when a stopped data logging session is saved.
 	static System::String^ DefaultCapturingAppPackageFamilyNameString = nullptr;
 
 	// Global objects from the MainGUI form

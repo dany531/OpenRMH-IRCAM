@@ -858,6 +858,45 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		// Writes the "#graph." lines of the graph as it is now (title, notes, hidden lines, markers, cursors and zoom - the same lines that Save Log File writes with
+		// "markers, cursors and zoom") at the end of a log file. It is called when a data logging session that was stopped is saved (see
+		// RMH_ThermalViewer_AskToSaveDataLoggingSession), so the saved file holds everything that Save Log File would save and Open Log File shows the graph as it was.
+		// The file is not read: the lines are only appended (a new line is added first when the last line of the file does not end with one). Throws when the file cannot be written.
+		System::Void AppendGraphStateToLogFile(System::String^ FilePath) {
+
+			if (FilePath == nullptr || FilePath->Length == 0 || System::IO::File::Exists(FilePath) == false) { return; }
+
+			System::Collections::Generic::List<System::String^>^ StateLines = this->BuildGraphStateLines();
+			if (StateLines->Count == 0) { return; }
+
+			System::IO::FileStream^ Stream = gcnew System::IO::FileStream(FilePath, System::IO::FileMode::Open, System::IO::FileAccess::ReadWrite, System::IO::FileShare::ReadWrite);
+
+			try {
+
+				bool NeedsNewLine = false;
+
+				if (Stream->Length > 0) {
+
+					Stream->Seek(-1, System::IO::SeekOrigin::End);
+					NeedsNewLine = (Stream->ReadByte() != 10);
+
+				}
+
+				Stream->Seek(0, System::IO::SeekOrigin::End);
+
+				System::IO::StreamWriter^ Writer = gcnew System::IO::StreamWriter(Stream, gcnew System::Text::UTF8Encoding(false));
+				Writer->NewLine = "\r\n";
+
+				if (NeedsNewLine == true) { Writer->WriteLine(); }
+				for (int i = 0; i < StateLines->Count; i++) { Writer->WriteLine(StateLines[i]); }
+
+				Writer->Flush();
+
+			}
+			finally { Stream->Close(); }
+
+		}
+
 		System::Void ShowLogFileStatus(System::String^ Text, unsigned int MessageType) {
 
 			if (GlobalVariables::GlobalGUIInfoTextArea != nullptr) { RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, RMH_Conversion_SystemStringToStdString(Text), MessageType); }
@@ -1367,7 +1406,7 @@ namespace IRCAMThermalViewer {
 			TopPanel->Controls->Add(this->AddNotesButton);
 
 			this->ExportGraphButton = gcnew System::Windows::Forms::Button();
-			this->StyleButton(this->ExportGraphButton, "Export Graph", 855, 115);
+			this->StyleButton(this->ExportGraphButton, "Export Graph Image", 855, 122);
 			this->ExportGraphButton->Click += gcnew System::EventHandler(this, &DataLogGUI::ExportGraphButton_Click);
 			TopPanel->Controls->Add(this->ExportGraphButton);
 
