@@ -121,6 +121,8 @@ namespace IRCAMThermalViewer {
 			// The data logging (RMH_Application_ThermalViewer.cpp) does not know the Data Log window: when a stopped session is saved, it calls this routine to write the
 			// markers, cursors, zoom, title, notes and hidden lines of the graph into the saved log file (the same "#graph." lines as Save Log File)
 			GlobalVariables::DataLoggingGraphStateWriter = gcnew System::Action<System::String^>(ManagedLocals::DataLogGUIForm, &IRCAMThermalViewer::DataLogGUI::AppendGraphStateToLogFile);
+			// Start Logging asks first when the graph already shows a log (RMH_ThermalViewer_StartDataLogging)
+			GlobalVariables::DataLoggingGraphLogFileGetter = gcnew System::Func<System::String^>(ManagedLocals::DataLogGUIForm, &IRCAMThermalViewer::DataLogGUI::GetSessionLogFilePath);
 
 			// Set the 2D plot line color data of the saved session
 			RMH_ThermalViewer_Load2DPlotSavedSessionLineColorData();

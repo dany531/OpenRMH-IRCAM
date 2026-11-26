@@ -1022,6 +1022,36 @@ void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit) {
 	// Check the data logging is running flag
 	if (DataLoggingIsRunningFlag == false) {
 
+		// The Data Log window already shows a log (a logged session, or a log file that was opened): a new session replaces it in the graph, so the user is asked first.
+		// Not for an automatic start (alarm / trigger event): nobody is there to answer.
+		if (AskUserAboutSampleLimit == true && GlobalVariables::DataLoggingGraphLogFileGetter != nullptr) {
+
+			System::String^ ShownLogFile = nullptr;
+			try { ShownLogFile = GlobalVariables::DataLoggingGraphLogFileGetter->Invoke(); }
+			catch (System::Exception^) { ShownLogFile = nullptr; }
+
+			if (ShownLogFile != nullptr && ShownLogFile->Length > 0) {
+
+				bool NotSaved = RMH_ThermalViewer_FileIsInDataLoggingGraphCache(ShownLogFile);
+
+				System::String^ Question = "The graph already shows a logged session:\n" + System::IO::Path::GetFileName(ShownLogFile) + "\n\n";
+
+				if (NotSaved == true) { Question += "It is not saved. Starting a new data logging session replaces it in the graph and its data is lost (use Save Log File first to keep it).\n\n"; }
+				else { Question += "Starting a new data logging session replaces it in the graph. The file itself is not changed or deleted.\n\n"; }
+
+				Question += "Are you sure you want to start a new data logging session?";
+
+				if (System::Windows::Forms::MessageBox::Show(Question, "Start Logging", System::Windows::Forms::MessageBoxButtons::YesNo, System::Windows::Forms::MessageBoxIcon::Question, System::Windows::Forms::MessageBoxDefaultButton::Button2) != System::Windows::Forms::DialogResult::Yes) {
+
+					RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Was Not Started.", _StatusMessageType_Normal);
+					return;
+
+				}
+
+			}
+
+		}
+
 		// Warn when the session has more samples than the Data Log window shows (the oldest scroll off the screen, all samples are saved in the file)
 		double SessionTotalSec = System::Decimal::ToDouble(GlobalVariables::GlobalDataLoggingDurationHourUpDown->Value) * 3600.0 +
 			System::Decimal::ToDouble(GlobalVariables::GlobalDataLoggingDurationMinuteUpDown->Value) * 60.0 +
