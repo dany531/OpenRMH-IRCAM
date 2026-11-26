@@ -760,6 +760,17 @@ namespace IRCAMThermalViewer {
 		// Sets the markers, cursors and zoom that the log file had in its "#graph." lines (the file has been read completely)
 		System::Void ApplyFileState() {
 
+			// Tells what the file had, so it is clear what was set from the file and what the file did not have
+			System::String^ Found = "";
+			if (this->FileStateHasTitle == true) { Found += (this->FileStateTitle->Trim()->Length > 0) ? ", Title" : ", Empty Title"; }
+			int NotesLength = this->FileStateNotes->Trim()->Length;
+			int MarkerCount = this->FileStateMarkers->Count;
+			if (this->FileStateHasNotes == true) { Found += (NotesLength > 0) ? (", Notes (" + NotesLength.ToString() + " Characters)") : ", No Notes"; }
+			if (MarkerCount > 0) { Found += ", " + MarkerCount.ToString() + ((MarkerCount == 1) ? " Marker" : " Markers"); }
+			if (System::Double::IsNaN(this->FileStateCursorA) == false || System::Double::IsNaN(this->FileStateCursorB) == false) { Found += ", Cursors"; }
+			if (this->FileStateZoomX == true || this->FileStateZoomY == true) { Found += ", Zoom"; }
+			this->ShowLogFileStatus("Graph State Read From The Log File: " + ((Found->Length > 0) ? Found->Substring(2) : "Nothing"), _StatusMessageType_Normal);
+
 			// Title and notes of the graph
 			System::Windows::Forms::DataVisualization::Charting::Title^ GraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
 			if (GraphTitle != nullptr && this->FileStateHasTitle == true && this->FileStateTitle->Trim()->Length > 0) { GraphTitle->Text = this->FileStateTitle->Trim(); }
@@ -915,6 +926,15 @@ namespace IRCAMThermalViewer {
 
 			}
 
+			// While the graph is still reading the file (or has not started to read it), the title, notes, markers and cursors of the file are not set yet: saving now
+			// would write the ones of the graph as it is and lose the ones of the file
+			if (this->LoadingBehind == true || this->FileStatePending == true || this->ViewedFilePath == nullptr || !this->ViewedFilePath->Equals(SourcePath, System::StringComparison::OrdinalIgnoreCase)) {
+
+				System::Windows::Forms::MessageBox::Show(this, "The graph is still reading the log file. Wait a moment until the data is shown and try again.", "Save Log File", System::Windows::Forms::MessageBoxButtons::OK, System::Windows::Forms::MessageBoxIcon::Information);
+				return false;
+
+			}
+
 			System::Windows::Forms::SaveFileDialog^ Dialog = gcnew System::Windows::Forms::SaveFileDialog();
 			Dialog->Title = "Save Log File";
 			Dialog->Filter = "Log file with markers, cursors and zoom (*.csv)|*.csv|Log file, data only (*.csv)|*.csv|Log file with markers, cursors and zoom (*.txt)|*.txt|Log file, data only (*.txt)|*.txt";
@@ -1066,6 +1086,12 @@ namespace IRCAMThermalViewer {
 				return;
 
 			}
+
+			// The title and the notes belong to the log file: a file that has none of its own must not get the ones of the file that was shown before (they would be saved into it
+			// with Save Log File and look like they were in the file). The ones of the file are set when it has been read.
+			System::Windows::Forms::DataVisualization::Charting::Title^ OpenedGraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
+			if (OpenedGraphTitle != nullptr) { OpenedGraphTitle->Text = "Title"; }
+			this->GraphNotes = "";
 
 			this->OpenRecoveredSession(Info->FullPath, Info->Delimiter);
 			this->RefreshLogView();
