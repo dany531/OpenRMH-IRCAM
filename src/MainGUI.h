@@ -1575,6 +1575,15 @@ namespace IRCAMThermalViewer {
 					if (LogDelimiter == nullptr || LogDelimiter->Length == 0) { LogDelimiter = GlobalVariables::DataLoggingCSVDelimiterString; }
 					ManagedLocals::DataLogGUIForm->OpenSessionLogFile(OpenedLogFilePath, LogDelimiter);
 				}
+				else {
+
+					// The session has no logged data (it was saved while the graph was empty, or its log file is not there any more): the graph is shown empty, not with the data that
+					// was shown before the session was opened
+					ManagedLocals::DataLogGUIForm->ShowEmptyGraphForSession();
+
+					if (Values->ContainsKey("datalog.file.path") == true) { this->WriteSessionStatus("Session File: The Log File Of The Session Was Not Found (" + Values["datalog.file.path"] + "), The Graph Is Empty!", _StatusMessageType_Warning); }
+
+				}
 
 				// Data Log graph settings, markers and cursors
 				ManagedLocals::DataLogGUIForm->ApplySessionSettings(Values, OpenedLogFilePath);

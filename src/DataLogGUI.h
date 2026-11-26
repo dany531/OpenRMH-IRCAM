@@ -1107,6 +1107,30 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		// Shows the graph as it is before anything was logged or opened: no table, no lines, no markers, no cursors, no zoom, the default title and no notes. It is called when a
+		// session file without logged data is opened (the session was saved while the graph was empty), so the graph does not keep the data of the log file that was shown before.
+		// Not while a data logging session runs (the window follows it). The title, the notes and the other settings of the session are set afterwards (ApplySessionSettings).
+		System::Void ShowEmptyGraphForSession() {
+
+			if (DataLoggingIsRunningFlag == true) { return; }
+
+			GlobalVariables::DataLoggingSessionFileNameString = nullptr;
+			GlobalVariables::DataLoggingSessionFolderString = nullptr;
+
+			this->ViewedFilePath = nullptr;
+			this->ViewDelimiterFilePath = nullptr;
+			this->SessionStatePending = false;
+			this->ResetView();
+
+			System::Windows::Forms::DataVisualization::Charting::Title^ EmptyGraphTitle = this->LogChart->Titles->FindByName("GraphTitle");
+			if (EmptyGraphTitle != nullptr) { EmptyGraphTitle->Text = "Title"; }
+			this->GraphNotes = "";
+
+			this->UpdateStatusText();
+			this->LogChart->Invalidate();
+
+		}
+
 		// Sets the settings of the Data Log graph from "Values" (a setting that is not in "Values" is not changed)
 		System::Void ApplySessionSettings(System::Collections::Generic::Dictionary<System::String^, System::String^>^ Values, System::String^ LogFilePath) {
 
