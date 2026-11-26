@@ -1379,7 +1379,7 @@ void RMH_ThermalViewer_StopDataLogging() {
 
 static void RMH_ThermalViewer_AskToSaveDataLoggingSession() {
 
-	// Asks whether the session is saved. Yes: the temporary file is moved to the default save path. No: the temporary file is deleted.
+	// Asks whether the session is saved. Yes: the user chooses the file name and the folder in a Save window and the temporary file is moved there. No: the data is kept in the graph cache.
 
 	System::String^ FileName = GlobalVariables::DataLoggingSessionFileNameString;
 	System::String^ TempFolder = GlobalVariables::DataLoggingSessionFolderString;
@@ -1393,19 +1393,66 @@ static void RMH_ThermalViewer_AskToSaveDataLoggingSession() {
 	// Already moved to the save path
 	if (TempFolder->Equals(GlobalVariables::LoggingCSVDefaultPath)) { return; }
 
+	// Already saved in a folder that the user chose: the session file is only asked about while it is in the temporary folder
+	try {
+
+		System::String^ SessionFolderFull = System::IO::Path::GetFullPath(TempFolder)->TrimEnd(gcnew cli::array<wchar_t>{ L'\\', L'/' });
+		System::String^ TemporaryFolderFull = System::IO::Path::GetFullPath(RMH_ThermalViewer_GetDataLoggingTempFolder())->TrimEnd(gcnew cli::array<wchar_t>{ L'\\', L'/' });
+
+		if (SessionFolderFull->Equals(TemporaryFolderFull, System::StringComparison::OrdinalIgnoreCase) == false) { return; }
+
+	}
+	catch (System::Exception^) {}
+
 	// Already answered "No": the data is kept in the graph cache (see below), nothing to ask
 	if (TempFolder->Equals(RMH_ThermalViewer_GetDataLoggingGraphCacheFolder(), System::StringComparison::OrdinalIgnoreCase)) { return; }
 
 	System::Windows::Forms::DialogResult Answer = System::Windows::Forms::MessageBox::Show(
-		"The data logging session has stopped.\n\nDo you want to save this data logging session?\n\nYes: the file is saved in\n" + GlobalVariables::LoggingCSVDefaultPath + "\n\nNo: the file is not saved. The graph keeps showing the data, and the data is still stored when you save an IRCAM session.",
+		"The data logging session has stopped.\n\nDo you want to save this data logging session?\n\nYes: you choose the file name and the folder in the next window.\n\nNo: the file is not saved. The graph keeps showing the data, and the data is still stored when you save an IRCAM session.",
 		"Save Data Logging Session", System::Windows::Forms::MessageBoxButtons::YesNo, System::Windows::Forms::MessageBoxIcon::Question, System::Windows::Forms::MessageBoxDefaultButton::Button1);
+
+	// Yes: the user chooses the file name and the folder (the window starts in the save folder with the name of the session file). When no file is chosen the user is asked again;
+	// when the user does not want to choose one, the session is handled as answered No (the data is kept in the graph cache, nothing is lost).
+	System::String^ ChosenPath = nullptr;
 
 	if (Answer == System::Windows::Forms::DialogResult::Yes) {
 
+		while (ChosenPath == nullptr) {
+
+			System::Windows::Forms::SaveFileDialog^ SaveDialog = gcnew System::Windows::Forms::SaveFileDialog();
+			SaveDialog->Title = "Save Data Logging Session";
+			SaveDialog->Filter = "Log file (*.csv)|*.csv|Log file (*.txt)|*.txt";
+			SaveDialog->FilterIndex = FileName->EndsWith(".csv", System::StringComparison::OrdinalIgnoreCase) ? 1 : 2;
+			SaveDialog->AddExtension = true;
+			SaveDialog->OverwritePrompt = true;
+			SaveDialog->FileName = System::IO::Path::GetFileNameWithoutExtension(FileName);
+
+			if (GlobalVariables::LoggingCSVDefaultPath != nullptr && System::IO::Directory::Exists(GlobalVariables::LoggingCSVDefaultPath)) { SaveDialog->InitialDirectory = GlobalVariables::LoggingCSVDefaultPath; }
+
+			if (SaveDialog->ShowDialog() == System::Windows::Forms::DialogResult::OK) { ChosenPath = SaveDialog->FileName; }
+			else {
+
+				System::Windows::Forms::DialogResult Again = System::Windows::Forms::MessageBox::Show(
+					"No file was chosen, so the session is not saved yet.\n\nDo you want to choose a file?\n\nYes: choose a file\nNo: do not save (the graph keeps showing the data, and the data is still stored when you save an IRCAM session)",
+					"Save Data Logging Session", System::Windows::Forms::MessageBoxButtons::YesNo, System::Windows::Forms::MessageBoxIcon::Question, System::Windows::Forms::MessageBoxDefaultButton::Button1);
+
+				if (Again != System::Windows::Forms::DialogResult::Yes) { break; }
+
+			}
+
+		}
+
+	}
+
+	if (ChosenPath != nullptr) {
+
 		try {
 
-			System::IO::Directory::CreateDirectory(GlobalVariables::LoggingCSVDefaultPath);
-			System::String^ SavedPath = System::IO::Path::Combine(GlobalVariables::LoggingCSVDefaultPath, FileName);
+			System::String^ SavedFolder = System::IO::Path::GetDirectoryName(ChosenPath);
+			System::String^ SavedFileName = System::IO::Path::GetFileName(ChosenPath);
+			System::String^ SavedPath = ChosenPath;
+
+			if (SavedFolder != nullptr && SavedFolder->Length > 0) { System::IO::Directory::CreateDirectory(SavedFolder); }
 
 			// Copy and delete (works across drives)
 			System::IO::File::Copy(TempPath, SavedPath, true);
@@ -1424,8 +1471,9 @@ static void RMH_ThermalViewer_AskToSaveDataLoggingSession() {
 
 			}
 
-			// From now on the session file is the saved file
-			GlobalVariables::DataLoggingSessionFolderString = GlobalVariables::LoggingCSVDefaultPath;
+			// From now on the session file is the saved file (with the name and in the folder that the user chose)
+			GlobalVariables::DataLoggingSessionFolderString = SavedFolder;
+			GlobalVariables::DataLoggingSessionFileNameString = SavedFileName;
 
 			RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Session Was Saved: " + RMH_Conversion_SystemStringToStdString(SavedPath), _StatusMessageType_Success);
 
