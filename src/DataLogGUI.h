@@ -908,6 +908,83 @@ namespace IRCAMThermalViewer {
 
 		}
 
+		// The log file of the graph as bytes for an IRCAM session file: the data, followed by the "#graph." lines of the graph as it is now (title, notes, hidden lines, markers,
+		// cursors and zoom - the same lines that Save Log File writes with "markers, cursors and zoom"). The log file inside a session file is written out again when the session is
+		// opened and is then a log file of its own, so it has to hold the graph state as well (the session file keeps its own copy of the markers and cursors, which win when it is opened).
+		// "#graph." lines that the file already has are left out (they are replaced by the ones of the graph). The data is copied as bytes (nothing is decoded), so it stays exactly as it was.
+		// The file as it is on disk is returned when the graph cannot give its state yet (it is still reading the file, so its title, notes, markers and cursors are not set - the state of
+		// the graph would replace the ones of the file) or when the state cannot be built. While a data logging session runs only the complete lines of the file are used.
+		cli::array<System::Byte>^ GetLogFileBytesForSession(System::String^ FilePath) {
+
+			cli::array<System::Byte>^ Raw = SessionFile::ReadSharedFile(FilePath);
+
+			if (this->LoadingBehind == true || this->FileStatePending == true || this->ViewedFilePath == nullptr || !this->ViewedFilePath->Equals(FilePath, System::StringComparison::OrdinalIgnoreCase)) { return Raw; }
+
+			try {
+
+				int Length = Raw->Length;
+
+				if (DataLoggingIsRunningFlag == true) {
+
+					// The last line of a file that is still written can be incomplete
+					int Last = Length - 1;
+					while (Last >= 0 && Raw[Last] != 10) { Last--; }
+					Length = Last + 1;
+
+				}
+
+				if (Length <= 0) { return Raw; }
+
+				System::Collections::Generic::List<System::String^>^ StateLines = this->BuildGraphStateLines();
+				if (StateLines->Count == 0) { return Raw; }
+
+				cli::array<System::Byte>^ Prefix = System::Text::Encoding::ASCII->GetBytes("#graph.");
+				System::IO::MemoryStream^ Output = gcnew System::IO::MemoryStream(Length + 4096);
+				bool LastLineHasNewLine = true;
+				int LineStart = 0;
+
+				while (LineStart < Length) {
+
+					int LineEnd = LineStart;
+					while (LineEnd < Length && Raw[LineEnd] != 10) { LineEnd++; }
+
+					bool HasNewLine = (LineEnd < Length);
+					int NextStart = HasNewLine ? (LineEnd + 1) : LineEnd;
+					bool IsGraphLine = ((LineEnd - LineStart) >= Prefix->Length);
+
+					for (int k = 0; IsGraphLine == true && k < Prefix->Length; k++) { if (Raw[LineStart + k] != Prefix[k]) { IsGraphLine = false; } }
+
+					if (IsGraphLine == false) {
+
+						Output->Write(Raw, LineStart, NextStart - LineStart);
+						LastLineHasNewLine = HasNewLine;
+
+					}
+
+					LineStart = NextStart;
+
+				}
+
+				System::Text::UTF8Encoding^ Utf8 = gcnew System::Text::UTF8Encoding(false);
+
+				if (LastLineHasNewLine == false) { cli::array<System::Byte>^ NewLine = Utf8->GetBytes("\r\n"); Output->Write(NewLine, 0, NewLine->Length); }
+
+				for (int i = 0; i < StateLines->Count; i++) {
+
+					cli::array<System::Byte>^ LineBytes = Utf8->GetBytes(StateLines[i] + "\r\n");
+					Output->Write(LineBytes, 0, LineBytes->Length);
+
+				}
+
+				return Output->ToArray();
+
+			}
+			catch (System::Exception^) {}
+
+			return Raw;
+
+		}
+
 		System::Void ShowLogFileStatus(System::String^ Text, unsigned int MessageType) {
 
 			if (GlobalVariables::GlobalGUIInfoTextArea != nullptr) { RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, RMH_Conversion_SystemStringToStdString(Text), MessageType); }
@@ -937,8 +1014,9 @@ namespace IRCAMThermalViewer {
 
 			System::Windows::Forms::SaveFileDialog^ Dialog = gcnew System::Windows::Forms::SaveFileDialog();
 			Dialog->Title = "Save Log File";
-			Dialog->Filter = "Log file with markers, cursors and zoom (*.csv)|*.csv|Log file, data only (*.csv)|*.csv|Log file with markers, cursors and zoom (*.txt)|*.txt|Log file, data only (*.txt)|*.txt";
-			Dialog->FilterIndex = SourcePath->EndsWith(".txt", System::StringComparison::OrdinalIgnoreCase) ? 3 : 1;
+			Dialog->Filter = "Log file (*.csv)|*.csv|Log file (*.txt)|*.txt";
+			Dialog->FilterIndex = SourcePath->EndsWith(".txt", System::StringComparison::OrdinalIgnoreCase) ? 2 : 1;
+			Dialog->AddExtension = true;
 			Dialog->FileName = System::IO::Path::GetFileNameWithoutExtension(SourcePath);
 			Dialog->OverwritePrompt = true;
 
@@ -947,7 +1025,8 @@ namespace IRCAMThermalViewer {
 			if (Dialog->ShowDialog(this) != System::Windows::Forms::DialogResult::OK) { return false; }
 
 			System::String^ TargetPath = Dialog->FileName;
-			bool WithGraphState = (Dialog->FilterIndex == 1 || Dialog->FilterIndex == 3);
+			// The check box "Include markers, cursors, title and notes" (ticked at the start) decides whether the "#graph." lines are written
+			bool WithGraphState = (this->IncludeGraphStateCheckBox->Checked == true);
 
 			// The file that the graph shows can be saved again under its own name (for example to add notes, markers or cursors that were set after it was saved): the new file is
 			// written next to it and then replaces it. Not while the data logging runs (the file is still written) and not for the temporary copy of an unsaved session.
@@ -1375,6 +1454,7 @@ namespace IRCAMThermalViewer {
 		System::Windows::Forms::Button^ OpenFolderButton;
 		System::Windows::Forms::CheckBox^ AutoScrollCheckBox;
 		System::Windows::Forms::CheckBox^ ShowTitleCheckBox;     // Shows / hides the graph title on the graph and in an exported image (the title text is kept)
+		System::Windows::Forms::CheckBox^ IncludeGraphStateCheckBox;   // Save Log File: ticked (default) = the markers, cursors, zoom, title, notes and hidden lines are saved in the file too ("#graph." lines), not ticked = the plain data
 		System::Windows::Forms::TextBox^ TitleEditBox;           // Text box on the title of the graph for editing the title directly (double-click on the title)
 		System::Windows::Forms::ToolTip^ HintToolTip;
 		System::Windows::Forms::Timer^ RefreshTimer;
@@ -1429,7 +1509,7 @@ namespace IRCAMThermalViewer {
 			// Top panel with the status text and the buttons
 			System::Windows::Forms::Panel^ TopPanel = gcnew System::Windows::Forms::Panel();
 			TopPanel->Dock = System::Windows::Forms::DockStyle::Top;
-			TopPanel->Height = 74;
+			TopPanel->Height = 98;	// a second row under the buttons holds the check box of Save Log File
 			TopPanel->BackColor = System::Drawing::Color::FromArgb(35, 35, 35);
 
 			this->StatusLabel = gcnew System::Windows::Forms::Label();
@@ -1502,9 +1582,19 @@ namespace IRCAMThermalViewer {
 			this->ShowTitleCheckBox->CheckedChanged += gcnew System::EventHandler(this, &DataLogGUI::ShowTitleCheckBox_CheckedChanged);
 			TopPanel->Controls->Add(this->ShowTitleCheckBox);
 
+			// Save Log File: what the saved file holds (under the Save Log File button; the Save window of Windows has no room for a check box of its own)
+			this->IncludeGraphStateCheckBox = gcnew System::Windows::Forms::CheckBox();
+			this->IncludeGraphStateCheckBox->Text = "Include markers, cursors, title and notes";
+			this->IncludeGraphStateCheckBox->Checked = true;
+			this->IncludeGraphStateCheckBox->AutoSize = true;
+			this->IncludeGraphStateCheckBox->Location = System::Drawing::Point(515, 72);
+			this->IncludeGraphStateCheckBox->ForeColor = System::Drawing::Color::White;
+			TopPanel->Controls->Add(this->IncludeGraphStateCheckBox);
+
 			this->HintToolTip = gcnew System::Windows::Forms::ToolTip();
 			this->HintToolTip->SetToolTip(this->OpenLogButton, "Opens a log file (.csv or .txt, as written by the data logging) in the graph and the table. Markers, cursors and zoom that the file has (see Save Log File) are set as well.");
-			this->HintToolTip->SetToolTip(this->SaveLogButton, "Saves the log file of the graph (also when the data logging session was not saved). The markers, cursors and zoom of the graph are saved in the file too, so Open Log File shows the graph as it is now; choose 'data only' to save the plain data. The file that the graph shows can be saved under its own name (to add notes, markers or cursors that were set after it was saved).");
+			this->HintToolTip->SetToolTip(this->SaveLogButton, "Saves the log file of the graph (also when the data logging session was not saved) as .csv or .txt. With the check box under the button ticked, the markers, cursors, zoom, title, notes and hidden lines of the graph are saved in the file too, so Open Log File shows the graph as it is now. The file that the graph shows can be saved under its own name (to add notes, markers or cursors that were set after it was saved).");
+			this->HintToolTip->SetToolTip(this->IncludeGraphStateCheckBox, "Ticked: Save Log File saves the markers, cursors, zoom, title, notes and hidden lines of the graph in the file (as lines that start with #graph. after the data). Not ticked: only the plain data is saved (for Excel, MATLAB, Python and other programs). A logging session that is saved after it stopped always gets them.");
 			this->HintToolTip->SetToolTip(this->ShowTitleCheckBox, "Shows the title above the graph and in an exported image. Double-click the title on the graph to edit it.");
 
 			this->AutoScrollCheckBox = gcnew System::Windows::Forms::CheckBox();

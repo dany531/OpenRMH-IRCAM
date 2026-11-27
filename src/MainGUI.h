@@ -1446,7 +1446,7 @@ namespace IRCAMThermalViewer {
 
 					if (LogFileLength <= SessionFile::MaxEmbeddedFileBytes) {
 						Values["datalog.file.delimiter"] = ManagedLocals::DataLogGUIForm->GetSessionLogDelimiter();
-						Values["datalog.file.gz"] = SessionFile::CompressToBase64(SessionFile::ReadSharedFile(LogFilePath));
+						Values["datalog.file.gz"] = SessionFile::CompressToBase64(ManagedLocals::DataLogGUIForm->GetLogFileBytesForSession(LogFilePath));
 					}
 					else {
 						Values["datalog.file.path"] = LogFilePath;
@@ -1563,9 +1563,51 @@ namespace IRCAMThermalViewer {
 
 					try {
 
-						System::String^ LogTarget = System::IO::Path::Combine(System::IO::Path::GetDirectoryName(FilePath), System::IO::Path::GetFileNameWithoutExtension(FilePath) + "_DataLog.csv");
-						System::IO::File::WriteAllBytes(LogTarget, SessionFile::DecompressFromBase64(PackedLogData));
+						// The log file is written next to the session file as <session>_DataLog.csv. A file with that name is never replaced when it is different (it can be a log file that was saved
+						// again later, with more markers or notes): the same file is used again, and for another one the data is written to <session>_DataLog_2.csv, _3.csv ...
+						cli::array<System::Byte>^ LogBytes = SessionFile::DecompressFromBase64(PackedLogData);
+						System::String^ LogFolder = System::IO::Path::GetDirectoryName(FilePath);
+						System::String^ LogBaseName = System::IO::Path::GetFileNameWithoutExtension(FilePath);
+						System::String^ LogTarget = nullptr;
+						int LogNumber = 1;
+
+						for (LogNumber = 1; LogNumber <= 999 && LogTarget == nullptr; LogNumber++) {
+
+							System::String^ Candidate = System::IO::Path::Combine(LogFolder, LogBaseName + ((LogNumber == 1) ? "_DataLog.csv" : ("_DataLog_" + LogNumber.ToString() + ".csv")));
+
+							if (System::IO::File::Exists(Candidate) == false) {
+
+								System::IO::File::WriteAllBytes(Candidate, LogBytes);
+								LogTarget = Candidate;
+								break;
+
+							}
+
+							bool SameContent = false;
+
+							try {
+
+								cli::array<System::Byte>^ ExistingBytes = System::IO::File::ReadAllBytes(Candidate);
+
+								if (ExistingBytes->Length == LogBytes->Length) {
+
+									SameContent = true;
+									for (int b = 0; b < LogBytes->Length; b++) { if (ExistingBytes[b] != LogBytes[b]) { SameContent = false; break; } }
+
+								}
+
+							}
+							catch (System::Exception^) { SameContent = false; }
+
+							if (SameContent == true) { LogTarget = Candidate; break; }
+
+						}
+
+						if (LogTarget == nullptr) { throw gcnew System::IO::IOException("No free file name for the logged data next to the session file."); }
+
 						OpenedLogFilePath = LogTarget;
+
+						if (LogNumber > 1) { this->WriteSessionStatus("Session File: A Different File Named " + LogBaseName + "_DataLog.csv Already Exists And Was Not Replaced - The Logged Data Is In " + System::IO::Path::GetFileName(LogTarget), _StatusMessageType_Warning); }
 
 					}
 					catch (System::Exception^ LogEx) { this->WriteSessionStatus("Session File: The Logged Data Could Not Be Restored (" + LogEx->Message + ")", _StatusMessageType_Warning); }
