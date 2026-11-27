@@ -123,6 +123,9 @@ namespace IRCAMThermalViewer {
 			GlobalVariables::DataLoggingGraphStateWriter = gcnew System::Action<System::String^>(ManagedLocals::DataLogGUIForm, &IRCAMThermalViewer::DataLogGUI::AppendGraphStateToLogFile);
 			// Start Logging asks first when the graph already shows a log (RMH_ThermalViewer_StartDataLogging)
 			GlobalVariables::DataLoggingGraphLogFileGetter = gcnew System::Func<System::String^>(ManagedLocals::DataLogGUIForm, &IRCAMThermalViewer::DataLogGUI::GetSessionLogFilePath);
+			// ... and also when the graph was changed after its log file was saved (markers, cursors, title, notes): it asks whether to save them first
+			GlobalVariables::DataLoggingGraphChangedGetter = gcnew System::Func<bool>(ManagedLocals::DataLogGUIForm, &IRCAMThermalViewer::DataLogGUI::GraphHasUnsavedChanges);
+			GlobalVariables::DataLoggingGraphSaveAction = gcnew System::Func<bool>(ManagedLocals::DataLogGUIForm, &IRCAMThermalViewer::DataLogGUI::SaveLogFileWithDialog);
 
 			// Set the 2D plot line color data of the saved session
 			RMH_ThermalViewer_Load2DPlotSavedSessionLineColorData();

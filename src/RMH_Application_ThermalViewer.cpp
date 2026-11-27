@@ -1034,14 +1034,60 @@ void RMH_ThermalViewer_StartDataLogging(bool AskUserAboutSampleLimit) {
 
 				bool NotSaved = RMH_ThermalViewer_FileIsInDataLoggingGraphCache(ShownLogFile);
 
+				// A log file that is saved, but the graph was changed after that (markers, cursors, title, notes): ask whether to save the changes first. This question replaces the
+				// "Are you sure" question below (Yes = save and start, No = start without saving, Cancel = do not start).
+				bool ChangesAsked = false;
+
+				if (NotSaved == false && GlobalVariables::DataLoggingGraphChangedGetter != nullptr) {
+
+					bool GraphChanged = false;
+					try { GraphChanged = GlobalVariables::DataLoggingGraphChangedGetter->Invoke(); }
+					catch (System::Exception^) { GraphChanged = false; }
+
+					if (GraphChanged == true) {
+
+						ChangesAsked = true;
+
+						System::Windows::Forms::DialogResult ChangedAnswer = System::Windows::Forms::MessageBox::Show(
+							"The graph shows this saved log file:\n" + System::IO::Path::GetFileName(ShownLogFile) + "\n\nYou changed markers, cursors, title or notes since the last save.\n\nSave them first?\n\nYes: the Save window opens (choose a file type 'with markers, cursors and zoom' to keep them), then the new data logging session starts.\nNo: the new data logging session starts without saving (the changes are lost, the file on your computer stays as it was saved).\nCancel: the new data logging session is not started.",
+							"Start Logging", System::Windows::Forms::MessageBoxButtons::YesNoCancel, System::Windows::Forms::MessageBoxIcon::Question, System::Windows::Forms::MessageBoxDefaultButton::Button3);
+
+						bool StartAnyway = (ChangedAnswer != System::Windows::Forms::DialogResult::Cancel);
+
+						if (ChangedAnswer == System::Windows::Forms::DialogResult::Yes) {
+
+							bool Saved = false;
+
+							if (GlobalVariables::DataLoggingGraphSaveAction != nullptr) {
+
+								try { Saved = GlobalVariables::DataLoggingGraphSaveAction->Invoke(); }
+								catch (System::Exception^) { Saved = false; }
+
+							}
+
+							if (Saved == false) { StartAnyway = false; }
+
+						}
+
+						if (StartAnyway == false) {
+
+							RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Was Not Started.", _StatusMessageType_Normal);
+							return;
+
+						}
+
+					}
+
+				}
+
 				System::String^ Question = "The graph already shows a logged session:\n" + System::IO::Path::GetFileName(ShownLogFile) + "\n\n";
 
 				if (NotSaved == true) { Question += "It is not saved. Starting a new data logging session replaces it in the graph and its data is lost (use Save Log File first to keep it).\n\n"; }
-				else { Question += "Starting a new data logging session replaces it in the graph. The file itself is not changed or deleted.\n\n"; }
+				else { Question += "Starting a new session removes it from the graph and shows the new session instead. The file stays on your computer unchanged, and you can open it again with Open Log File.\n\n"; }
 
 				Question += "Are you sure you want to start a new data logging session?";
 
-				if (System::Windows::Forms::MessageBox::Show(Question, "Start Logging", System::Windows::Forms::MessageBoxButtons::YesNo, System::Windows::Forms::MessageBoxIcon::Question, System::Windows::Forms::MessageBoxDefaultButton::Button2) != System::Windows::Forms::DialogResult::Yes) {
+				if (ChangesAsked == false && System::Windows::Forms::MessageBox::Show(Question, "Start Logging", System::Windows::Forms::MessageBoxButtons::YesNo, System::Windows::Forms::MessageBoxIcon::Question, System::Windows::Forms::MessageBoxDefaultButton::Button2) != System::Windows::Forms::DialogResult::Yes) {
 
 					RMH_Winforms_RichTextBox_WriteLine(GlobalVariables::GlobalGUIInfoTextArea, "Data Logging Was Not Started.", _StatusMessageType_Normal);
 					return;
